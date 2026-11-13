@@ -1,7 +1,7 @@
 -- =============================================================================
 -- HYGE v8.0 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: f3cf434876cc
+-- build: 284b05284bb0
 -- =============================================================================
 --[[
 ================================================================================
@@ -936,7 +936,7 @@ sidePad.PaddingLeft = UDim.new(0, 10)
 sidePad.PaddingRight = UDim.new(0, 10)
 
 local sideLayout = Instance.new("UIListLayout", Sidebar)
-sideLayout.Padding = UDim.new(0, 5)
+sideLayout.Padding = UDim.new(0, 3)
 sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 Content = Instance.new("Frame")
@@ -1036,11 +1036,12 @@ end
 
 local function AddNav(name, order)
     local NAV_ICON = {
-        Home = "home", Movement = "run", Visuals = "eye", Players = "users",
-        Moderation = "shield", Server = "server", Emotes = "smile", Settings = "gear",
+        Home = "home", Movement = "user", Visuals = "eye", Players = "users",
+        Moderation = "shield", Server = "server", Emotes = "grid", Settings = "gear",
+        Shop = "bag", Scripts = "terminal", Chat = "chat",   -- v8.0
     }
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1, 0, 0, 38)
+    b.Size = UDim2.new(1, 0, 0, 32)   -- v8.0: 11 abas precisam caber na sidebar
     b.BackgroundColor3 = THEME.Sidebar
     b.Text = ""
     b.AutoButtonColor = false
@@ -2425,7 +2426,7 @@ DefineToggle({
 --------------------------------------------------------------------------------
 local function RequireSelected()
     if not State.SelectedPlayer or not State.SelectedPlayer.Parent then
-        Toast("Selecione um jogador na aba Players", "warn")
+        Toast("Selecione um jogador em Jogadores › Lista", "warn")
         Log("Nenhum jogador selecionado", "warn")
         return nil
     end
@@ -3221,6 +3222,14 @@ do
         check  = { {4,12,9,3,45,1}, {9,7,13,3,-45,1} },
         dots   = { {2,10,4,4,0,2}, {10,10,4,4,0,2}, {18,10,4,4,0,2} },
         search = { {3,3,15,15,0,7,1}, {15,15,7,3,45,1} },
+        -- v8.0: dock de 8 seções
+        user     = { {8,2,8,8,0,4,1}, {4,13,16,9,0,6,1} },
+        bag      = { {4,8,16,14,0,3,1}, {8,4,2,6,0,1}, {14,4,2,6,0,1}, {8,3,8,2,0,1} },
+        terminal = { {2,4,20,16,0,3,1}, {5,8.5,6,2,35,1}, {5,11.5,6,2,-35,1},
+                     {12,14,6,2,0,1} },
+        grid     = { {3,3,8,8,0,2,1}, {13,3,8,8,0,2,1}, {3,13,8,8,0,2,1},
+                     {13,13,8,8,0,2,1} },
+        chat     = { {2,3,20,15,0,7,1}, {5,16,3,6,25,1} },
     }
 
     Icon = function(parent, kind, color, size, order)
@@ -3641,6 +3650,8 @@ do
         local kn = kc and KeyName(kc) or "—"
         E.ctrl.Text = "WASD  MOVE      E / Q  ALTITUDE      MOUSE  LOOK"
             .. "      SCROLL  SPEED      " .. kn .. "  EXIT DRONE"
+        -- v8.0: o dock solto ocupa o centro do rodapé — a linha sobe acima dele
+        E.ctrl.Position = UDim2.new(0.5, 0, 1, (SET.Dock == true) and -84 or -22)
 
         E.root.Visible = true
         Fade(0, false)
@@ -5180,7 +5191,7 @@ do
     un.Size = UDim2.new(1, -76, 0, 15)
     un.Position = UDim2.new(0, 68, 0, 25)
     un.BackgroundTransparency = 1
-    un.Text = "selecione alguém na aba Players"
+    un.Text = "selecione alguém em Jogadores › Lista"
     un.TextColor3 = THEME.Dim
     un.Font = Enum.Font.Code
     un.TextSize = 12
@@ -5220,7 +5231,7 @@ do
         local p = State.SelectedPlayer
         if not p or not p.Parent then
             dn.Text = "Nenhum jogador selecionado"
-            un.Text = "selecione alguém na aba Players"
+            un.Text = "selecione alguém em Jogadores › Lista"
             stats.Text = ""
             av.Image = "rbxthumb://type=AvatarHeadShot&id=1&w=48&h=48"
             return
@@ -5984,7 +5995,8 @@ do
         ConsoleFrame.Visible = (not on) and (not State.Minimized)
         Content.Size = on and UDim2.new(1, -184, 1, -84) or UDim2.new(1, -184, 1, -214)
     end
-    compactRender = CheckRow(look, "Modo compacto",
+    -- v8.0: a aba Scripts esconde esta linha (o console saiu da janela)
+    compactRender, V8.CompactRow = CheckRow(look, "Modo compacto",
         "Esconde o console e dá mais espaço para as abas",
         function() return SET.Compact end,
         function(v) ApplyCompact(v) end, 4)
@@ -6182,11 +6194,244 @@ do
     Paint(txt, "TextColor3", "Dim")
 end
 --------------------------------------------------------------------------------
--- v8.0 — DOCK DE ICONES (navegacao principal, estilo mockup)
--- Barra flutuante no rodape da janela: 7 icones + um oitavo "mais" que abre
--- um menuzinho com as abas restantes. A sidebar NAO foi removida: SET.Dock
--- escolhe qual das duas aparece (card NAVEGACAO nas Settings).
--- Tudo em V8.Dock: zero locais novos. Entra DEPOIS de 40_tabs/08_settings.lua no build.
+-- v8.0 — ABA SHOP (ícone de sacola do dock)
+-- Ainda não existe loja no HYGE: a aba só avisa. Nada aqui é clicável nem
+-- finge vender/desbloquear alguma coisa.
+--------------------------------------------------------------------------------
+do
+    local tab = CreateTab("Shop")
+    local card = CreateCard(tab, "SHOP", 1)
+
+    local big = Instance.new("TextLabel")
+    big.Size = UDim2.new(1, 0, 0, 34)
+    big.BackgroundTransparency = 1
+    big.Text = "Em breve"
+    big.TextColor3 = THEME.Text
+    big.Font = Enum.Font.GothamBold
+    big.TextSize = 24
+    big.TextXAlignment = Enum.TextXAlignment.Left
+    big.LayoutOrder = 1
+    big.Parent = card
+    Paint(big, "TextColor3", "Text")
+
+    SubLabel(card, "A loja ainda não existe no HYGE. Quando ela entrar, os itens "
+        .. "aparecem aqui — por enquanto não há nada para comprar ou desbloquear.", 2)
+end
+--------------------------------------------------------------------------------
+-- v8.0 — ABA SCRIPTS (ícone de terminal do dock)
+-- O console de log sai do rodapé da janela e passa a morar aqui, ocupando a
+-- aba inteira, com uma linha de comando embaixo (Enter executa, ↑/↓ histórico).
+-- A barra flutuante do ";" continua existindo (com autocomplete no Tab).
+-- Não é um ScrollingFrame como as outras abas: o console já rola sozinho.
+--------------------------------------------------------------------------------
+do
+    local view = Instance.new("Frame")
+    view.Name = "Scripts"
+    view.Size = UDim2.new(1, 0, 1, 0)
+    view.BackgroundTransparency = 1
+    view.Visible = false
+    view.Parent = Content
+    Tabs.Scripts = view
+    V8.ScriptsTab = view
+
+    -- o console (criado em 10_ui/02_console.lua) muda de casa
+    ConsoleFrame.Parent = view
+    ConsoleFrame.Position = UDim2.new(0, 0, 0, 0)
+    ConsoleFrame.Size = UDim2.new(1, 0, 1, -48)
+    ConsoleFrame.Visible = true
+
+    local box = CreateInput(view, "comando   ·   Enter executa   ·   ↑/↓ histórico   ·   help lista tudo", 38)
+    box.Position = UDim2.new(0, 0, 1, -38)
+    box.Size = UDim2.new(1, -112, 0, 38)
+    box.Font = Enum.Font.Code
+    box.TextXAlignment = Enum.TextXAlignment.Left
+    do
+        local p = Instance.new("UIPadding", box)
+        p.PaddingLeft = UDim.new(0, 12)
+        p.PaddingRight = UDim.new(0, 12)
+    end
+
+    local run = CreateButton(view, "EXECUTAR", "Accent", 38)
+    run.Position = UDim2.new(1, -104, 1, -38)
+    run.Size = UDim2.new(0, 104, 0, 38)
+
+    local histPos = 0
+    local function Go()
+        local text = box.Text
+        box.Text = ""
+        histPos = 0
+        if text:match("^%s*$") then return end
+        if V8.RunCommand then
+            V8.RunCommand(text)
+        else
+            Log("Os comandos ainda não carregaram", "warn")
+        end
+    end
+
+    box.FocusLost:Connect(function(enter)
+        if enter then Go() end
+    end)
+    run.MouseButton1Click:Connect(Go)
+
+    -- ↑/↓ percorrem o mesmo histórico da barra do ";" (State.CmdHistory)
+    Conn.ScriptsHistory = UserInputService.InputBegan:Connect(function(input)
+        if not box:IsFocused() then return end
+        local hist = State.CmdHistory
+        if #hist == 0 then return end
+        if input.KeyCode == Enum.KeyCode.Up then
+            histPos = math.min(histPos + 1, #hist)
+        elseif input.KeyCode == Enum.KeyCode.Down then
+            histPos = math.max(histPos - 1, 0)
+        else
+            return
+        end
+        box.Text = (histPos == 0) and "" or (hist[#hist - histPos + 1] or "")
+        box.CursorPosition = #box.Text + 1
+    end)
+
+    -- "Modo compacto" só escondia o console do rodapé, que não existe mais
+    if V8.CompactRow then V8.CompactRow.Visible = false end
+end
+--------------------------------------------------------------------------------
+-- v8.0 — ABA CHAT (balão do dock)
+-- Feed do chat DESTE servidor + enviar no chat do jogo + privado pelo Remote.
+-- Mostra só o que o seu cliente já recebe do Roblox: nenhuma mensagem é
+-- inventada e não existe chat entre servidores (exigiria um servidor próprio).
+--------------------------------------------------------------------------------
+do
+    local tab = CreateTab("Chat")
+    V8.Chat = { Max = 80, Count = 0 }
+    local CH = V8.Chat
+
+    ----------------------------------------------------------------------------
+    -- ENVIAR
+    ----------------------------------------------------------------------------
+    local send = CreateCard(tab, "ENVIAR", 1)
+    SubLabel(send, "ENVIAR NO CHAT fala pelo seu personagem, como se você tivesse "
+        .. "digitado. PRIVADO vai para o jogador selecionado em Jogadores e "
+        .. "precisa do Remote AdminWhisper (script de server/).", -1)
+
+    local box = CreateInput(send, "Mensagem...", 34)
+    box.LayoutOrder = 1
+
+    local function Take()
+        local text = box.Text
+        if text:match("^%s*$") then
+            Toast("Escreva a mensagem primeiro", "warn", 1.6)
+            return nil
+        end
+        return text
+    end
+
+    local function SayPublic()
+        local text = Take()
+        if not text then return end
+        if V8.Dash and V8.Dash.Say and V8.Dash.Say(text) then box.Text = "" end
+    end
+
+    local g = Grid(send, 2, 32)
+    g.LayoutOrder = 2
+
+    local pub = CreateButton(g, "ENVIAR NO CHAT", "Accent", 32)
+    pub.LayoutOrder = 1
+    pub.MouseButton1Click:Connect(SayPublic)
+    box.FocusLost:Connect(function(enter)
+        if enter then SayPublic() end
+    end)
+
+    local priv = ActionBtn(g, "PRIVADO P/ SELECIONADO", "Accent2", "Whisper", function()
+        local p = RequireSelected()
+        if not p then return end
+        local text = Take()
+        if not text then return end
+        Remotes.Whisper:FireServer(p.UserId, text)
+        Log("Você -> " .. p.Name .. ": " .. text, "ok")
+        box.Text = ""
+    end)
+    priv.LayoutOrder = 2
+
+    ----------------------------------------------------------------------------
+    -- FEED (mais nova em cima, guarda as últimas CH.Max)
+    ----------------------------------------------------------------------------
+    local feed = CreateCard(tab, "CHAT DO SERVIDOR", 2)
+    local status = SubLabel(feed, "", 0)
+
+    local list = Instance.new("Frame")
+    list.Size = UDim2.new(1, 0, 0, 0)
+    list.AutomaticSize = Enum.AutomaticSize.Y
+    list.BackgroundTransparency = 1
+    list.LayoutOrder = 1
+    list.Parent = feed
+    do
+        local l = Instance.new("UIListLayout", list)
+        l.Padding = UDim.new(0, 3)
+        l.SortOrder = Enum.SortOrder.LayoutOrder
+    end
+
+    local lines, seq, mode = {}, 0, "?"
+
+    CH.Add = function(name, text, isMe)
+        seq = seq + 1
+        CH.Count = CH.Count + 1
+        local key = isMe and "Accent2" or "Text"
+        local l = Instance.new("TextLabel")
+        l.Size = UDim2.new(1, 0, 0, 0)
+        l.AutomaticSize = Enum.AutomaticSize.Y
+        l.BackgroundTransparency = 1
+        l.RichText = false
+        l.Text = os.date("%H:%M") .. "   " .. tostring(name) .. ":  " .. tostring(text)
+        l.TextColor3 = THEME[key]
+        l.Font = Enum.Font.Gotham
+        l.TextSize = 12
+        l.TextWrapped = true
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.LayoutOrder = -seq
+        l.Parent = list
+        Paint(l, "TextColor3", key)
+        table.insert(lines, l)
+        while #lines > CH.Max do
+            local old = table.remove(lines, 1)
+            if old then old:Destroy() end
+        end
+        status.Text = CH.Count .. " mensagem(ns) desde que o painel abriu   ·   " .. mode
+    end
+
+    -- escuta UM sistema só (mesma regra do Chat Spy: nunca linha duplicada)
+    local modern = false
+    pcall(function()
+        local tcs = game:GetService("TextChatService")
+        if tcs.ChatVersion ~= Enum.ChatVersion.TextChatService then return end
+        Conn.ChatFeed = tcs.MessageReceived:Connect(function(msg)
+            local src = msg.TextSource
+            if not src then return end   -- mensagem de sistema
+            local p = Players:GetPlayerByUserId(src.UserId)
+            pcall(CH.Add, p and p.DisplayName or src.Name, msg.Text,
+                src.UserId == LocalPlayer.UserId)
+        end)
+        modern = true
+    end)
+    if modern then
+        mode = "chat novo (TextChatService)"
+    else
+        local ok = pcall(function()
+            Conn.ChatFeed = Players.PlayerChatted:Connect(function(_, player, message)
+                pcall(CH.Add, player.DisplayName, message, player == LocalPlayer)
+            end)
+        end)
+        mode = ok and "chat legado" or "não consegui ler o chat deste jogo"
+    end
+    status.Text = "Nenhuma mensagem ainda   ·   " .. mode
+end
+--------------------------------------------------------------------------------
+-- v8.0 — DOCK (navegação principal)
+-- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
+-- abre o painel; a bolinha "H" só aparece no modo sidebar). 8 seções:
+--   Início · Personagem · Shop · Scripts · Emotes · Jogadores · Configurações · Chat
+-- O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel.
+-- Seção com mais de uma aba ganha sub-abas no topo da janela
+-- (ex.: Personagem › Movimento | Visual) — posicionadas pelo V8.Shell.Layout.
+-- A sidebar continua existindo: SET.Dock escolhe dock OU sidebar (Ajustes).
+-- Tudo em V8.Dock: zero locais novos. Entra DEPOIS das abas (40_tabs) no build.
 --------------------------------------------------------------------------------
 do
     V8.Dock = {}
@@ -6194,82 +6439,75 @@ do
 
     if SET.Dock == nil then SET.Dock = true end
 
-    ----------------------------------------------------------------------------
-    -- os 7 do mockup + o "mais". "tab" abre aba, "fn" roda acao.
-    -- as acoes olham V8.* na hora do clique (esses modulos vem depois no cat).
-    ----------------------------------------------------------------------------
-    K.Items = {
-        { id = "Home",     icon = "home",   label = "Home",           tab = "Home" },
-        { id = "Console",  icon = "code",   label = "Console",
-          fn = function()
-              if V8.Shell and V8.Shell.ToggleConsole then V8.Shell.ToggleConsole()
-              elseif V8.OpenCmdBar then V8.OpenCmdBar() end
-          end },
-        { id = "Players",  icon = "users",  label = "Jogadores",      tab = "Players" },
-        { id = "Emotes",   icon = "music",  label = "Emotes",         tab = "Emotes" },
-        { id = "Search",   icon = "search", label = "Busca (Ctrl+K)",
-          fn = function()
-              if V8.Search then V8.Search.Open() end
-          end },
-        { id = "Settings", icon = "gear",   label = "Ajustes",        tab = "Settings" },
-        { id = "Cloud",    icon = "cloud",  label = "Salvar config",
-          fn = function()
-              if V8.Cfg then V8.Cfg.Save() end
-          end },
-        { id = "More",     icon = "dots",   label = "Mais abas",
-          fn = function() K.ToggleMore() end },
+    -- { aba interna, nome na sub-aba }
+    K.Sections = {
+        { id = "inicio",  icon = "home",     label = "Início",
+          tabs = { { "Home", "Painel" }, { "Server", "Servidor" } } },
+        { id = "char",    icon = "user",     label = "Personagem",
+          tabs = { { "Movement", "Movimento" }, { "Visuals", "Visual" } } },
+        { id = "shop",    icon = "bag",      label = "Shop",
+          tabs = { { "Shop", "Shop" } } },
+        { id = "scripts", icon = "terminal", label = "Scripts",
+          tabs = { { "Scripts", "Console" } } },
+        { id = "emotes",  icon = "grid",     label = "Emotes",
+          tabs = { { "Emotes", "Emotes" } } },
+        { id = "players", icon = "users",    label = "Jogadores",
+          tabs = { { "Players", "Lista" }, { "Moderation", "Moderação" } } },
+        { id = "config",  icon = "gear",     label = "Configurações",
+          tabs = { { "Settings", "Configurações" } } },
+        { id = "chat",    icon = "chat",     label = "Chat",
+          tabs = { { "Chat", "Chat" } } },
     }
 
-    -- o que sobrou vai pro menu do "mais"
-    K.MoreTabs = { "Movement", "Visuals", "Moderation", "Server" }
-    K.MoreLabels = {
-        Movement = "Movimento", Visuals = "Visual",
-        Moderation = "Moderação", Server = "Servidor",
-    }
+    K.ById = {}        -- id -> seção
+    K.TabSection = {}  -- aba interna -> seção
+    K.LastTab = {}     -- id -> última sub-aba usada (volta nela ao reabrir)
+    K.Btns = {}        -- id -> { button, icon, label }
+    K.Current = nil    -- seção da aba ativa
+    for _, s in ipairs(K.Sections) do
+        K.ById[s.id] = s
+        for _, t in ipairs(s.tabs) do K.TabSection[t[1]] = s end
+    end
 
-    K.Btns = {}     -- por id
-    K.ByTab = {}    -- por nome de aba (usado no Sync)
+    local function IsOpenNow() return V8.IsOpen and V8.IsOpen() or false end
 
     ----------------------------------------------------------------------------
-    -- a barra: filha da Window, entao acompanha o arrasto do painel de graca
+    -- a barra (filha da ScreenGui, não da janela)
     ----------------------------------------------------------------------------
     local bar = Instance.new("Frame")
     bar.Name = "Dock"
     bar.AnchorPoint = Vector2.new(0.5, 1)
-    bar.Position = UDim2.new(0.5, 0, 1, -10)
-    bar.Size = UDim2.new(0, 0, 0, 52)
+    bar.Position = UDim2.new(0.5, 0, 1, -14)
+    bar.Size = UDim2.new(0, 0, 0, 56)
     bar.AutomaticSize = Enum.AutomaticSize.X
     bar.BackgroundColor3 = THEME.Sidebar
-    bar.BackgroundTransparency = 0.06
+    bar.BackgroundTransparency = 0.04
     bar.BorderSizePixel = 0
     bar.Visible = false
-    bar.ZIndex = 8
-    bar.Parent = Window
+    bar.ZIndex = 20
+    bar.Parent = Gui
     Paint(bar, "BackgroundColor3", "Sidebar")
-    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 16)
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 18)
     do
         local st = Instance.new("UIStroke", bar)
-        st.Transparency = 0.55
+        st.Transparency = 0.5
         Paint(st, "Color", "Line")
-    end
-
-    do
         local pad = Instance.new("UIPadding", bar)
         pad.PaddingLeft = UDim.new(0, 8)
         pad.PaddingRight = UDim.new(0, 8)
-        pad.PaddingTop = UDim.new(0, 6)
         local l = Instance.new("UIListLayout", bar)
         l.FillDirection = Enum.FillDirection.Horizontal
         l.Padding = UDim.new(0, 4)
         l.SortOrder = Enum.SortOrder.LayoutOrder
         l.VerticalAlignment = Enum.VerticalAlignment.Center
     end
+    K.Bar = function() return bar end
 
-    -- nome aparece em cima do dock no hover
+    -- nome do ícone no hover (o ativo já mostra o nome ao lado)
     local tip = Instance.new("TextLabel")
     tip.AnchorPoint = Vector2.new(0.5, 1)
-    tip.Position = UDim2.new(0.5, 0, 0, -6)
-    tip.Size = UDim2.new(0, 0, 0, 20)
+    tip.Position = UDim2.new(0.5, 0, 0, -8)
+    tip.Size = UDim2.new(0, 0, 0, 22)
     tip.AutomaticSize = Enum.AutomaticSize.X
     tip.BackgroundColor3 = THEME.Card
     tip.Text = ""
@@ -6277,7 +6515,7 @@ do
     tip.Font = Enum.Font.GothamBold
     tip.TextSize = 11
     tip.Visible = false
-    tip.ZIndex = 10
+    tip.ZIndex = 22
     tip.Parent = bar
     Paint(tip, "BackgroundColor3", "Card")
     Paint(tip, "TextColor3", "Text")
@@ -6289,188 +6527,179 @@ do
     end
 
     ----------------------------------------------------------------------------
-    -- menu do "mais": abas que nao couberam nos 7 icones
+    -- os 8 botões: ícone sozinho; o ativo ganha fundo + nome ao lado
     ----------------------------------------------------------------------------
-    local more = Instance.new("Frame")
-    more.Name = "DockMore"
-    more.AnchorPoint = Vector2.new(1, 1)
-    more.Position = UDim2.new(1, -4, 0, -10)
-    more.Size = UDim2.new(0, 168, 0, 0)
-    more.AutomaticSize = Enum.AutomaticSize.Y
-    more.BackgroundColor3 = THEME.Card
-    more.BorderSizePixel = 0
-    more.Visible = false
-    more.ZIndex = 11
-    more.Parent = bar
-    Paint(more, "BackgroundColor3", "Card")
-    Instance.new("UICorner", more).CornerRadius = UDim.new(0, 12)
-    do
-        local st = Instance.new("UIStroke", more)
-        st.Transparency = 0.45
-        Paint(st, "Color", "Line")
-        local p = Instance.new("UIPadding", more)
-        p.PaddingTop = UDim.new(0, 6)
-        p.PaddingBottom = UDim.new(0, 6)
-        p.PaddingLeft = UDim.new(0, 6)
-        p.PaddingRight = UDim.new(0, 6)
-        local l = Instance.new("UIListLayout", more)
-        l.Padding = UDim.new(0, 3)
-        l.SortOrder = Enum.SortOrder.LayoutOrder
-    end
-
-    -- acesso a barra para quem esta fora deste bloco (SetMinimized, shell)
-    K.Bar = function() return bar end
-
-    K.ToggleMore = function(force)
-        local want = force
-        if want == nil then want = not more.Visible end
-        more.Visible = want and true or false
-    end
-
-    for i, tabName in ipairs(K.MoreTabs) do
+    for i, s in ipairs(K.Sections) do
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(1, 0, 0, 30)
+        b.Name = s.id
+        b.Size = UDim2.new(0, 44, 0, 42)
+        b.AutomaticSize = Enum.AutomaticSize.X
         b.BackgroundColor3 = THEME.Btn
         b.BackgroundTransparency = 1
         b.Text = ""
         b.AutoButtonColor = false
         b.LayoutOrder = i
-        b.ZIndex = 11
-        b.Parent = more
-        Paint(b, "BackgroundColor3", "Btn")
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-
-        local mi = Icon(b, ({ Movement = "run", Visuals = "eye",
-            Moderation = "shield", Server = "server" })[tabName] or "dot",
-            THEME.Dim, 16, 1)
-        mi.Position = UDim2.new(0, 8, 0.5, -8)
-        mi.ZIndex = 11
-
-        local t = Instance.new("TextLabel")
-        t.Size = UDim2.new(1, -34, 1, 0)
-        t.Position = UDim2.new(0, 32, 0, 0)
-        t.BackgroundTransparency = 1
-        t.Text = K.MoreLabels[tabName] or tabName
-        t.TextColor3 = THEME.Text
-        t.Font = Enum.Font.GothamMedium
-        t.TextSize = 12
-        t.TextXAlignment = Enum.TextXAlignment.Left
-        t.ZIndex = 11
-        t.Parent = b
-        Paint(t, "TextColor3", "Text")
-
-        b.MouseEnter:Connect(function() b.BackgroundTransparency = 0.15 end)
-        b.MouseLeave:Connect(function() b.BackgroundTransparency = 1 end)
-        b.MouseButton1Click:Connect(function()
-            K.ToggleMore(false)
-            ShowTab(tabName)
-        end)
-
-        K.ByTab[tabName] = { more = true, icon = mi, text = t }
-    end
-
-    ----------------------------------------------------------------------------
-    -- os 8 botoes da barra
-    ----------------------------------------------------------------------------
-    for i, item in ipairs(K.Items) do
-        local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0, 46, 0, 40)
-        b.BackgroundColor3 = THEME.Btn
-        b.BackgroundTransparency = 1
-        b.Text = ""
-        b.AutoButtonColor = false
-        b.LayoutOrder = i
-        b.ZIndex = 8
+        b.ZIndex = 20
         b.Parent = bar
         Paint(b, "BackgroundColor3", "Btn")
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 11)
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 13)
+        do
+            local p = Instance.new("UIPadding", b)
+            p.PaddingLeft = UDim.new(0, 12)
+            p.PaddingRight = UDim.new(0, 12)
+            local l = Instance.new("UIListLayout", b)
+            l.FillDirection = Enum.FillDirection.Horizontal
+            l.VerticalAlignment = Enum.VerticalAlignment.Center
+            l.Padding = UDim.new(0, 8)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
 
-        local ico = Icon(b, item.icon or "dot", THEME.Dim, 20, 1)
-        ico.AnchorPoint = Vector2.new(0.5, 0.5)
-        ico.Position = UDim2.new(0.5, 0, 0.5, 0)
-        ico.ZIndex = 8
+        local ico = Icon(b, s.icon, THEME.Dim, 20, 1)
+        ico.ZIndex = 20
 
-        local pill = Instance.new("Frame")
-        pill.AnchorPoint = Vector2.new(0.5, 1)
-        pill.Position = UDim2.new(0.5, 0, 1, -3)
-        pill.Size = UDim2.new(0, 0, 0, 3)
-        pill.BackgroundColor3 = THEME.Accent
-        pill.BorderSizePixel = 0
-        pill.ZIndex = 8
-        pill.Parent = b
-        Paint(pill, "BackgroundColor3", "Accent")
-        Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0, 0, 0, 20)
+        lbl.AutomaticSize = Enum.AutomaticSize.X
+        lbl.BackgroundTransparency = 1
+        lbl.Text = s.label
+        lbl.TextColor3 = THEME.Text
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 13
+        lbl.Visible = false
+        lbl.LayoutOrder = 2
+        lbl.ZIndex = 20
+        lbl.Parent = b
+        Paint(lbl, "TextColor3", "Text")
 
-        local entry = { button = b, icon = ico, pill = pill, item = item }
-        K.Btns[item.id] = entry
-        if item.tab then K.ByTab[item.tab] = entry end
+        local entry = { button = b, icon = ico, label = lbl }
+        K.Btns[s.id] = entry
 
         b.MouseEnter:Connect(function()
-            tip.Text = item.label or item.id
+            if lbl.Visible then return end   -- ativo: nome já está à vista
+            tip.Text = s.label
             tip.Visible = true
-            if State.ActiveTab ~= item.tab then
-                TweenService:Create(b, TweenInfo.new(0.12),
-                    { BackgroundTransparency = 0.2 }):Play()
-                IconTint(ico, THEME.Text)
-            end
+            b.BackgroundTransparency = 0.55
+            IconTint(ico, THEME.Text)
         end)
         b.MouseLeave:Connect(function()
             tip.Visible = false
-            if State.ActiveTab ~= item.tab then
-                TweenService:Create(b, TweenInfo.new(0.12),
-                    { BackgroundTransparency = 1 }):Play()
-                IconTint(ico, THEME.Dim)
-            end
+            if lbl.Visible then return end
+            b.BackgroundTransparency = 1
+            IconTint(ico, THEME.Dim)
         end)
         b.MouseButton1Click:Connect(function()
-            if item.id ~= "More" then K.ToggleMore(false) end
-            if item.tab then
-                ShowTab(item.tab)
-            elseif item.fn then
-                pcall(item.fn)
-            end
+            tip.Visible = false
+            K.Open(s.id, true)
         end)
     end
 
     ----------------------------------------------------------------------------
-    -- realce da aba ativa (inclusive quando ela mora no menu "mais")
+    -- sub-abas no topo da janela (só para seção com mais de uma aba)
     ----------------------------------------------------------------------------
-    K.Sync = function(active)
-        for _, item in ipairs(K.Items) do
-            local u = K.Btns[item.id]
-            if u then
-                local on = (item.tab ~= nil and item.tab == active)
-                if item.id == "Console" and V8.Shell
-                    and V8.Shell.ConsoleOpen == true then on = true end
-                TweenService:Create(u.button, TweenInfo.new(0.14), {
-                    BackgroundTransparency = on and 0 or 1,
-                }):Play()
-                TweenService:Create(u.pill, TweenInfo.new(0.16), {
-                    Size = on and UDim2.new(0, 18, 0, 3) or UDim2.new(0, 0, 0, 3),
-                }):Play()
-                IconTint(u.icon, on and THEME.Accent or THEME.Dim)
-            end
-        end
+    local seg = Instance.new("Frame")
+    seg.Name = "SubTabs"
+    seg.BackgroundTransparency = 1
+    seg.Visible = false
+    seg.Parent = Window
+    do
+        local l = Instance.new("UIListLayout", seg)
+        l.FillDirection = Enum.FillDirection.Horizontal
+        l.VerticalAlignment = Enum.VerticalAlignment.Center
+        l.Padding = UDim.new(0, 6)
+        l.SortOrder = Enum.SortOrder.LayoutOrder
+    end
+    K.Seg = seg
 
-        -- aba escondida no "mais": acende o botao de tres pontinhos
-        local hidden = false
-        for _, n in ipairs(K.MoreTabs) do
-            if n == active then hidden = true end
-            local m = K.ByTab[n]
-            if m and m.more then
-                IconTint(m.icon, n == active and THEME.Accent or THEME.Dim)
-                m.text.TextColor3 = n == active and THEME.Accent or THEME.Text
+    local segBtns = {}
+    for i = 1, 4 do
+        local sb = Instance.new("TextButton")
+        sb.Size = UDim2.new(0, 0, 1, 0)
+        sb.AutomaticSize = Enum.AutomaticSize.X
+        sb.BackgroundColor3 = THEME.Btn
+        sb.BackgroundTransparency = 1
+        sb.Text = ""
+        sb.TextColor3 = THEME.Dim
+        sb.Font = Enum.Font.GothamBold
+        sb.TextSize = 12
+        sb.AutoButtonColor = false
+        sb.LayoutOrder = i
+        sb.Visible = false
+        sb.Parent = seg
+        Paint(sb, "BackgroundColor3", "Btn")
+        Instance.new("UICorner", sb).CornerRadius = UDim.new(0, 9)
+        do
+            local p = Instance.new("UIPadding", sb)
+            p.PaddingLeft = UDim.new(0, 16)
+            p.PaddingRight = UDim.new(0, 16)
+        end
+        local u = { btn = sb, tab = nil }
+        segBtns[i] = u
+        sb.MouseButton1Click:Connect(function()
+            if u.tab then ShowTab(u.tab) end
+        end)
+    end
+
+    K.SegShown = function()
+        return K.Current ~= nil and #K.Current.tabs > 1
+    end
+
+    K.RenderSeg = function()
+        local s = K.Current
+        for i, u in ipairs(segBtns) do
+            local t = s and #s.tabs > 1 and s.tabs[i]
+            if t then
+                local on = (t[1] == State.ActiveTab)
+                u.tab = t[1]
+                u.btn.Text = t[2]
+                u.btn.Visible = true
+                u.btn.BackgroundTransparency = on and 0 or 1
+                u.btn.TextColor3 = on and THEME.Accent or THEME.Dim
+            else
+                u.tab = nil
+                u.btn.Visible = false
             end
         end
-        local dots = K.Btns.More
-        if dots then
-            IconTint(dots.icon, hidden and THEME.Accent or THEME.Dim)
-            dots.pill.Size = hidden and UDim2.new(0, 18, 0, 3)
-                or UDim2.new(0, 0, 0, 3)
+        -- mostrar/esconder a faixa muda a altura do Content: o shell recalcula
+        local want = (SET.Dock == true) and K.SegShown() and not State.Minimized
+        if want ~= seg.Visible and V8.Shell and V8.Shell.Layout then
+            pcall(V8.Shell.Layout)
         end
     end
 
-    -- embrulha o ShowTab que ja existe (mesmo truque do ApplyTheme no persist)
+    ----------------------------------------------------------------------------
+    -- realce: só com o painel aberto (fechado, nenhum ícone fica aceso)
+    ----------------------------------------------------------------------------
+    K.Sync = function(active)
+        active = active or State.ActiveTab
+        local s = K.TabSection[active]
+        K.Current = s
+        if s then K.LastTab[s.id] = active end
+        local open = IsOpenNow()
+        for id, u in pairs(K.Btns) do
+            local on = open and s ~= nil and s.id == id
+            u.label.Visible = on
+            u.button.BackgroundTransparency = on and 0 or 1
+            IconTint(u.icon, on and THEME.Accent or THEME.Dim)
+        end
+        K.RenderSeg()
+    end
+
+    -- abre a seção (na última sub-aba usada). toggle = clique no dock:
+    -- clicar na seção que já está aberta fecha o painel
+    K.Open = function(id, toggle)
+        local s = K.ById[id]
+        if not s then return end
+        local open = IsOpenNow()
+        if toggle and open and K.Current == s then
+            if V8.SetOpen then V8.SetOpen(false) end
+            return
+        end
+        ShowTab(K.LastTab[id] or s.tabs[1][1])
+        if not open and V8.SetOpen then V8.SetOpen(true) end
+    end
+
+    -- embrulha o ShowTab que já existe: qualquer caminho (busca, situações,
+    -- comandos) mantém o dock e as sub-abas em dia
     do
         local base = ShowTab
         ShowTab = function(name)
@@ -6479,24 +6708,31 @@ do
         end
     end
 
+    -- troca de tema: os ícones do dock são pintados à mão (IconTint)
+    do
+        local baseTheme = ApplyTheme
+        if baseTheme then
+            ApplyTheme = function(name)
+                local r = baseTheme(name)
+                pcall(K.Sync, State.ActiveTab)
+                return r
+            end
+        end
+    end
+
     ----------------------------------------------------------------------------
-    -- liga / desliga: sidebar OU dock, nunca as duas
-    -- a geometria do Content fica com V8.Shell quando ele existe
+    -- liga / desliga: dock OU sidebar (+ bolinha "H"), nunca os dois
     ----------------------------------------------------------------------------
     K.Apply = function(on)
         SET.Dock = on and true or false
         bar.Visible = SET.Dock
-        Sidebar.Visible = not SET.Dock
-        if not SET.Dock then K.ToggleMore(false) end
-        if V8.Shell and V8.Shell.Layout then
-            pcall(V8.Shell.Layout)
-        elseif SET.Dock then
-            Content.Size = UDim2.new(1, -24, 1, -180)
-            Content.Position = UDim2.new(0, 12, 0, 64)
-        else
-            Content.Size = UDim2.new(1, -184, 1, -180)
-            Content.Position = UDim2.new(0, 172, 0, 64)
+        Sidebar.Visible = (not SET.Dock) and not State.Minimized
+        if V8.Orb then V8.Orb.Visible = (not SET.Dock) and not IsOpenNow() end
+        -- o HUD do spectate também fica no centro do rodapé: sobe acima do dock
+        if SpectateHud then
+            SpectateHud.Position = UDim2.new(0.5, 0, 1, SET.Dock and -84 or -24)
         end
+        if V8.Shell and V8.Shell.Layout then pcall(V8.Shell.Layout) end
         pcall(K.Sync, State.ActiveTab)
     end
 
@@ -6505,18 +6741,18 @@ do
     ----------------------------------------------------------------------------
     do
         local nav = CreateCard(Tabs.Settings, "NAVEGAÇÃO", 8)
-        SubLabel(nav, "O dock de ícones no rodapé é o padrão da v8: 7 atalhos "
-            .. "mais o botão de três pontinhos com as abas restantes. Desligue "
-            .. "para voltar à sidebar de sempre — as duas dão acesso às 8 abas.", 0)
+        SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 8 ícones, sempre "
+            .. "visível, e é ele que abre o painel. Desligue para voltar à sidebar "
+            .. "dentro da janela (com a bolinha H para abrir).", 0)
 
         local render = CheckRow(nav, "Usar dock de ícones",
-            "Esconde a sidebar e mostra a barra de ícones no rodapé do painel",
+            "Desligado: sidebar dentro da janela + bolinha H",
             function() return SET.Dock == true end,
             function(v) K.Apply(v) end, 1)
         K.Render = render
 
         ------------------------------------------------------------------------
-        -- os 3 cards de status da Home sao configuraveis
+        -- os 3 cards de status da Home são configuráveis
         ------------------------------------------------------------------------
         if V8.Dash and V8.Dash.SetSlots then
             SubLabel(nav, "Cards de status da Home: escreva os três toggles "
@@ -6547,8 +6783,9 @@ end
 --   * janela mais larga e baixa (800x500)
 --   * TopBar limpa: "Welcome home, <nome>" + selo de verificado + relogio,
 --     minimizar/fechar discretos no canto
---   * dock de icones no rodape como navegacao padrao (sidebar segue no codigo)
---   * console vira painel recolhivel (o icone </> do dock abre e fecha)
+--   * dock solto no rodape da tela como navegacao padrao (sidebar segue no
+--     codigo); a janela nasce logo acima dele
+--   * console mora na aba Scripts (icone de terminal do dock)
 -- Tudo em V8.Shell: zero locais novos no chunk principal.
 -- Entra DEPOIS de 00_dock.lua e ANTES de 02_situations.lua no build.
 --------------------------------------------------------------------------------
@@ -6567,7 +6804,15 @@ do
     -- 1. JANELA
     ----------------------------------------------------------------------------
     Window.Size = UDim2.new(0, H.W, 0, H.Hgt)
-    Window.Position = UDim2.new(0.5, -H.W * 0.5, 0.5, -H.Hgt * 0.5)
+    -- posição "de casa": com o dock, centralizada logo acima dele; sem o
+    -- dock (modo sidebar), no meio da tela. Usada também por 'center'.
+    H.HomePos = function()
+        if SET.Dock ~= false then
+            return UDim2.new(0.5, -H.W * 0.5, 1, -(H.Hgt + 84))
+        end
+        return UDim2.new(0.5, -H.W * 0.5, 0.5, -H.Hgt * 0.5)
+    end
+    Window.Position = H.HomePos()
     do
         local c = Window:FindFirstChildOfClass("UICorner")
         if c then c.CornerRadius = UDim.new(0, 18) end
@@ -6743,31 +6988,34 @@ do
     Sidebar.Position = UDim2.new(0, 0, 0, H.TopH)
 
     ----------------------------------------------------------------------------
-    -- 4. GEOMETRIA: uma funcao unica manda no Content e no console
+    -- 4. GEOMETRIA: uma funcao unica manda no Content e nas sub-abas.
+    --    O dock agora mora fora da janela: nada e reservado no rodape.
+    --    O console nao e mais painel daqui — vive na aba Scripts.
     ----------------------------------------------------------------------------
     H.Layout = function()
         local dockOn = (SET.Dock == true)
-        local top = H.TopH + 10
-        local bottom = dockOn and 74 or 16          -- espaco reservado ao dock
-        local open = (H.ConsoleOpen == true) and (not State.Minimized)
-        local cons = open and (H.ConsoleH + 10) or 0
         local left = dockOn and 14 or 172
         local wOff = dockOn and -28 or -186
+        local top = H.TopH + 10
+        local bottom = 14
 
-        ConsoleFrame.Visible = open
-        ConsoleFrame.Size = UDim2.new(1, wOff, 0, H.ConsoleH)
-        ConsoleFrame.Position = UDim2.new(0, left, 1, -(bottom + H.ConsoleH))
+        -- sub-abas da secao ativa (ex.: Personagem › Movimento | Visual)
+        local seg = V8.Dock and V8.Dock.Seg
+        if seg then
+            local show = dockOn and V8.Dock.SegShown() and not State.Minimized
+            seg.Visible = show
+            seg.Position = UDim2.new(0, left, 0, top)
+            seg.Size = UDim2.new(1, wOff, 0, 30)
+            if show then top = top + 40 end
+        end
 
         Content.Position = UDim2.new(0, left, 0, top)
-        Content.Size = UDim2.new(1, wOff, 1, -(top + bottom + cons))
+        Content.Size = UDim2.new(1, wOff, 1, -(top + bottom))
     end
 
-    H.ToggleConsole = function(force)
-        local want = force
-        if want == nil then want = not H.ConsoleOpen end
-        H.ConsoleOpen = want and true or false
-        H.Layout()
-        if V8.Dock and V8.Dock.Sync then pcall(V8.Dock.Sync, State.ActiveTab) end
+    -- compatibilidade: quem pedia "abrir o console" agora abre a aba Scripts
+    H.ToggleConsole = function()
+        if V8.Dock and V8.Dock.Open then V8.Dock.Open("scripts", true) end
     end
 
     ----------------------------------------------------------------------------
@@ -7755,6 +8003,21 @@ do
             end
         end
 
+        -- v8.0: seções do dock e suas sub-abas (Visual, Servidor e Moderação
+        -- ficam "dentro" de outra seção — a busca acha direto)
+        if V8.Dock and V8.Dock.Sections then
+            for _, s in ipairs(V8.Dock.Sections) do
+                for _, t in ipairs(s.tabs) do
+                    local tabName = t[1]
+                    local label = (#s.tabs > 1) and (s.label .. " › " .. t[2]) or s.label
+                    add("aba", label, "abrir", function()
+                        ShowTab(tabName)
+                        if V8.IsOpen and not V8.IsOpen() and V8.SetOpen then V8.SetOpen(true) end
+                    end)
+                end
+            end
+        end
+
         if V8.Sit then
             for _, n in ipairs(V8.Sit.Order) do
                 local d = V8.Sit.Defs[n]
@@ -8015,16 +8278,20 @@ RefreshStatus = function()
 end
 
 --------------------------------------------------------------------------------
--- NAVEGAÇÃO (ordem das abas)
+-- NAVEGAÇÃO (sidebar — só aparece com o dock desligado)
+-- v8.0: mesma ordem das seções do dock, sub-abas logo depois da principal
 --------------------------------------------------------------------------------
 AddNav("Home", 1)
-AddNav("Movement", 2)
-AddNav("Visuals", 3)
-AddNav("Players", 4)
-AddNav("Moderation", 5)
-AddNav("Server", 6)
+AddNav("Server", 2)
+AddNav("Movement", 3)
+AddNav("Visuals", 4)
+AddNav("Shop", 5)
+AddNav("Scripts", 6)
 AddNav("Emotes", 7)
-AddNav("Settings", 8)
+AddNav("Players", 8)
+AddNav("Moderation", 9)
+AddNav("Settings", 10)
+AddNav("Chat", 11)
 
 --------------------------------------------------------------------------------
 -- BARRA DE COMANDOS (histórico, autocomplete, aliases)
@@ -8576,6 +8843,7 @@ do
     end
     Paint(Orb, "BackgroundColor3", "Accent")
     Instance.new("UICorner", Orb).CornerRadius = UDim.new(1, 0)
+    V8.Orb = Orb   -- o dock (que carrega antes) esconde/mostra a bolinha
 end
 
 --------------------------------------------------------------------------------
@@ -8598,6 +8866,7 @@ do
             Orb.Visible = false
             RefreshStatus()
             if TabHooks[State.ActiveTab] then pcall(TabHooks[State.ActiveTab]) end
+            if V8.Dock and V8.Dock.Sync then pcall(V8.Dock.Sync, State.ActiveTab) end
         else
             if SET.Animations then
                 local t = TweenService:Create(WindowScale, TweenInfo.new(0.14),
@@ -8610,9 +8879,15 @@ do
             else
                 Window.Visible = false
             end
-            Orb.Visible = true
+            -- v8.0: com o dock na tela a bolinha não é necessária
+            Orb.Visible = (SET.Dock ~= true)
+            if V8.Dock and V8.Dock.Sync then pcall(V8.Dock.Sync, State.ActiveTab) end
         end
     end
+
+    -- v8.0: o dock carrega antes deste bloco e não enxerga os locais daqui
+    V8.SetOpen = function(open) SetOpen(open) end
+    V8.IsOpen = function() return isOpen end
 
     SetMinimized = function(min)
         State.Minimized = min
@@ -8621,10 +8896,11 @@ do
 
         -- v8: as medidas vem do shell (nao ficam mais chumbadas aqui) e a
         -- sidebar so reaparece se ela for o modo de navegacao escolhido
+        -- (o dock fica na tela e o console mora na aba Scripts: nenhum dos dois
+        -- é escondido aqui — o Content inteiro some quando minimiza)
         if V8.Shell and V8.Shell.Layout then
             Sidebar.Visible = (not min) and (SET.Dock ~= true)
-            if V8.Dock then V8.Dock.Bar().Visible = (not min) and (SET.Dock == true) end
-            ConsoleFrame.Visible = (not min) and (V8.Shell.ConsoleOpen == true)
+            pcall(V8.Shell.Layout)
             Anim(Window, 0.18, { Size = min
                 and UDim2.new(0, V8.Shell.W, 0, V8.Shell.TopH)
                 or  UDim2.new(0, V8.Shell.W, 0, V8.Shell.Hgt) })
@@ -8680,9 +8956,13 @@ do
     end
 
     V8.Win.Center = function()
-        local w = (V8.Shell and V8.Shell.W) or Window.Size.X.Offset
-        local h = (V8.Shell and V8.Shell.Hgt) or Window.Size.Y.Offset
-        Window.Position = UDim2.new(0.5, -w * 0.5, 0.5, -h * 0.5)
+        if V8.Shell and V8.Shell.HomePos then
+            Window.Position = V8.Shell.HomePos()   -- com dock: logo acima dele
+        else
+            local w, h = Window.Size.X.Offset, Window.Size.Y.Offset
+            Window.Position = UDim2.new(0.5, -w * 0.5, 0.5, -h * 0.5)
+        end
+        task.defer(function() pcall(V8.Win.Clamp) end)
         SET.WinPos = nil
         Log("Janela centralizada", "action")
     end
@@ -9100,12 +9380,16 @@ do
     BootStep("Config",        function() if V8.Cfg then V8.Cfg.Load(true) end end)
     BootStep("Friends",       function() if V8.Dash then V8.Dash.Friends(true) end end)
     BootStep("SetOpen",       function() SetOpen(true) end)
+    -- v8.0: em tela baixa a janela "acima do dock" pode nascer cortada
+    BootStep("Janela",        function() if V8.Win then task.defer(V8.Win.Clamp) end end)
 
-    -- garante que sempre existe um jeito de abrir, mesmo se algo acima falhar
+    -- garante que sempre existe um jeito de abrir, mesmo se algo acima falhar:
+    -- o dock (padrão) ou, no modo sidebar, a bolinha H
     Gui.Enabled = true
-    Orb.Visible = not isOpen
+    Orb.Visible = (not isOpen) and (SET.Dock ~= true)
 
-    print("[HYGE] pronto. Aperte " .. KeyName(CONFIG.PanelKey) .. " ou clique na bolinha.")
+    print("[HYGE] pronto. Aperte " .. KeyName(CONFIG.PanelKey)
+        .. (SET.Dock == true and " ou use o dock no rodapé." or " ou clique na bolinha."))
 
     Log("HYGE " .. CONFIG.Version .. " carregado", "ok")
     Log("[" .. KeyName(CONFIG.PanelKey) .. "] painel  •  ["

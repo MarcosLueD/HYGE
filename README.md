@@ -15,7 +15,7 @@ HYGE/
 │   │                   freecam, drone, ações de moderação/troll, spectate
 │   ├── 30_kit/         widgets v7 (sliders, switches, confirmação), ícones, chips, HUD do drone
 │   ├── 40_tabs/        uma aba por arquivo: home, dashboard, movement, visuals, players,
-│   │                   moderation, server, emotes, settings
+│   │                   moderation, server, emotes, settings, shop, scripts, chat
 │   ├── 50_v8/          dock, shell, situações, persistência (config.json), busca global
 │   └── 90_runtime/     comandos, abrir/fechar/arrastar, teclas, scheduler, eventos, unload, boot
 ├── server/             ← opcional: vai no SEU jogo pelo Roblox Studio
@@ -77,6 +77,25 @@ Remotes foram encontrados.
 
 > Esses scripts não foram testados dentro de um jogo — teste no Studio
 > (Play com 2 jogadores em *Test › Clients and Servers*) antes de publicar.
+
+## Navegação (dock)
+
+O dock fica solto no rodapé da tela, sempre visível — é ele que abre o painel.
+O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel.
+
+| Ícone | Seção | Sub-abas |
+|---|---|---|
+| casinha | Início | Painel · Servidor |
+| pessoa | Personagem | Movimento · Visual |
+| sacola | Shop | (em breve) |
+| terminal | Scripts | console + linha de comando |
+| grade | Emotes | — |
+| pessoas | Jogadores | Lista · Moderação |
+| engrenagem | Configurações | — |
+| balão | Chat | chat do servidor + enviar/privado |
+
+Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
+desligado volta para a sidebar dentro da janela (com a bolinha H para abrir).
 
 ## Teclas padrão
 

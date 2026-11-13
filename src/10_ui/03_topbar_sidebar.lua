@@ -133,7 +133,7 @@ sidePad.PaddingLeft = UDim.new(0, 10)
 sidePad.PaddingRight = UDim.new(0, 10)
 
 local sideLayout = Instance.new("UIListLayout", Sidebar)
-sideLayout.Padding = UDim.new(0, 5)
+sideLayout.Padding = UDim.new(0, 3)
 sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 Content = Instance.new("Frame")

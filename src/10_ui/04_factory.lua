@@ -87,11 +87,12 @@ end
 
 local function AddNav(name, order)
     local NAV_ICON = {
-        Home = "home", Movement = "run", Visuals = "eye", Players = "users",
-        Moderation = "shield", Server = "server", Emotes = "smile", Settings = "gear",
+        Home = "home", Movement = "user", Visuals = "eye", Players = "users",
+        Moderation = "shield", Server = "server", Emotes = "grid", Settings = "gear",
+        Shop = "bag", Scripts = "terminal", Chat = "chat",   -- v8.0
     }
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1, 0, 0, 38)
+    b.Size = UDim2.new(1, 0, 0, 32)   -- v8.0: 11 abas precisam caber na sidebar
     b.BackgroundColor3 = THEME.Sidebar
     b.Text = ""
     b.AutoButtonColor = false

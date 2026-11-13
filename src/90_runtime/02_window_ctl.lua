@@ -26,6 +26,7 @@ do
     end
     Paint(Orb, "BackgroundColor3", "Accent")
     Instance.new("UICorner", Orb).CornerRadius = UDim.new(1, 0)
+    V8.Orb = Orb   -- o dock (que carrega antes) esconde/mostra a bolinha
 end
 
 --------------------------------------------------------------------------------
@@ -48,6 +49,7 @@ do
             Orb.Visible = false
             RefreshStatus()
             if TabHooks[State.ActiveTab] then pcall(TabHooks[State.ActiveTab]) end
+            if V8.Dock and V8.Dock.Sync then pcall(V8.Dock.Sync, State.ActiveTab) end
         else
             if SET.Animations then
                 local t = TweenService:Create(WindowScale, TweenInfo.new(0.14),
@@ -60,9 +62,15 @@ do
             else
                 Window.Visible = false
             end
-            Orb.Visible = true
+            -- v8.0: com o dock na tela a bolinha não é necessária
+            Orb.Visible = (SET.Dock ~= true)
+            if V8.Dock and V8.Dock.Sync then pcall(V8.Dock.Sync, State.ActiveTab) end
         end
     end
+
+    -- v8.0: o dock carrega antes deste bloco e não enxerga os locais daqui
+    V8.SetOpen = function(open) SetOpen(open) end
+    V8.IsOpen = function() return isOpen end
 
     SetMinimized = function(min)
         State.Minimized = min
@@ -71,10 +79,11 @@ do
 
         -- v8: as medidas vem do shell (nao ficam mais chumbadas aqui) e a
         -- sidebar so reaparece se ela for o modo de navegacao escolhido
+        -- (o dock fica na tela e o console mora na aba Scripts: nenhum dos dois
+        -- é escondido aqui — o Content inteiro some quando minimiza)
         if V8.Shell and V8.Shell.Layout then
             Sidebar.Visible = (not min) and (SET.Dock ~= true)
-            if V8.Dock then V8.Dock.Bar().Visible = (not min) and (SET.Dock == true) end
-            ConsoleFrame.Visible = (not min) and (V8.Shell.ConsoleOpen == true)
+            pcall(V8.Shell.Layout)
             Anim(Window, 0.18, { Size = min
                 and UDim2.new(0, V8.Shell.W, 0, V8.Shell.TopH)
                 or  UDim2.new(0, V8.Shell.W, 0, V8.Shell.Hgt) })
@@ -130,9 +139,13 @@ do
     end
 
     V8.Win.Center = function()
-        local w = (V8.Shell and V8.Shell.W) or Window.Size.X.Offset
-        local h = (V8.Shell and V8.Shell.Hgt) or Window.Size.Y.Offset
-        Window.Position = UDim2.new(0.5, -w * 0.5, 0.5, -h * 0.5)
+        if V8.Shell and V8.Shell.HomePos then
+            Window.Position = V8.Shell.HomePos()   -- com dock: logo acima dele
+        else
+            local w, h = Window.Size.X.Offset, Window.Size.Y.Offset
+            Window.Position = UDim2.new(0.5, -w * 0.5, 0.5, -h * 0.5)
+        end
+        task.defer(function() pcall(V8.Win.Clamp) end)
         SET.WinPos = nil
         Log("Janela centralizada", "action")
     end

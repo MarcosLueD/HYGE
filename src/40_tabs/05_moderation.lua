@@ -34,7 +34,7 @@ do
     un.Size = UDim2.new(1, -76, 0, 15)
     un.Position = UDim2.new(0, 68, 0, 25)
     un.BackgroundTransparency = 1
-    un.Text = "selecione alguém na aba Players"
+    un.Text = "selecione alguém em Jogadores › Lista"
     un.TextColor3 = THEME.Dim
     un.Font = Enum.Font.Code
     un.TextSize = 12
@@ -74,7 +74,7 @@ do
         local p = State.SelectedPlayer
         if not p or not p.Parent then
             dn.Text = "Nenhum jogador selecionado"
-            un.Text = "selecione alguém na aba Players"
+            un.Text = "selecione alguém em Jogadores › Lista"
             stats.Text = ""
             av.Image = "rbxthumb://type=AvatarHeadShot&id=1&w=48&h=48"
             return

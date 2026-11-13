@@ -12,6 +12,18 @@
 - O build se recusa a sobrescrever um `main.lua` editado à mão.
 
 ### Novidades
+- **Dock novo, solto no rodapé da tela** e sempre visível (substitui a bolinha
+  H): Início, Personagem, Shop, Scripts, Emotes, Jogadores, Configurações e
+  Chat. O ícone ativo mostra o nome; clicar nele de novo fecha o painel. A
+  janela nasce logo acima do dock.
+- **Sub-abas** no topo da janela para seções com mais de uma aba: Início
+  (Painel · Servidor), Personagem (Movimento · Visual), Jogadores (Lista ·
+  Moderação). A busca (Ctrl+K) também encontra cada uma.
+- **Aba Scripts**: o console de log saiu do rodapé da janela e ocupa a aba
+  inteira, com linha de comando (Enter executa, ↑/↓ histórico).
+- **Aba Chat**: feed do chat do servidor atual, enviar no chat do jogo e
+  mensagem privada para o jogador selecionado (com AdminWhisper).
+- **Aba Shop**: reservada ("em breve").
 - **Script de servidor** (`server/`): cria e valida os 13 RemoteEvents
   (kick, bring, freeze, goto, anúncio, mensagem privada, fling, spin, trip,
   launch, sit, scale, balloon). Admin checado no servidor, cooldown, proteção

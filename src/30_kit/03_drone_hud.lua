@@ -293,6 +293,8 @@ do
         local kn = kc and KeyName(kc) or "—"
         E.ctrl.Text = "WASD  MOVE      E / Q  ALTITUDE      MOUSE  LOOK"
             .. "      SCROLL  SPEED      " .. kn .. "  EXIT DRONE"
+        -- v8.0: o dock solto ocupa o centro do rodapé — a linha sobe acima dele
+        E.ctrl.Position = UDim2.new(0.5, 0, 1, (SET.Dock == true) and -84 or -22)
 
         E.root.Visible = true
         Fade(0, false)

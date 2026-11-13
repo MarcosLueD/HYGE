@@ -3,7 +3,7 @@
 --------------------------------------------------------------------------------
 local function RequireSelected()
     if not State.SelectedPlayer or not State.SelectedPlayer.Parent then
-        Toast("Selecione um jogador na aba Players", "warn")
+        Toast("Selecione um jogador em Jogadores › Lista", "warn")
         Log("Nenhum jogador selecionado", "warn")
         return nil
     end

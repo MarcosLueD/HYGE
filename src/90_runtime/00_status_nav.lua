@@ -16,14 +16,18 @@ RefreshStatus = function()
 end
 
 --------------------------------------------------------------------------------
--- NAVEGAÇÃO (ordem das abas)
+-- NAVEGAÇÃO (sidebar — só aparece com o dock desligado)
+-- v8.0: mesma ordem das seções do dock, sub-abas logo depois da principal
 --------------------------------------------------------------------------------
 AddNav("Home", 1)
-AddNav("Movement", 2)
-AddNav("Visuals", 3)
-AddNav("Players", 4)
-AddNav("Moderation", 5)
-AddNav("Server", 6)
+AddNav("Server", 2)
+AddNav("Movement", 3)
+AddNav("Visuals", 4)
+AddNav("Shop", 5)
+AddNav("Scripts", 6)
 AddNav("Emotes", 7)
-AddNav("Settings", 8)
+AddNav("Players", 8)
+AddNav("Moderation", 9)
+AddNav("Settings", 10)
+AddNav("Chat", 11)
 

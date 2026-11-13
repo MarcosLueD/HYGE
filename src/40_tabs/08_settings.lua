@@ -120,7 +120,8 @@ do
         ConsoleFrame.Visible = (not on) and (not State.Minimized)
         Content.Size = on and UDim2.new(1, -184, 1, -84) or UDim2.new(1, -184, 1, -214)
     end
-    compactRender = CheckRow(look, "Modo compacto",
+    -- v8.0: a aba Scripts esconde esta linha (o console saiu da janela)
+    compactRender, V8.CompactRow = CheckRow(look, "Modo compacto",
         "Esconde o console e dá mais espaço para as abas",
         function() return SET.Compact end,
         function(v) ApplyCompact(v) end, 4)

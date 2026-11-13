@@ -178,6 +178,21 @@ do
             end
         end
 
+        -- v8.0: seções do dock e suas sub-abas (Visual, Servidor e Moderação
+        -- ficam "dentro" de outra seção — a busca acha direto)
+        if V8.Dock and V8.Dock.Sections then
+            for _, s in ipairs(V8.Dock.Sections) do
+                for _, t in ipairs(s.tabs) do
+                    local tabName = t[1]
+                    local label = (#s.tabs > 1) and (s.label .. " › " .. t[2]) or s.label
+                    add("aba", label, "abrir", function()
+                        ShowTab(tabName)
+                        if V8.IsOpen and not V8.IsOpen() and V8.SetOpen then V8.SetOpen(true) end
+                    end)
+                end
+            end
+        end
+
         if V8.Sit then
             for _, n in ipairs(V8.Sit.Order) do
                 local d = V8.Sit.Defs[n]

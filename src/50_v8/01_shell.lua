@@ -4,8 +4,9 @@
 --   * janela mais larga e baixa (800x500)
 --   * TopBar limpa: "Welcome home, <nome>" + selo de verificado + relogio,
 --     minimizar/fechar discretos no canto
---   * dock de icones no rodape como navegacao padrao (sidebar segue no codigo)
---   * console vira painel recolhivel (o icone </> do dock abre e fecha)
+--   * dock solto no rodape da tela como navegacao padrao (sidebar segue no
+--     codigo); a janela nasce logo acima dele
+--   * console mora na aba Scripts (icone de terminal do dock)
 -- Tudo em V8.Shell: zero locais novos no chunk principal.
 -- Entra DEPOIS de 00_dock.lua e ANTES de 02_situations.lua no build.
 --------------------------------------------------------------------------------
@@ -24,7 +25,15 @@ do
     -- 1. JANELA
     ----------------------------------------------------------------------------
     Window.Size = UDim2.new(0, H.W, 0, H.Hgt)
-    Window.Position = UDim2.new(0.5, -H.W * 0.5, 0.5, -H.Hgt * 0.5)
+    -- posição "de casa": com o dock, centralizada logo acima dele; sem o
+    -- dock (modo sidebar), no meio da tela. Usada também por 'center'.
+    H.HomePos = function()
+        if SET.Dock ~= false then
+            return UDim2.new(0.5, -H.W * 0.5, 1, -(H.Hgt + 84))
+        end
+        return UDim2.new(0.5, -H.W * 0.5, 0.5, -H.Hgt * 0.5)
+    end
+    Window.Position = H.HomePos()
     do
         local c = Window:FindFirstChildOfClass("UICorner")
         if c then c.CornerRadius = UDim.new(0, 18) end
@@ -200,31 +209,34 @@ do
     Sidebar.Position = UDim2.new(0, 0, 0, H.TopH)
 
     ----------------------------------------------------------------------------
-    -- 4. GEOMETRIA: uma funcao unica manda no Content e no console
+    -- 4. GEOMETRIA: uma funcao unica manda no Content e nas sub-abas.
+    --    O dock agora mora fora da janela: nada e reservado no rodape.
+    --    O console nao e mais painel daqui — vive na aba Scripts.
     ----------------------------------------------------------------------------
     H.Layout = function()
         local dockOn = (SET.Dock == true)
-        local top = H.TopH + 10
-        local bottom = dockOn and 74 or 16          -- espaco reservado ao dock
-        local open = (H.ConsoleOpen == true) and (not State.Minimized)
-        local cons = open and (H.ConsoleH + 10) or 0
         local left = dockOn and 14 or 172
         local wOff = dockOn and -28 or -186
+        local top = H.TopH + 10
+        local bottom = 14
 
-        ConsoleFrame.Visible = open
-        ConsoleFrame.Size = UDim2.new(1, wOff, 0, H.ConsoleH)
-        ConsoleFrame.Position = UDim2.new(0, left, 1, -(bottom + H.ConsoleH))
+        -- sub-abas da secao ativa (ex.: Personagem › Movimento | Visual)
+        local seg = V8.Dock and V8.Dock.Seg
+        if seg then
+            local show = dockOn and V8.Dock.SegShown() and not State.Minimized
+            seg.Visible = show
+            seg.Position = UDim2.new(0, left, 0, top)
+            seg.Size = UDim2.new(1, wOff, 0, 30)
+            if show then top = top + 40 end
+        end
 
         Content.Position = UDim2.new(0, left, 0, top)
-        Content.Size = UDim2.new(1, wOff, 1, -(top + bottom + cons))
+        Content.Size = UDim2.new(1, wOff, 1, -(top + bottom))
     end
 
-    H.ToggleConsole = function(force)
-        local want = force
-        if want == nil then want = not H.ConsoleOpen end
-        H.ConsoleOpen = want and true or false
-        H.Layout()
-        if V8.Dock and V8.Dock.Sync then pcall(V8.Dock.Sync, State.ActiveTab) end
+    -- compatibilidade: quem pedia "abrir o console" agora abre a aba Scripts
+    H.ToggleConsole = function()
+        if V8.Dock and V8.Dock.Open then V8.Dock.Open("scripts", true) end
     end
 
     ----------------------------------------------------------------------------
