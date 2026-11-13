@@ -81,21 +81,25 @@ Remotes foram encontrados.
 ## Navegação (dock)
 
 O dock fica solto no rodapé da tela, sempre visível — é ele que abre o painel.
-O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel.
+O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel. A
+janela (em pé, 460×520) nasce logo acima dele, com o título da seção e o selo
+HYGE no topo.
 
-| Ícone | Seção | Sub-abas |
+| Ícone | Seção | Dentro da seção |
 |---|---|---|
-| casinha | Início | Painel · Servidor |
-| pessoa | Personagem | Movimento · Visual |
+| casinha | Início | sub-abas Painel · Servidor |
+| pessoa | Personagem | sub-abas Movimento · Visual |
 | sacola | Shop | (em breve) |
-| terminal | Scripts | console + linha de comando |
-| grade | Emotes | — |
-| pessoas | Jogadores | Lista · Moderação |
+| terminal | Scripts | barra de sub-ícones acima do dock: Console · Emotes |
+| pessoas | Jogadores | sub-abas Lista · Moderação |
 | engrenagem | Configurações | — |
 | balão | Chat | chat do servidor + enviar/privado |
 
+No alto da tela fica a **ilha** (hora, FPS e ping; clique abre/fecha o painel)
+— desliga em Configurações › Ilha no topo.
+
 Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
-desligado volta para a sidebar dentro da janela (com a bolinha H para abrir).
+desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
 
 ## Teclas padrão
 

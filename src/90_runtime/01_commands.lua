@@ -356,9 +356,9 @@ do
         end
     end)
 
-    DefCmd("theme", "theme <Roxo|Ciano|Verde|Vermelho|Azul>", "troca a paleta", function(args)
+    DefCmd("theme", "theme <Grafite|Azul|Roxo|Ciano|Verde|Vermelho>", "troca a paleta", function(args)
         local n = args[1]
-        if not n then Log("uso: theme Roxo|Ciano|Verde|Vermelho|Azul", "warn") return end
+        if not n then Log("uso: theme Grafite|Azul|Roxo|Ciano|Verde|Vermelho", "warn") return end
         n = n:sub(1, 1):upper() .. n:sub(2):lower()
         if not PALETTES[n] then Log("Tema inexistente: " .. n, "warn") return end
         if ApplyTheme then ApplyTheme(n) end

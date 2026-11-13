@@ -88,7 +88,7 @@ end
 local function AddNav(name, order)
     local NAV_ICON = {
         Home = "home", Movement = "user", Visuals = "eye", Players = "users",
-        Moderation = "shield", Server = "server", Emotes = "grid", Settings = "gear",
+        Moderation = "shield", Server = "server", Emotes = "smile", Settings = "gear",
         Shop = "bag", Scripts = "terminal", Chat = "chat",   -- v8.0
     }
     local b = Instance.new("TextButton")
@@ -143,44 +143,72 @@ local function AddNav(name, order)
         stroke = navStroke }
 end
 
+-- v8.0: título de seção em caixa de frase ("MOVIMENTO E VELOCIDADE" vira
+-- "Movimento e velocidade"), preservando siglas. string.lower não conhece
+-- acento (UTF-8), então as maiúsculas acentuadas do português vão por tabela.
+do
+    local LOWER = { ["Á"] = "á", ["À"] = "à", ["Â"] = "â", ["Ã"] = "ã", ["É"] = "é",
+        ["Ê"] = "ê", ["Í"] = "í", ["Ó"] = "ó", ["Ô"] = "ô", ["Õ"] = "õ", ["Ú"] = "ú",
+        ["Ç"] = "ç" }
+    local KEEP = { ESP = true, HUD = true, ID = true, FPS = true, AFK = true,
+        JSON = true, HYGE = true, UI = true, TP = true }
+    V8.Sentence = function(s)
+        if type(s) ~= "string" or s == "" or s:upper() ~= s then return s end
+        local out = s:lower():gsub("\195[\128-\159]", function(c) return LOWER[c] end)
+        out = out:gsub("%a+", function(w)
+            if KEEP[w:upper()] then return w:upper() end
+        end)
+        return (out:gsub("^%l", string.upper))
+    end
+end
+
+-- v8.0: transforma um Frame em "cartão" (fundo, borda sutil, cantos, respiro
+-- interno). As linhas (switch, slider, keybind) são cartões soltos.
+V8.Cell = function(f, padV)
+    f.BackgroundColor3 = THEME.Card
+    f.BackgroundTransparency = 0
+    f.BorderSizePixel = 0
+    Paint(f, "BackgroundColor3", "Card")
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 12)
+    local st = Instance.new("UIStroke", f)
+    st.Transparency = 0.25
+    Paint(st, "Color", "Line")
+    local p = Instance.new("UIPadding", f)
+    p.PaddingLeft = UDim.new(0, 14)
+    p.PaddingRight = UDim.new(0, 12)
+    p.PaddingTop = UDim.new(0, padV or 0)
+    p.PaddingBottom = UDim.new(0, padV or 0)
+    return f
+end
+
+-- v8.0: o "card" virou SEÇÃO — título pequeno em cima e o conteúdo solto
+-- embaixo (cada linha é seu próprio cartão). Antes era uma caixa com tudo dentro.
 local function CreateCard(parent, title, order)
     local card = Instance.new("Frame")
     card.Name = "Card"
     card.Size = UDim2.new(1, 0, 0, 0)
     card.AutomaticSize = Enum.AutomaticSize.Y
-    card.BackgroundColor3 = THEME.Card
+    card.BackgroundTransparency = 1
     card.BorderSizePixel = 0
     card.LayoutOrder = order or 1
     card.Parent = parent
-    Paint(card, "BackgroundColor3", "Card")
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 12)
-
-    local stroke = Instance.new("UIStroke", card)
-    stroke.Transparency = 0.5
-    Paint(stroke, "Color", "Line")
-
-    local pad = Instance.new("UIPadding", card)
-    pad.PaddingTop = UDim.new(0, 14)
-    pad.PaddingBottom = UDim.new(0, 14)
-    pad.PaddingLeft = UDim.new(0, 14)
-    pad.PaddingRight = UDim.new(0, 14)
 
     local layout = Instance.new("UIListLayout", card)
-    layout.Padding = UDim.new(0, 8)
+    layout.Padding = UDim.new(0, 6)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
 
     if title then
         local head = Instance.new("TextLabel")
-        head.Size = UDim2.new(1, 0, 0, 20)
+        head.Size = UDim2.new(1, 0, 0, 18)
         head.BackgroundTransparency = 1
-        head.Text = title
-        head.TextColor3 = THEME.Accent
+        head.Text = V8.Sentence(title)
+        head.TextColor3 = THEME.Text
         head.Font = Enum.Font.GothamBold
         head.TextSize = 13
         head.TextXAlignment = Enum.TextXAlignment.Left
         head.LayoutOrder = -1
         head.Parent = card
-        Paint(head, "TextColor3", "Accent")
+        Paint(head, "TextColor3", "Text")
     end
     return card
 end
@@ -212,10 +240,11 @@ local function CreateButton(parent, text, colorKey, height)
     b.TextColor3 = THEME.Text
     b.Font = Enum.Font.GothamMedium
     b.TextSize = 12
+    b.TextWrapped = true   -- v8.0: na janela estreita, texto longo quebra em vez de vazar
     b.AutoButtonColor = false
     b.Parent = parent
     Paint(b, "BackgroundColor3", "Btn")
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
 
     local stroke = Instance.new("UIStroke", b)
     stroke.Transparency = 0.8

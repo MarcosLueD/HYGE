@@ -52,10 +52,23 @@ local PALETTES = {
         BtnHover = Color3.fromRGB(34, 50, 84), Track = Color3.fromRGB(30, 44, 74),
         Line = Color3.fromRGB(42, 60, 98),
     },
+    -- v8.0: monocromático (quase preto + destaque branco) — padrão do dock novo
+    Grafite = {
+        Main = Color3.fromRGB(17, 17, 19),   Sidebar = Color3.fromRGB(23, 23, 26),
+        Card = Color3.fromRGB(30, 31, 35),   Console = Color3.fromRGB(12, 12, 14),
+        Accent = Color3.fromRGB(236, 236, 240), Accent2 = Color3.fromRGB(196, 198, 206),
+        Text = Color3.fromRGB(245, 245, 247), Dim = Color3.fromRGB(165, 166, 175),
+        Danger = Color3.fromRGB(255, 92, 98), Success = Color3.fromRGB(110, 222, 150),
+        Warning = Color3.fromRGB(255, 192, 72), Btn = Color3.fromRGB(40, 41, 46),
+        BtnHover = Color3.fromRGB(52, 53, 59), Track = Color3.fromRGB(56, 57, 63),
+        Line = Color3.fromRGB(46, 47, 53),
+    },
 }
 
+-- v8.0: nasce no tema padrão (antes nascia Roxo e era repintado depois — o que
+-- não é registrado em Paint, como os switches, ficava com a cor errada)
 local THEME = {}
-for k, v in pairs(PALETTES.Roxo) do THEME[k] = v end
+for k, v in pairs(PALETTES[CONFIG.DefaultTheme] or PALETTES.Roxo) do THEME[k] = v end
 
 -- Registry de pintura: permite trocar de tema em tempo real
 local Painted = {}

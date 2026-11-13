@@ -13,12 +13,19 @@
 
 ### Novidades
 - **Dock novo, solto no rodapé da tela** e sempre visível (substitui a bolinha
-  H): Início, Personagem, Shop, Scripts, Emotes, Jogadores, Configurações e
-  Chat. O ícone ativo mostra o nome; clicar nele de novo fecha o painel. A
-  janela nasce logo acima do dock.
-- **Sub-abas** no topo da janela para seções com mais de uma aba: Início
-  (Painel · Servidor), Personagem (Movimento · Visual), Jogadores (Lista ·
-  Moderação). A busca (Ctrl+K) também encontra cada uma.
+  H), com 7 ícones de contorno: Início, Personagem, Shop, Scripts, Jogadores,
+  Configurações e Chat. O ícone ativo mostra o nome; clicar nele de novo fecha
+  o painel.
+- **Visual novo no modo dock**: janela em pé (460×520) logo acima do dock,
+  título grande da seção + selo HYGE no topo, seções com título discreto e cada
+  opção em um cartão (switch branco/escuro, slider com botão R). Tema padrão
+  **Grafite** (monocromático); os outros temas continuam em Configurações.
+- **Sub-abas em pílula** no topo da janela: Início (Painel · Servidor),
+  Personagem (Movimento · Visual), Jogadores (Lista · Moderação). A busca
+  (Ctrl+K) também encontra cada uma.
+- **Barra de sub-ícones** acima do dock na seção Scripts: Console e Emotes.
+- **Ilha no topo da tela**: hora, FPS e ping sempre à vista; clique abre/fecha
+  o painel. Some no modo drone.
 - **Aba Scripts**: o console de log saiu do rodapé da janela e ocupa a aba
   inteira, com linha de comando (Enter executa, ↑/↓ histórico).
 - **Aba Chat**: feed do chat do servidor atual, enviar no chat do jogo e

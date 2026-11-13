@@ -112,9 +112,11 @@ end
 -- chips de filtro + ações do console
 do
     local function Chip(text, filter, order, colorKey)
+        -- v8.0: chips mais estreitos e sem o rótulo "LOGS" (o título da janela
+        -- já diz "Console") — tudo cabe na janela de 460px do dock
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0, 58, 0, 22)
-        b.Position = UDim2.new(0, 46 + (order - 1) * 62, 0, 0)
+        b.Size = UDim2.new(0, 48, 0, 22)
+        b.Position = UDim2.new(0, (order - 1) * 52, 0, 0)
         b.BackgroundColor3 = THEME[colorKey]
         b.BackgroundTransparency = 0.8
         b.Text = text
@@ -150,6 +152,7 @@ do
     logTitle.Font = Enum.Font.GothamBold
     logTitle.TextSize = 12
     logTitle.TextXAlignment = Enum.TextXAlignment.Left
+    logTitle.Visible = false   -- v8.0: ver comentário no Chip
     logTitle.Parent = LogBar
     Paint(logTitle, "TextColor3", "Text")
 
@@ -164,7 +167,7 @@ do
         local b = Instance.new("TextButton")
         b.AnchorPoint = Vector2.new(1, 0)
         b.Position = UDim2.new(1, -offset, 0, 1)
-        b.Size = UDim2.new(0, 66, 0, 22)
+        b.Size = UDim2.new(0, 50, 0, 22)   -- v8.0: era 66
         b.BackgroundColor3 = THEME.Btn
         b.Text = "  " .. text
         b.TextColor3 = THEME[colorKey]
@@ -184,7 +187,7 @@ do
         return b
     end
 
-    MiniBtn("COPIAR", 72, "Accent", function()
+    MiniBtn("COPIAR", 54, "Accent", function()
         local out = {}
         for _, e in ipairs(LogEntries) do
             local meta = LOG_CAT[e.cat] or LOG_CAT.info

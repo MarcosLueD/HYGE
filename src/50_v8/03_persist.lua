@@ -59,7 +59,7 @@ do
                        "Rate", "ColorKey", "AllyKey", "TeamColors" }
     local SET_KEYS = { "Animations", "Toasts", "ShowLogs", "Confirm", "EspAuto",
                        "MaxLog", "Compact", "Transparency", "AutoSave", "SitOnLoad",
-                       "Dock", "Slots", "WinPos" }
+                       "Dock", "Slots", "WinPos", "Island" }
 
     C.Snapshot = function()
         local d = {

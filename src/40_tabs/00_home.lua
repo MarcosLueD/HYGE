@@ -25,7 +25,7 @@ do
     ----------------------------------------------------------------------------
     -- SEGUNDA FILEIRA: identificadores com botão de copiar
     ----------------------------------------------------------------------------
-    local grid2 = Grid(overview, 4, 62)
+    local grid2 = Grid(overview, 2, 62)   -- v8.0: janela estreita (era 4)
 
     local function InfoCard(label, value, iconKind, iconColor, order, copyFn)
         local box = Instance.new("Frame")
@@ -105,7 +105,7 @@ do
     local quick = CreateCard(tab, "AÇÕES RÁPIDAS", 2)
     SubLabel(quick, "Um clique liga/desliga. O switch mostra o estado real do toggle.", -1)
 
-    local qGrid = Grid(quick, 4, 40)
+    local qGrid = Grid(quick, 2, 40)   -- v8.0: janela estreita (era 4)
     local quickBtns = {}
 
     local QUICK = {

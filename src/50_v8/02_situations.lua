@@ -185,7 +185,7 @@ do
         header.Parent = card
         table.insert(Painted, { inst = header, prop = "TextColor3", key = "Dim" })
 
-        local grid = Grid(card, 3, 54)
+        local grid = Grid(card, 2, 54)   -- v8.0: janela estreita (era 3)
         grid.LayoutOrder = 1
 
         for i, n in ipairs(S.Order) do

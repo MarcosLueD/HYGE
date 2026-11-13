@@ -46,17 +46,18 @@ local function Flip(id) SetToggle(id, not IsOn(id)) end
 -- Switch animado
 local function SwitchRow(parent, id, labelText, description)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, description and 46 or 36)
+    row.Size = UDim2.new(1, 0, 0, description and 56 or 44)
     row.BackgroundTransparency = 1
     row.Parent = parent
+    V8.Cell(row, 5)   -- v8.0: cada linha é um cartão
 
     local name = Instance.new("TextLabel")
     name.Size = UDim2.new(1, -70, 0, 18)
-    name.Position = UDim2.new(0, 0, 0, description and 4 or 9)
+    name.Position = UDim2.new(0, 0, 0, description and 4 or 8)
     name.BackgroundTransparency = 1
     name.Text = labelText
     name.TextColor3 = THEME.Text
-    name.Font = Enum.Font.GothamMedium
+    name.Font = Enum.Font.GothamBold
     name.TextSize = 13
     name.TextXAlignment = Enum.TextXAlignment.Left
     name.Parent = row
@@ -69,9 +70,10 @@ local function SwitchRow(parent, id, labelText, description)
         desc.BackgroundTransparency = 1
         desc.Text = description
         desc.TextColor3 = THEME.Dim
-        desc.Font = Enum.Font.Gotham
+        desc.Font = Enum.Font.GothamMedium
         desc.TextSize = 11
         desc.TextXAlignment = Enum.TextXAlignment.Left
+        desc.TextTruncate = Enum.TextTruncate.AtEnd
         desc.Parent = row
         Paint(desc, "TextColor3", "Dim")
     end
@@ -89,23 +91,28 @@ local function SwitchRow(parent, id, labelText, description)
     local knob = Instance.new("Frame")
     knob.Size = UDim2.new(0, 18, 0, 18)
     knob.Position = UDim2.new(0, 3, 0.5, -9)
-    knob.BackgroundColor3 = THEME.Dim
+    knob.BackgroundColor3 = THEME.Text
     knob.BorderSizePixel = 0
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+    -- v8.0: ligado = trilho no destaque + bolinha escura; desligado = trilho
+    -- escuro + bolinha clara (com destaque branco, bolinha branca sumia)
     local function render(on)
         TweenService:Create(track, TweenInfo.new(0.16), {
             BackgroundColor3 = on and THEME.Accent or THEME.Track }):Play()
         TweenService:Create(knob, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
             Position = on and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
-            BackgroundColor3 = on and Color3.new(1, 1, 1) or THEME.Dim }):Play()
+            BackgroundColor3 = on and THEME.Main or THEME.Text }):Play()
     end
 
     track.MouseButton1Click:Connect(function() Flip(id) end)
     if Toggles[id] then
         table.insert(Toggles[id].listeners, render)
         render(Toggles[id].state)
+        -- troca de tema repinta também os switches (V8.Renders roda no ApplyTheme)
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() render(Toggles[id].state) end)
     end
     return row, render
 end
@@ -127,16 +134,17 @@ end
 
 local function KeybindRow(parent, id, labelText)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 34)
+    row.Size = UDim2.new(1, 0, 0, 44)
     row.BackgroundTransparency = 1
     row.Parent = parent
+    V8.Cell(row, 5)   -- v8.0: cartão
 
     local name = Instance.new("TextLabel")
     name.Size = UDim2.new(1, -110, 1, 0)
     name.BackgroundTransparency = 1
     name.Text = labelText
     name.TextColor3 = THEME.Text
-    name.Font = Enum.Font.GothamMedium
+    name.Font = Enum.Font.GothamBold
     name.TextSize = 13
     name.TextXAlignment = Enum.TextXAlignment.Left
     name.Parent = row

@@ -75,9 +75,9 @@ do
         Log("Tema: " .. paletteName, "ok")
     end
 
-    local themeGrid = Grid(look, 4, 32)
+    local themeGrid = Grid(look, 3, 32)
     themeGrid.LayoutOrder = 1
-    for i, n in ipairs({ "Roxo", "Ciano", "Verde", "Vermelho", "Azul" }) do
+    for i, n in ipairs({ "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho" }) do
         local b = CreateButton(themeGrid, "   " .. n:upper(), "Accent", 32)
         b.LayoutOrder = i
         local sw = Instance.new("Frame")
@@ -209,7 +209,7 @@ do
         return true
     end
 
-    local preGrid = Grid(pre, 5, 32)
+    local preGrid = Grid(pre, 3, 32)   -- v8.0: janela estreita (era 5)
     for i, n in ipairs({ "Default", "Admin", "Visual", "Movement", "Minimal" }) do
         local b = CreateButton(preGrid, n:upper(), "Accent", 32)
         b.LayoutOrder = i
@@ -220,7 +220,7 @@ do
     -- SISTEMA
     ----------------------------------------------------------------------------
     local sys = CreateCard(tab, "SISTEMA", 10)
-    local sysGrid = Grid(sys, 4, 32)
+    local sysGrid = Grid(sys, 2, 32)   -- v8.0: janela estreita (era 4)
 
     local reload = CreateButton(sysGrid, "RECARREGAR DADOS", "Accent", 32)
     reload.LayoutOrder = 1

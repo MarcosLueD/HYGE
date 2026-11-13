@@ -1,11 +1,14 @@
 --------------------------------------------------------------------------------
 -- v8.0 — DOCK (navegação principal)
 -- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
--- abre o painel; a bolinha "H" só aparece no modo sidebar). 8 seções:
---   Início · Personagem · Shop · Scripts · Emotes · Jogadores · Configurações · Chat
+-- abre o painel; a bolinha "H" só aparece no modo sidebar). 7 seções:
+--   Início · Personagem · Shop · Scripts · Jogadores · Configurações · Chat
 -- O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel.
--- Seção com mais de uma aba ganha sub-abas no topo da janela
--- (ex.: Personagem › Movimento | Visual) — posicionadas pelo V8.Shell.Layout.
+-- Navegação dentro da seção (as duas posicionadas pelo V8.Shell):
+--   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores)
+--   * Scripts usa uma segunda barra de ícones logo acima do dock
+--     (Console, Emotes) — igual às imagens de referência
+-- O título grande da janela (V8.Shell.SetTitle) acompanha a seção ativa.
 -- A sidebar continua existindo: SET.Dock escolhe dock OU sidebar (Ajustes).
 -- Tudo em V8.Dock: zero locais novos. Entra DEPOIS das abas (40_tabs) no build.
 --------------------------------------------------------------------------------
@@ -15,7 +18,10 @@ do
 
     if SET.Dock == nil then SET.Dock = true end
 
-    -- { aba interna, nome na sub-aba }
+    K.BOTTOM, K.H = 14, 56      -- distância do rodapé da tela e altura do dock
+    K.SUB_H, K.GAP = 50, 10     -- barra de sub-ícones (Scripts) e respiro
+
+    -- tabs: { aba interna, nome, ícone (só usado na barra de sub-ícones) }
     K.Sections = {
         { id = "inicio",  icon = "home",     label = "Início",
           tabs = { { "Home", "Painel" }, { "Server", "Servidor" } } },
@@ -23,10 +29,8 @@ do
           tabs = { { "Movement", "Movimento" }, { "Visuals", "Visual" } } },
         { id = "shop",    icon = "bag",      label = "Shop",
           tabs = { { "Shop", "Shop" } } },
-        { id = "scripts", icon = "terminal", label = "Scripts",
-          tabs = { { "Scripts", "Console" } } },
-        { id = "emotes",  icon = "grid",     label = "Emotes",
-          tabs = { { "Emotes", "Emotes" } } },
+        { id = "scripts", icon = "terminal", label = "Scripts", subdock = true,
+          tabs = { { "Scripts", "Console", "terminal" }, { "Emotes", "Emotes", "smile" } } },
         { id = "players", icon = "users",    label = "Jogadores",
           tabs = { { "Players", "Lista" }, { "Moderation", "Moderação" } } },
         { id = "config",  icon = "gear",     label = "Configurações",
@@ -40,6 +44,7 @@ do
     K.LastTab = {}     -- id -> última sub-aba usada (volta nela ao reabrir)
     K.Btns = {}        -- id -> { button, icon, label }
     K.Current = nil    -- seção da aba ativa
+    K.SubWasOn = false -- a barra de sub-ícones estava visível? (o shell usa)
     for _, s in ipairs(K.Sections) do
         K.ById[s.id] = s
         for _, t in ipairs(s.tabs) do K.TabSection[t[1]] = s end
@@ -47,78 +52,82 @@ do
 
     local function IsOpenNow() return V8.IsOpen and V8.IsOpen() or false end
 
-    ----------------------------------------------------------------------------
-    -- a barra (filha da ScreenGui, não da janela)
-    ----------------------------------------------------------------------------
-    local bar = Instance.new("Frame")
-    bar.Name = "Dock"
-    bar.AnchorPoint = Vector2.new(0.5, 1)
-    bar.Position = UDim2.new(0.5, 0, 1, -14)
-    bar.Size = UDim2.new(0, 0, 0, 56)
-    bar.AutomaticSize = Enum.AutomaticSize.X
-    bar.BackgroundColor3 = THEME.Sidebar
-    bar.BackgroundTransparency = 0.04
-    bar.BorderSizePixel = 0
-    bar.Visible = false
-    bar.ZIndex = 20
-    bar.Parent = Gui
-    Paint(bar, "BackgroundColor3", "Sidebar")
-    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 18)
-    do
-        local st = Instance.new("UIStroke", bar)
-        st.Transparency = 0.5
+    -- moldura padrão das duas barras (dock e sub-ícones)
+    local function BarFrame(name, height, radius)
+        local f = Instance.new("Frame")
+        f.Name = name
+        f.AnchorPoint = Vector2.new(0.5, 1)
+        f.Size = UDim2.new(0, 0, 0, height)
+        f.AutomaticSize = Enum.AutomaticSize.X
+        f.BackgroundColor3 = THEME.Sidebar
+        f.BackgroundTransparency = 0.02
+        f.BorderSizePixel = 0
+        f.Visible = false
+        f.ZIndex = 20
+        f.Parent = Gui
+        Paint(f, "BackgroundColor3", "Sidebar")
+        Instance.new("UICorner", f).CornerRadius = UDim.new(0, radius)
+        local st = Instance.new("UIStroke", f)
+        st.Transparency = 0.2
         Paint(st, "Color", "Line")
-        local pad = Instance.new("UIPadding", bar)
-        pad.PaddingLeft = UDim.new(0, 8)
-        pad.PaddingRight = UDim.new(0, 8)
-        local l = Instance.new("UIListLayout", bar)
+        local l = Instance.new("UIListLayout", f)
         l.FillDirection = Enum.FillDirection.Horizontal
-        l.Padding = UDim.new(0, 4)
-        l.SortOrder = Enum.SortOrder.LayoutOrder
+        l.HorizontalAlignment = Enum.HorizontalAlignment.Center
         l.VerticalAlignment = Enum.VerticalAlignment.Center
+        l.SortOrder = Enum.SortOrder.LayoutOrder
+        return f, l
     end
-    K.Bar = function() return bar end
 
-    -- nome do ícone no hover (o ativo já mostra o nome ao lado)
-    local tip = Instance.new("TextLabel")
-    tip.AnchorPoint = Vector2.new(0.5, 1)
-    tip.Position = UDim2.new(0.5, 0, 0, -8)
-    tip.Size = UDim2.new(0, 0, 0, 22)
-    tip.AutomaticSize = Enum.AutomaticSize.X
-    tip.BackgroundColor3 = THEME.Card
-    tip.Text = ""
-    tip.TextColor3 = THEME.Text
-    tip.Font = Enum.Font.GothamBold
-    tip.TextSize = 11
-    tip.Visible = false
-    tip.ZIndex = 22
-    tip.Parent = bar
-    Paint(tip, "BackgroundColor3", "Card")
-    Paint(tip, "TextColor3", "Text")
-    Instance.new("UICorner", tip).CornerRadius = UDim.new(0, 6)
-    do
-        local p = Instance.new("UIPadding", tip)
+    -- nome no hover (o ícone ativo do dock já mostra o nome ao lado)
+    local function Tip(parent)
+        local t = Instance.new("TextLabel")
+        t.AnchorPoint = Vector2.new(0.5, 1)
+        t.Position = UDim2.new(0.5, 0, 0, -8)
+        t.Size = UDim2.new(0, 0, 0, 22)
+        t.AutomaticSize = Enum.AutomaticSize.X
+        t.BackgroundColor3 = THEME.Card
+        t.Text = ""
+        t.TextColor3 = THEME.Text
+        t.Font = Enum.Font.GothamBold
+        t.TextSize = 11
+        t.Visible = false
+        t.ZIndex = 22
+        t.Parent = parent
+        Paint(t, "BackgroundColor3", "Card")
+        Paint(t, "TextColor3", "Text")
+        Instance.new("UICorner", t).CornerRadius = UDim.new(0, 7)
+        local p = Instance.new("UIPadding", t)
         p.PaddingLeft = UDim.new(0, 8)
         p.PaddingRight = UDim.new(0, 8)
+        return t
     end
 
     ----------------------------------------------------------------------------
-    -- os 8 botões: ícone sozinho; o ativo ganha fundo + nome ao lado
+    -- o dock (filho da ScreenGui, não da janela)
     ----------------------------------------------------------------------------
+    local bar, barLayout = BarFrame("Dock", K.H, 18)
+    bar.Position = UDim2.new(0.5, 0, 1, -K.BOTTOM)
+    barLayout.Padding = UDim.new(0, 2)
+    do
+        local pad = Instance.new("UIPadding", bar)
+        pad.PaddingLeft = UDim.new(0, 10)
+        pad.PaddingRight = UDim.new(0, 10)
+    end
+    K.Bar = function() return bar end
+    local tip = Tip(bar)
+
+    -- os 7 botões: ícone sozinho; o ativo ganha o nome ao lado (sem fundo)
     for i, s in ipairs(K.Sections) do
         local b = Instance.new("TextButton")
         b.Name = s.id
-        b.Size = UDim2.new(0, 44, 0, 42)
+        b.Size = UDim2.new(0, 44, 0, 44)
         b.AutomaticSize = Enum.AutomaticSize.X
-        b.BackgroundColor3 = THEME.Btn
         b.BackgroundTransparency = 1
         b.Text = ""
         b.AutoButtonColor = false
         b.LayoutOrder = i
         b.ZIndex = 20
         b.Parent = bar
-        Paint(b, "BackgroundColor3", "Btn")
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 13)
         do
             local p = Instance.new("UIPadding", b)
             p.PaddingLeft = UDim.new(0, 12)
@@ -140,28 +149,24 @@ do
         lbl.Text = s.label
         lbl.TextColor3 = THEME.Text
         lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = 13
+        lbl.TextSize = 14
         lbl.Visible = false
         lbl.LayoutOrder = 2
         lbl.ZIndex = 20
         lbl.Parent = b
         Paint(lbl, "TextColor3", "Text")
 
-        local entry = { button = b, icon = ico, label = lbl }
-        K.Btns[s.id] = entry
+        K.Btns[s.id] = { button = b, icon = ico, label = lbl }
 
         b.MouseEnter:Connect(function()
             if lbl.Visible then return end   -- ativo: nome já está à vista
             tip.Text = s.label
             tip.Visible = true
-            b.BackgroundTransparency = 0.55
             IconTint(ico, THEME.Text)
         end)
         b.MouseLeave:Connect(function()
             tip.Visible = false
-            if lbl.Visible then return end
-            b.BackgroundTransparency = 1
-            IconTint(ico, THEME.Dim)
+            if not lbl.Visible then IconTint(ico, THEME.Dim) end
         end)
         b.MouseButton1Click:Connect(function()
             tip.Visible = false
@@ -170,7 +175,62 @@ do
     end
 
     ----------------------------------------------------------------------------
-    -- sub-abas no topo da janela (só para seção com mais de uma aba)
+    -- barra de sub-ícones (seção com subdock = true): uma por seção, logo
+    -- acima do dock. Ativo = quadradinho claro com o ícone escuro.
+    ----------------------------------------------------------------------------
+    for _, s in ipairs(K.Sections) do
+        if s.subdock then
+            local f, l = BarFrame("SubDock_" .. s.id, K.SUB_H, 16)
+            f.Position = UDim2.new(0.5, 0, 1, -(K.BOTTOM + K.H + K.GAP))
+            l.Padding = UDim.new(0, 6)
+            do
+                local p = Instance.new("UIPadding", f)
+                p.PaddingLeft = UDim.new(0, 5)
+                p.PaddingRight = UDim.new(0, 5)
+            end
+            local subTip = Tip(f)
+            s.sub, s.subBtns = f, {}
+
+            for i, t in ipairs(s.tabs) do
+                local b = Instance.new("TextButton")
+                b.Size = UDim2.new(0, 40, 0, 40)
+                b.BackgroundColor3 = THEME.Accent
+                b.BackgroundTransparency = 1
+                b.Text = ""
+                b.AutoButtonColor = false
+                b.LayoutOrder = i
+                b.ZIndex = 20
+                b.Parent = f
+                Paint(b, "BackgroundColor3", "Accent")
+                Instance.new("UICorner", b).CornerRadius = UDim.new(0, 11)
+
+                local ico = Icon(b, t[3] or "dot", THEME.Dim, 20, 1)
+                ico.AnchorPoint = Vector2.new(0.5, 0.5)
+                ico.Position = UDim2.new(0.5, 0, 0.5, 0)
+                ico.ZIndex = 21
+
+                local u = { button = b, icon = ico, tab = t[1] }
+                s.subBtns[i] = u
+
+                b.MouseEnter:Connect(function()
+                    subTip.Text = t[2]
+                    subTip.Visible = true
+                    if u.tab ~= State.ActiveTab then IconTint(ico, THEME.Text) end
+                end)
+                b.MouseLeave:Connect(function()
+                    subTip.Visible = false
+                    if u.tab ~= State.ActiveTab then IconTint(ico, THEME.Dim) end
+                end)
+                b.MouseButton1Click:Connect(function()
+                    subTip.Visible = false
+                    ShowTab(u.tab)
+                end)
+            end
+        end
+    end
+
+    ----------------------------------------------------------------------------
+    -- sub-abas em pílula no topo da janela (largura toda, divididas por igual)
     ----------------------------------------------------------------------------
     local seg = Instance.new("Frame")
     seg.Name = "SubTabs"
@@ -189,12 +249,10 @@ do
     local segBtns = {}
     for i = 1, 4 do
         local sb = Instance.new("TextButton")
-        sb.Size = UDim2.new(0, 0, 1, 0)
-        sb.AutomaticSize = Enum.AutomaticSize.X
+        sb.Size = UDim2.new(0.5, -3, 1, 0)
         sb.BackgroundColor3 = THEME.Btn
-        sb.BackgroundTransparency = 1
         sb.Text = ""
-        sb.TextColor3 = THEME.Dim
+        sb.TextColor3 = THEME.Text
         sb.Font = Enum.Font.GothamBold
         sb.TextSize = 12
         sb.AutoButtonColor = false
@@ -202,12 +260,7 @@ do
         sb.Visible = false
         sb.Parent = seg
         Paint(sb, "BackgroundColor3", "Btn")
-        Instance.new("UICorner", sb).CornerRadius = UDim.new(0, 9)
-        do
-            local p = Instance.new("UIPadding", sb)
-            p.PaddingLeft = UDim.new(0, 16)
-            p.PaddingRight = UDim.new(0, 16)
-        end
+        Instance.new("UICorner", sb).CornerRadius = UDim.new(0, 10)
         local u = { btn = sb, tab = nil }
         segBtns[i] = u
         sb.MouseButton1Click:Connect(function()
@@ -216,20 +269,30 @@ do
     end
 
     K.SegShown = function()
-        return K.Current ~= nil and #K.Current.tabs > 1
+        local s = K.Current
+        return s ~= nil and not s.subdock and #s.tabs > 1
+    end
+
+    K.SubShown = function()
+        local s = K.Current
+        return s ~= nil and s.subdock == true and SET.Dock == true
+            and IsOpenNow() and not State.Minimized
     end
 
     K.RenderSeg = function()
         local s = K.Current
+        local n = K.SegShown() and #s.tabs or 0
+        local gap = (n > 1) and math.ceil(6 * (n - 1) / n) or 0
         for i, u in ipairs(segBtns) do
-            local t = s and #s.tabs > 1 and s.tabs[i]
+            local t = (n > 1) and s.tabs[i]
             if t then
                 local on = (t[1] == State.ActiveTab)
                 u.tab = t[1]
                 u.btn.Text = t[2]
                 u.btn.Visible = true
-                u.btn.BackgroundTransparency = on and 0 or 1
-                u.btn.TextColor3 = on and THEME.Accent or THEME.Dim
+                u.btn.Size = UDim2.new(1 / n, -gap, 1, 0)
+                u.btn.BackgroundColor3 = on and THEME.Accent or THEME.Btn
+                u.btn.TextColor3 = on and THEME.Main or THEME.Text
             else
                 u.tab = nil
                 u.btn.Visible = false
@@ -240,6 +303,43 @@ do
         if want ~= seg.Visible and V8.Shell and V8.Shell.Layout then
             pcall(V8.Shell.Layout)
         end
+    end
+
+    K.RenderSub = function()
+        local subOn = false
+        for _, s in ipairs(K.Sections) do
+            if s.sub then
+                local show = (K.Current == s) and K.SubShown()
+                s.sub.Visible = show
+                if show then
+                    subOn = true
+                    for _, u in ipairs(s.subBtns) do
+                        local on = (u.tab == State.ActiveTab)
+                        u.button.BackgroundTransparency = on and 0 or 1
+                        IconTint(u.icon, on and THEME.Main or THEME.Dim)
+                    end
+                end
+            end
+        end
+        -- a janela "em casa" sobe/desce para não cobrir a barra de sub-ícones.
+        -- Só com o painel aberto: fechando, ela não "desce" enquanto some (e
+        -- reabrindo na mesma seção, nada se mexe)
+        if IsOpenNow() and subOn ~= K.SubWasOn then
+            K.SubWasOn = subOn
+            if V8.Shell and V8.Shell.Reflow then pcall(V8.Shell.Reflow) end
+        end
+    end
+
+    -- título da janela: seção com sub-ícones mostra a sub-aba ("Emotes");
+    -- as outras mostram o nome da seção ("Personagem")
+    K.TitleFor = function(s, active)
+        if not s then return tostring(active or "") end
+        if s.subdock then
+            for _, t in ipairs(s.tabs) do
+                if t[1] == active then return t[2] end
+            end
+        end
+        return s.label
     end
 
     ----------------------------------------------------------------------------
@@ -254,10 +354,13 @@ do
         for id, u in pairs(K.Btns) do
             local on = open and s ~= nil and s.id == id
             u.label.Visible = on
-            u.button.BackgroundTransparency = on and 0 or 1
-            IconTint(u.icon, on and THEME.Accent or THEME.Dim)
+            IconTint(u.icon, on and THEME.Text or THEME.Dim)
         end
         K.RenderSeg()
+        K.RenderSub()
+        if V8.Shell and V8.Shell.SetTitle then
+            pcall(V8.Shell.SetTitle, K.TitleFor(s, active))
+        end
     end
 
     -- abre a seção (na última sub-aba usada). toggle = clique no dock:
@@ -275,7 +378,7 @@ do
     end
 
     -- embrulha o ShowTab que já existe: qualquer caminho (busca, situações,
-    -- comandos) mantém o dock e as sub-abas em dia
+    -- comandos) mantém o dock, as sub-abas e o título em dia
     do
         local base = ShowTab
         ShowTab = function(name)
@@ -284,13 +387,17 @@ do
         end
     end
 
-    -- troca de tema: os ícones do dock são pintados à mão (IconTint)
+    -- troca de tema: ícones (IconTint) e switches não ficam no registry
+    -- Painted — repinta tudo que se desenha à mão
     do
         local baseTheme = ApplyTheme
         if baseTheme then
             ApplyTheme = function(name)
                 local r = baseTheme(name)
                 pcall(K.Sync, State.ActiveTab)
+                if V8.Renders then
+                    for _, render in ipairs(V8.Renders) do pcall(render) end
+                end
                 return r
             end
         end
@@ -317,9 +424,9 @@ do
     ----------------------------------------------------------------------------
     do
         local nav = CreateCard(Tabs.Settings, "NAVEGAÇÃO", 8)
-        SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 8 ícones, sempre "
+        SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 7 ícones, sempre "
             .. "visível, e é ele que abre o painel. Desligue para voltar à sidebar "
-            .. "dentro da janela (com a bolinha H para abrir).", 0)
+            .. "dentro da janela larga (com a bolinha H para abrir).", 0)
 
         local render = CheckRow(nav, "Usar dock de ícones",
             "Desligado: sidebar dentro da janela + bolinha H",

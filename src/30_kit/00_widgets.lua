@@ -80,55 +80,57 @@ end
 local function SliderRow(parent, o)
     local minV, maxV = o.min, o.max
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 48)
+    row.Size = UDim2.new(1, 0, 0, 62)
     row.BackgroundTransparency = 1
     row.LayoutOrder = o.order or 10
     row.Parent = parent
+    V8.Cell(row, 10)   -- v8.0: cartão
 
     local name = Instance.new("TextLabel")
-    name.Size = UDim2.new(1, -112, 0, 16)
+    name.Size = UDim2.new(1, -112, 0, 18)
     name.BackgroundTransparency = 1
     name.Text = o.label
     name.TextColor3 = THEME.Text
-    name.Font = Enum.Font.GothamMedium
-    name.TextSize = 12
+    name.Font = Enum.Font.GothamBold
+    name.TextSize = 13
     name.TextXAlignment = Enum.TextXAlignment.Left
     name.Parent = row
     Paint(name, "TextColor3", "Text")
 
+    -- v8.0: valor solto à direita (dá para digitar) + "R" redondo para resetar
     local box = Instance.new("TextBox")
     box.AnchorPoint = Vector2.new(1, 0)
-    box.Position = UDim2.new(1, -48, 0, -1)
-    box.Size = UDim2.new(0, 54, 0, 20)
+    box.Position = UDim2.new(1, 0, 0, -1)
+    box.Size = UDim2.new(0, 58, 0, 20)
     box.BackgroundColor3 = THEME.Btn
+    box.BackgroundTransparency = 1
     box.Text = tostring(o.def)
-    box.TextColor3 = THEME.Accent2
-    box.Font = Enum.Font.Code
-    box.TextSize = 12
+    box.TextColor3 = THEME.Text
+    box.Font = Enum.Font.GothamBold
+    box.TextSize = 13
+    box.TextXAlignment = Enum.TextXAlignment.Right
     box.ClearTextOnFocus = false
     box.Parent = row
-    Paint(box, "BackgroundColor3", "Btn")
-    Paint(box, "TextColor3", "Accent2")
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+    Paint(box, "TextColor3", "Text")
 
     local reset = Instance.new("TextButton")
     reset.AnchorPoint = Vector2.new(1, 0)
-    reset.Position = UDim2.new(1, 0, 0, -1)
-    reset.Size = UDim2.new(0, 42, 0, 20)
+    reset.Position = UDim2.new(1, -66, 0, -1)
+    reset.Size = UDim2.new(0, 20, 0, 20)
     reset.BackgroundColor3 = THEME.Btn
-    reset.Text = "RESET"
+    reset.Text = "R"
     reset.TextColor3 = THEME.Dim
     reset.Font = Enum.Font.GothamBold
-    reset.TextSize = 9
+    reset.TextSize = 10
     reset.AutoButtonColor = false
     reset.Parent = row
     Paint(reset, "BackgroundColor3", "Btn")
     Paint(reset, "TextColor3", "Dim")
-    Instance.new("UICorner", reset).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", reset).CornerRadius = UDim.new(1, 0)
 
     local bar = Instance.new("TextButton")
-    bar.Size = UDim2.new(1, 0, 0, 8)
-    bar.Position = UDim2.new(0, 0, 0, 28)
+    bar.Size = UDim2.new(1, 0, 0, 6)
+    bar.Position = UDim2.new(0, 0, 0, 30)
     bar.BackgroundColor3 = THEME.Track
     bar.Text = ""
     bar.AutoButtonColor = false
@@ -223,33 +225,35 @@ end
 -- Switch genérico (settings, opções de ESP): usa get/set em vez do registry
 local function CheckRow(parent, labelText, description, get, set, order)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, description and 44 or 34)
+    row.Size = UDim2.new(1, 0, 0, description and 56 or 44)
     row.BackgroundTransparency = 1
     row.LayoutOrder = order or 10
     row.Parent = parent
+    V8.Cell(row, 5)   -- v8.0: cartão
 
     local name = Instance.new("TextLabel")
-    name.Size = UDim2.new(1, -66, 0, 17)
-    name.Position = UDim2.new(0, 0, 0, description and 3 or 8)
+    name.Size = UDim2.new(1, -66, 0, 18)
+    name.Position = UDim2.new(0, 0, 0, description and 4 or 8)
     name.BackgroundTransparency = 1
     name.Text = labelText
     name.TextColor3 = THEME.Text
-    name.Font = Enum.Font.GothamMedium
-    name.TextSize = 12
+    name.Font = Enum.Font.GothamBold
+    name.TextSize = 13
     name.TextXAlignment = Enum.TextXAlignment.Left
     name.Parent = row
     Paint(name, "TextColor3", "Text")
 
     if description then
         local d = Instance.new("TextLabel")
-        d.Size = UDim2.new(1, -66, 0, 13)
-        d.Position = UDim2.new(0, 0, 0, 22)
+        d.Size = UDim2.new(1, -66, 0, 14)
+        d.Position = UDim2.new(0, 0, 0, 24)
         d.BackgroundTransparency = 1
         d.Text = description
         d.TextColor3 = THEME.Dim
-        d.Font = Enum.Font.Gotham
-        d.TextSize = 10
+        d.Font = Enum.Font.GothamMedium
+        d.TextSize = 11
         d.TextXAlignment = Enum.TextXAlignment.Left
+        d.TextTruncate = Enum.TextTruncate.AtEnd
         d.Parent = row
         Paint(d, "TextColor3", "Dim")
     end
@@ -267,17 +271,18 @@ local function CheckRow(parent, labelText, description, get, set, order)
     local knob = Instance.new("Frame")
     knob.Size = UDim2.new(0, 15, 0, 15)
     knob.Position = UDim2.new(0, 3, 0.5, -7.5)
-    knob.BackgroundColor3 = THEME.Dim
+    knob.BackgroundColor3 = THEME.Text
     knob.BorderSizePixel = 0
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+    -- v8.0: mesmo esquema do SwitchRow (bolinha escura no ligado)
     local function render()
         local on = not not get()
         Anim(track, 0.15, { BackgroundColor3 = on and THEME.Accent or THEME.Track })
         Anim(knob, 0.15, {
             Position = on and UDim2.new(1, -18, 0.5, -7.5) or UDim2.new(0, 3, 0.5, -7.5),
-            BackgroundColor3 = on and Color3.new(1, 1, 1) or THEME.Dim })
+            BackgroundColor3 = on and THEME.Main or THEME.Text })
     end
 
     track.MouseButton1Click:Connect(function()
@@ -400,7 +405,7 @@ local function ActionBtn(parent, text, colorKey, remoteKey, fn, confirmText)
     if not available then
         b.TextColor3 = THEME.Dim
         b.BackgroundTransparency = 0.45
-        b.Text = text .. "  (servidor)"
+        b.Text = text .. " (servidor)"
         Paint(b, "TextColor3", "Dim")
     end
 
