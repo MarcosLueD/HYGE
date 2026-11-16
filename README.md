@@ -123,6 +123,10 @@ desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
 - **Personagem**: Anti-Fall desliga tombo/ragdoll, corta a velocidade de queda
   antes do impacto e devolve você ao último chão se cair no void. Anti-Gravidade
   baixa `workspace.Gravity` no seu cliente (só a sua física muda).
+- **Fly (v8.1.1)**: voa com as animações do próprio personagem — nadar em
+  movimento (o corpo deita na direção do voo) e flutuar parado. Todo mundo vê.
+  Em R6 usa a pose do painel, que só você vê. Ajustes em Personagem ›
+  Velocidades; para usar uma animação sua (só em jogo seu), `CONFIG.FlyAnimR15`.
 - **Troll › Walk on Walls**: anda em paredes e tetos (WASD segue a câmera, Space
   pula). Os outros veem você na parede. As ações no alvo continuam dependendo
   dos Remotes de `server/`.

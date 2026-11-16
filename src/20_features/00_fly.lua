@@ -82,7 +82,10 @@ do
     end
 end
 
--- Pose de superman: carrega a animação de voo no Animator do personagem
+-- Animação do voo (ordem explicada em CONFIG, "ANIMAÇÃO DO VOO"):
+--   ID seu  >  estilo "jogo" (nadar/flutuar do próprio personagem)  >
+--   estilo "pacote"  >  pose procedural (reserva, só você vê)
+-- FlyPose.tilt = true faz o loop do Fly deitar o corpo na direção do voo.
 local function StartFlyAnim()
     local h = Hum()
     if not h then return end
@@ -91,12 +94,43 @@ local function StartFlyAnim()
         animator = Instance.new("Animator")
         animator.Parent = h
     end
+    FlyPose.tilt = false
 
-    -- ID próprio (se o dono do jogo publicou um) tem prioridade; senão, o pacote
+    -- AnimationId de uma pasta do script Animate do personagem (nil se não há)
+    local function FromGame(names)
+        local char = Char()
+        local animate = char and char:FindFirstChild("Animate")
+        if not animate then return nil end
+        for _, n in ipairs(names) do
+            local f = animate:FindFirstChild(n)
+            local a = f and f:FindFirstChildOfClass("Animation")
+            if a and a.AnimationId ~= "" then return a.AnimationId end
+        end
+        return nil
+    end
+
+    local style = SET.FlyStyle or CONFIG.FlyStyle or "jogo"
+    local source = "sua"
     local moveId = (h.RigType == Enum.HumanoidRigType.R6)
         and CONFIG.FlyAnimR6 or CONFIG.FlyAnimR15
-    if not moveId or moveId == "" then moveId = CONFIG.FlyAnimMove end
     local idleId = CONFIG.FlyAnimIdle
+    if not moveId or moveId == "" then
+        moveId, idleId = nil, nil
+        if style == "jogo" then
+            source = "do jogo"
+            moveId = FromGame({ "swim" })
+            if moveId then
+                idleId = FromGame({ "swimidle", "fall" })
+            elseif not FlyPose.warnedNoSwim then
+                FlyPose.warnedNoSwim = true
+                Log("Fly: este personagem não tem animação de nadar (R6 ou Animate "
+                    .. "próprio do jogo) — usando a pose do painel, que só você vê", "warn")
+            end
+        elseif style == "pacote" then
+            source = "do pacote Endless Aura"
+            moveId, idleId = CONFIG.FlyPackMove, CONFIG.FlyPackIdle
+        end
+    end
 
     local function LoadTrack(id)
         if not id or id == "" then return nil end
@@ -121,31 +155,44 @@ local function StartFlyAnim()
     end
 
     if not flyTrack then
-        -- sem ID configurado: nada de animação (ou a pose, se CONFIG.FlyUsePose)
+        -- nenhuma animação disponível: a pose procedural (se CONFIG.FlyUsePose)
         if CONFIG.FlyUsePose then FlyPose.Start() end
         return
     end
 
     FlyPose.muted = false
+    FlyPose.tilt = (source == "do jogo")   -- nadar no ar: o corpo deita
     pcall(function() flyTrack:Play(0.2) end)
 
     -- O Roblox só recusa asset de terceiro DEPOIS de carregar: track fica com
     -- Length 0 e nada anima. Se for o caso, volta pra pose procedural e avisa.
+    local mine = flyTrack
     task.delay(1.2, function()
-        if not flyTrack then return end
+        if not flyTrack or flyTrack ~= mine then return end   -- voo já reiniciou
+        -- a de "parado no ar" não carregou: fica só a de movimento
+        if FlyPose.idleTrack then
+            local ilen = 0
+            pcall(function() ilen = FlyPose.idleTrack.Length end)
+            if ilen <= 0 then
+                pcall(function() FlyPose.idleTrack:Stop(0) end)
+                pcall(function() FlyPose.idleTrack:Destroy() end)
+                FlyPose.idleTrack = nil
+            end
+        end
         local len = 0
         pcall(function() len = flyTrack.Length end)
         if len > 0 then return end
         pcall(function() flyTrack:Stop(0) end)
         pcall(function() flyTrack:Destroy() end)
         flyTrack = nil
+        FlyPose.tilt = false
         if FlyPose.idleTrack then
             pcall(function() FlyPose.idleTrack:Stop(0) end)
             pcall(function() FlyPose.idleTrack:Destroy() end)
             FlyPose.idleTrack = nil
         end
-        Log("O Roblox recusou a animação de voo (asset de terceiro: só carrega "
-            .. "se o dono do jogo republicar).", "error")
+        Log("O Roblox recusou a animação de voo " .. source .. " (asset que não é "
+            .. "do dono do jogo nem da Roblox) — usando a pose do painel.", "error")
         if CONFIG.FlyUsePose then FlyPose.Start() end
     end)
 end
@@ -153,6 +200,7 @@ end
 local function StopFlyAnim()
     FlyPose.Stop()
     FlyPose.muted = false
+    FlyPose.tilt = false
     if flyTrack then
         pcall(function() flyTrack:Stop(0.2) end)
         pcall(function() flyTrack:Destroy() end)
@@ -218,12 +266,24 @@ local function StartFly()
         flyBv.Velocity = vel
 
         local look = vel.Magnitude > 2 and vel.Unit or cam.LookVector
+        -- v8.1.1: parado no ar com a animação do jogo, fica em pé olhando para
+        -- onde a câmera aponta no plano (sem inclinar junto com a câmera)
+        if FlyPose.tilt and vel.Magnitude <= 2 then
+            local flat = Vector3.new(cam.LookVector.X, 0, cam.LookVector.Z)
+            if flat.Magnitude > 1e-3 then look = flat.Unit end
+        end
         local r = Root()
         if r and flyBg then
             local aim = CFrame.lookAt(r.Position, r.Position + look)
             if FlyPose.active then
                 -- deita o corpo na direção do voo (pose de superman)
                 aim = aim * CFrame.Angles(math.rad(CONFIG.Pose.BodyTilt or -90), 0, 0)
+            elseif FlyPose.tilt and not FlyPose.muted then
+                -- animação de nadar do jogo: deita mais quanto mais rápido voa
+                -- (cabeça para onde você vai; parado, fica em pé)
+                local k = math.clamp(vel.Magnitude / math.max(State.FlySpeed, 1), 0, 1)
+                local deg = SET.FlyTilt or CONFIG.FlySwimTilt or 75
+                aim = aim * CFrame.Angles(math.rad(-deg * k), 0, 0)
             end
             flyBg.CFrame = flyBg.CFrame:Lerp(aim, 0.15)
         end

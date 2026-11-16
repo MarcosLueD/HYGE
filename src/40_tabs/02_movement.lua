@@ -54,6 +54,26 @@ do
         apply = function(v) if V8.AntiGrav then V8.AntiGrav.Set(v) end end,
     })
 
+    -- v8.1.1: animação do voo. Ligado = nadar/flutuar do próprio personagem
+    -- (todo mundo vê); desligado = pose do painel (só você vê). Com o Fly
+    -- ligado, troca na hora (menos se houver um emote tocando por cima).
+    CheckRow(speeds, "Animação de voo do jogo",
+        "Nada voando e flutua parado — todos veem (R15)",
+        function() return (SET.FlyStyle or CONFIG.FlyStyle) == "jogo" end,
+        function(v)
+            SET.FlyStyle = v and "jogo" or "pose"
+            if IsOn("fly") and not Emote.track then
+                StopFlyAnim()
+                StartFlyAnim()
+            end
+        end, 5)
+
+    V8.FlyTiltSlider = SliderRow(speeds, {
+        label = "Inclinação voando", min = 0, max = 90,
+        def = CONFIG.FlySwimTilt or 75, suffix = "°", order = 6,
+        apply = function(v) SET.FlyTilt = v end,
+    })
+
     ----------------------------------------------------------------------------
     -- CÂMERA / DRONE
     ----------------------------------------------------------------------------

@@ -62,7 +62,9 @@ do
                        "Dock", "Slots", "WinPos", "Island",
                        -- v8.1
                        "Auto", "AutoRejoin", "EmoteWalk", "ChatRelay", "ChatOn",
-                       "ChatToasts" }
+                       "ChatToasts",
+                       -- v8.1.1: animação do voo
+                       "FlyStyle", "FlyTilt" }
 
     C.Snapshot = function()
         local d = {
@@ -162,6 +164,10 @@ do
             if d.speeds.drone and DroneSpeedSlider then pcall(DroneSpeedSlider, d.speeds.drone) end
             if d.speeds.wall then State.WallAlpha = d.speeds.wall end
             if d.speeds.grav and V8.GravSlider then pcall(V8.GravSlider, d.speeds.grav) end
+        end
+        -- v8.1.1: o slider mostra a inclinação salva (o valor já veio em SET)
+        if type(SET.FlyTilt) == "number" and V8.FlyTiltSlider then
+            pcall(V8.FlyTiltSlider, SET.FlyTilt, true)
         end
 
         -- keybinds

@@ -1,5 +1,23 @@
 # Changelog
 
+## v8.1.1
+
+### Animação de voo que todo mundo vê
+- O Fly agora usa, por padrão, as animações do **próprio personagem**: a de
+  nadar enquanto voa (o corpo deita na direção do voo, mais quanto mais rápido)
+  e a de flutuar/cair parado no ar. Elas carregam em qualquer jogo e replicam
+  para os outros jogadores — a pose antiga do painel escreve direto nas juntas
+  no seu cliente, então só você via.
+- Personagem › Velocidades: **Animação de voo do jogo** (desligado volta para a
+  pose do painel) e **Inclinação voando** (0–90°). Os dois vão na config.
+- Personagem R6 (não tem animação de nadar) ou jogo com Animate próprio sem ela:
+  o Fly usa a pose do painel e avisa uma vez no console.
+- Animação "parado no ar" que não carrega agora é descartada sozinha (antes o
+  personagem ficava sem animação ao parar).
+- Config: `FlyStyle` (`"jogo"` | `"pose"` | `"pacote"`), `FlySwimTilt`. Os IDs do
+  Endless Aura viraram `FlyPackMove`/`FlyPackIdle` e só são usados com
+  `FlyStyle = "pacote"`; `FlyAnimIdle` agora é a SUA animação de parado no ar.
+
 ## v8.1
 
 ### Dock de 8 seções

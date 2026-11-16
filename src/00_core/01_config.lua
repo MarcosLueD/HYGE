@@ -16,7 +16,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.1",
+    Version   = "v8.1.1",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -38,14 +38,23 @@ local CONFIG = {
     ChatRelay = "",
     ChatKey   = "",   -- senha opcional: a mesma do HYGE_CHAT_KEY do relay
 
-    -- Pose de voo. Por padrão o painel monta a pose de superman na mão
-    -- (dobra os ombros/quadris direto nas juntas), então não depende de
-    -- nenhum ID de animação e funciona em R6 e R15.
-    -- Se você tiver uma animação SUA publicada, cole o ID abaixo e ela
-    -- passa a ser usada no lugar da pose manual.
-    FlyAnimR6  = "",
-    FlyAnimR15 = "",
+    -- ANIMAÇÃO DO VOO (v8.1.1). O Fly escolhe nesta ordem:
+    --   1. FlyAnimR6 / FlyAnimR15: animação SUA publicada. Só carrega em jogo
+    --      seu ou do seu grupo (em jogo de outros o Roblox recusa).
+    --      FlyAnimIdle (opcional) = sua animação para parado no ar.
+    --   2. FlyStyle = "jogo" (padrão): as animações do PRÓPRIO personagem —
+    --      nadar enquanto voa (o corpo deita na direção do voo) e flutuar/cair
+    --      parado. Carregam em qualquer jogo e TODO MUNDO vê. Só R15 tem a de
+    --      nadar; em R6 cai na pose (4). Dá para trocar em Personagem.
+    --   3. FlyStyle = "pacote": Endless Aura (FlyPackMove/FlyPackIdle, abaixo)
+    --   4. pose procedural (FlyUsePose): reserva. Escreve direto nas juntas no
+    --      SEU cliente — só você vê; os outros veem o personagem parado.
+    FlyAnimR6   = "",
+    FlyAnimR15  = "",
+    FlyAnimIdle = "",
     FlyAnimSpeed = 1,
+    FlyStyle    = "jogo",   -- "jogo" | "pose" | "pacote"
+    FlySwimTilt = 75,       -- graus que o corpo deita voando no estilo "jogo"
 
     -- Pacote "Endless Aura Floating Pack" (bundle 4899847411546). Os IDs
     -- abaixo ficam guardados pra quando/se o dono do jogo (ou o grupo HYGE)
@@ -54,10 +63,9 @@ local CONFIG = {
     -- pra esses dois IDs) e a track carrega com Length 0, sem animar nada.
     -- Move = catalog 74203422263286 ("Fall Animation" do pacote)
     -- Idle = catalog 75638427965557 ("Idle Animation" do pacote)
-    FlyAnimMove = "rbxassetid://74203422263286",
-    FlyAnimIdle = "rbxassetid://75638427965557",
-    -- true: usa a pose procedural abaixo (não depende de asset de terceiro).
-    -- Se um dia os IDs acima carregarem de verdade, troque pra false.
+    FlyPackMove = "rbxassetid://74203422263286",
+    FlyPackIdle = "rbxassetid://75638427965557",
+    -- true: sem nenhuma animação que carregue, usa a pose procedural abaixo
     FlyUsePose  = true,
 
     -- Ângulos da pose manual (em graus). Mexa se quiser outro estilo.
