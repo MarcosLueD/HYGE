@@ -59,7 +59,10 @@ do
                        "Rate", "ColorKey", "AllyKey", "TeamColors" }
     local SET_KEYS = { "Animations", "Toasts", "ShowLogs", "Confirm", "EspAuto",
                        "MaxLog", "Compact", "Transparency", "AutoSave", "SitOnLoad",
-                       "Dock", "Slots", "WinPos", "Island" }
+                       "Dock", "Slots", "WinPos", "Island",
+                       -- v8.1
+                       "Auto", "AutoRejoin", "EmoteWalk", "ChatRelay", "ChatOn",
+                       "ChatToasts" }
 
     C.Snapshot = function()
         local d = {
@@ -76,6 +79,7 @@ do
                 jump  = State.JumpPower,
                 drone = State.DroneSpeed,
                 wall  = State.WallAlpha,
+                grav  = State.GravityPct,   -- v8.1
             },
             waypoints = {},
             emotes    = {},
@@ -157,6 +161,7 @@ do
             if d.speeds.jump and JumpSlider then pcall(JumpSlider, d.speeds.jump) end
             if d.speeds.drone and DroneSpeedSlider then pcall(DroneSpeedSlider, d.speeds.drone) end
             if d.speeds.wall then State.WallAlpha = d.speeds.wall end
+            if d.speeds.grav and V8.GravSlider then pcall(V8.GravSlider, d.speeds.grav) end
         end
 
         -- keybinds
@@ -171,6 +176,7 @@ do
             end
         end
         if d.panelkey and KC(d.panelkey) then CONFIG.PanelKey = KC(d.panelkey) end
+        if V8.PanelKeyLabel then V8.PanelKeyLabel.Text = KeyName(CONFIG.PanelKey) end
         if d.consolekey and KC(d.consolekey) then CONFIG.ConsoleKey = KC(d.consolekey) end
         if d.searchkey and KC(d.searchkey) then CONFIG.SearchKey = KC(d.searchkey) end
         if d.searchctrl ~= nil then CONFIG.SearchCtrl = d.searchctrl end

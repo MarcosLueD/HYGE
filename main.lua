@@ -1,12 +1,25 @@
 -- =============================================================================
--- HYGE v8.0 — ARQUIVO GERADO, NÃO EDITE AQUI.
+-- HYGE v8.1 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: 801fef40f7a1
+-- build: 913122fc7840
 -- =============================================================================
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v8.0
+    HYGE ADMIN PANEL v8.1
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v8.1 trouxe (dock de 8 secoes):
+      * Inicio: mapa atual, perfil com tempo de jogo, Rejoin / Trocar de
+        servidor / Discord
+      * Personagem: Anti-Fall e Anti-Gravidade (com slider)
+      * Playtime Shop: loja paga com tempo de jogo (Ranks, Icons, Titles,
+        Effects, Nametags, Bundles) — tudo visual e local
+      * Troll: Walk on Walls + acoes no alvo (vindas da Moderacao)
+      * Emotes: catalogo pesquisavel, Playback Speed, andar com o emote
+      * Jogadores: ESP / TP / SPEC por linha da lista
+      * Configuracoes: tecla do painel remapeavel, funcoes automaticas,
+        reconectar se cair; Console virou sub-aba
+      * Chat HYGE entre usuarios do painel (relay em server/chat-relay)
 
     O que a v8.0 trouxe:
       * Shell novo: janela 800x500, TopBar "Welcome home" com relogio e
@@ -61,7 +74,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.0",
+    Version   = "v8.1",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -72,6 +85,16 @@ local CONFIG = {
     -- Logo: suba a imagem em create.roblox.com > Development Items > Decals,
     -- copie o ID e cole aqui como "rbxassetid://SEU_ID". Vazio = logo em texto.
     LogoId    = "",
+
+    -- v8.1: convite do Discord (botão da Home e comando 'discord'). Vazio = o
+    -- botão avisa que não há link configurado, em vez de copiar qualquer coisa.
+    Discord   = "",
+
+    -- v8.1: chat entre usuários do HYGE (Chat › HYGE). Precisa de um relay
+    -- rodando (server/chat-relay — veja o README). Vazio = desligado; o
+    -- endereço também pode ser colado depois, na própria aba.
+    ChatRelay = "",
+    ChatKey   = "",   -- senha opcional: a mesma do HYGE_CHAT_KEY do relay
 
     -- Pose de voo. Por padrão o painel monta a pose de superman na mão
     -- (dobra os ombros/quadris direto nas juntas), então não depende de
@@ -290,6 +313,7 @@ local State = {
     DroneSpeed      = 70,
     DroneSens       = 4,
     DroneSmooth     = 8,
+    GravityPct      = 25,    -- v8.1: % da gravidade normal com Anti-Gravidade ligado
     SelectedPlayer  = nil,
     Spectating      = false,
     SpectateTarget  = nil,
@@ -332,6 +356,14 @@ local Emote = { Speed = 1 }  -- animacoes: .Play / .Stop / .track / .id
 local DroneHUD = {}  -- HUD do modo drone: .Create/.Show/.Hide/.Update/.Destroy
 local Icon, IconTint, SetChips  -- forward: icones vetoriais + chips da topbar
 local V8 = {}  -- v8.0: situacoes, config em disco, busca global
+
+-- v8.1: módulos que carregam ANTES do scheduler (90_runtime/04_scheduler.lua)
+-- registram trabalho periódico aqui; o scheduler roda tudo no mesmo Heartbeat
+-- e depois troca V8.Job pelo Every dele. Nada de loop próprio por módulo.
+V8.Jobs = {}
+V8.Job = function(interval, fn) table.insert(V8.Jobs, { interval, fn }) end
+-- v8.1: [aba] = fn — roda 1x/s só enquanto essa aba está visível
+V8.TabTick = {}
 
 local function Track(inst) table.insert(Bin, inst) return inst end
 local function Drop(name)
@@ -1055,9 +1087,12 @@ local function AddNav(name, order)
         Home = "home", Movement = "user", Visuals = "eye", Players = "users",
         Moderation = "shield", Server = "server", Emotes = "smile", Settings = "gear",
         Shop = "bag", Scripts = "terminal", Chat = "chat",   -- v8.0
+        Troll = "mask", HyChat = "chat",                      -- v8.1
     }
+    local NAV_LABEL = { Shop = "Playtime Shop", HyChat = "Chat HYGE",
+        Chat = "Chat do jogo", Scripts = "Console" }          -- v8.1
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1, 0, 0, 32)   -- v8.0: 11 abas precisam caber na sidebar
+    b.Size = UDim2.new(1, 0, 0, 29)   -- v8.1: 13 abas precisam caber na sidebar
     b.BackgroundColor3 = THEME.Sidebar
     b.Text = ""
     b.AutoButtonColor = false
@@ -1076,7 +1111,7 @@ local function AddNav(name, order)
     lbl.Size = UDim2.new(1, -44, 1, 0)
     lbl.Position = UDim2.new(0, 40, 0, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Text = name
+    lbl.Text = NAV_LABEL[name] or name
     lbl.TextColor3 = THEME.Dim
     lbl.Font = Enum.Font.GothamMedium
     lbl.TextSize = 13
@@ -1906,6 +1941,10 @@ local EspOpts = {
     ColorKey   = "Accent",
     AllyKey    = "Success",
     TeamColors = false,  -- pinta pela cor da equipe
+    -- v8.1: ESP por jogador (botão ESP da lista de Jogadores). Com alguém
+    -- marcado, o ESP mostra SÓ os marcados (ignorando equipe e distância);
+    -- sem ninguém marcado, vale o ESP normal com os filtros. Não vai pra config.
+    Pick       = {},     -- [userId] = true
 }
 
 local function RemoveEsp(userId)
@@ -2108,6 +2147,9 @@ local function UpdateEsp()
                 local show = ally and EspOpts.Allies or ((not ally) and EspOpts.Enemies)
                 if show and dist and EspOpts.MaxDist > 0 and dist > EspOpts.MaxDist then
                     show = false
+                end
+                if next(EspOpts.Pick) ~= nil then
+                    show = EspOpts.Pick[p.UserId] == true
                 end
                 if show and h and h.Health <= 0 then show = false end
                 e.show = show
@@ -2782,6 +2824,432 @@ do
     SpectateHud = hud
 end
 --------------------------------------------------------------------------------
+-- v8.1 — ANTI-FALL e ANTI-GRAVIDADE (seção Personagem)
+--
+-- Anti-Fall, três camadas, tudo no SEU personagem:
+--   1. desliga os estados FallingDown/Ragdoll do Humanoid (sem tombo)
+--   2. pouso suave: caindo rápido com o chão logo abaixo, a velocidade de
+--      queda é cortada antes do impacto (jogos que dão dano por velocidade
+--      de pouso deixam de dar)
+--   3. void: abaixo de FallenPartsDestroyHeight + 60, volta para o último
+--      lugar em que você estava pisando
+-- Dano de queda feito por script do servidor com outra regra continua valendo.
+--
+-- Anti-Gravidade: workspace.Gravity vale só para a física que roda no SEU
+-- cliente — o seu personagem (você é o dono da física dele) e peças soltas
+-- que o seu cliente simula. Os outros jogadores não mudam. Se o jogo trocar
+-- a gravidade enquanto está ligado, o valor novo vira a base.
+--
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        ------------------------------------------------------------ ANTI-FALL
+        local AF = { hum = nil, safe = nil, acc = 0 }
+        V8.AntiFall = AF
+        local STATES = { Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll }
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.IgnoreWater = true
+
+        -- reaplica sozinho no respawn: o Humanoid novo é detectado no loop
+        local function Guard(h)
+            if AF.hum == h then return end
+            AF.hum = h
+            for _, st in ipairs(STATES) do
+                pcall(function() h:SetStateEnabled(st, false) end)
+            end
+        end
+
+        local function Unguard()
+            local h = AF.hum
+            AF.hum = nil
+            if h and h.Parent then
+                for _, st in ipairs(STATES) do
+                    pcall(function() h:SetStateEnabled(st, true) end)
+                end
+            end
+        end
+
+        DefineToggle({
+            id = "antifall", label = "Anti-Fall",
+            desc = "Sem tombo nem dano de queda; volta se cair no void",
+            enable = function()
+                AF.safe = nil
+                AF.acc = 0
+                Conn.AntiFall = RunService.Heartbeat:Connect(function(dt)
+                    local h, root = Hum(), Root()
+                    if not h or not root then return end
+                    Guard(h)
+                    local pos = root.Position
+                    local vel = root.AssemblyLinearVelocity
+                    local voidY = workspace.FallenPartsDestroyHeight
+
+                    -- último chão seguro (4x por segundo, parado em algo)
+                    AF.acc = AF.acc + dt
+                    if AF.acc >= 0.25 then
+                        AF.acc = 0
+                        if h.FloorMaterial ~= Enum.Material.Air and math.abs(vel.Y) < 5
+                            and pos.Y > voidY + 80 then
+                            AF.safe = root.CFrame
+                        end
+                    end
+
+                    -- void
+                    if pos.Y < voidY + 60 and AF.safe then
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        root.CFrame = AF.safe + Vector3.new(0, 3, 0)
+                        Log("Anti-Fall: caiu no void — voltou para o último chão", "action")
+                        return
+                    end
+
+                    -- pouso suave
+                    if vel.Y < -55 then
+                        params.FilterDescendantsInstances = { Char() }
+                        local reach = 6 + math.abs(vel.Y) * dt * 3
+                        local hit = workspace:Raycast(pos, Vector3.new(0, -reach, 0), params)
+                        if hit then
+                            root.AssemblyLinearVelocity = Vector3.new(vel.X, -12, vel.Z)
+                        end
+                    end
+                end)
+            end,
+            disable = function()
+                Drop("AntiFall")
+                Unguard()
+                AF.safe = nil
+            end,
+        })
+
+        ------------------------------------------------------- ANTI-GRAVIDADE
+        local AG = { base = nil, busy = false }
+        V8.AntiGrav = AG
+
+        local function Want()
+            return (AG.base or 196.2) * math.clamp(State.GravityPct or 25, 0, 100) / 100
+        end
+
+        local function Write()
+            AG.busy = true
+            pcall(function() workspace.Gravity = Want() end)
+            AG.busy = false
+        end
+
+        -- slider da seção Personagem (e comando 'gravity')
+        AG.Set = function(pct)
+            State.GravityPct = math.clamp(math.floor((tonumber(pct) or 25) + 0.5), 0, 100)
+            if IsOn("antigrav") then Write() end
+        end
+
+        DefineToggle({
+            id = "antigrav", label = "Anti-Gravidade",
+            desc = "Gravidade baixa só para você: pula alto e cai devagar",
+            enable = function()
+                AG.base = workspace.Gravity
+                Write()
+                Conn.AntiGrav = workspace:GetPropertyChangedSignal("Gravity"):Connect(function()
+                    if AG.busy then return end
+                    local cur = workspace.Gravity
+                    if math.abs(cur - Want()) > 0.01 then
+                        AG.base = cur   -- o jogo trocou a gravidade: vira a base nova
+                        Write()
+                    end
+                end)
+            end,
+            disable = function()
+                Drop("AntiGrav")
+                if AG.base then
+                    AG.busy = true
+                    pcall(function() workspace.Gravity = AG.base end)
+                    AG.busy = false
+                end
+                AG.base = nil
+            end,
+        })
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
+-- v8.1 — WALK ON WALLS (seção Troll)
+--
+-- O Humanoid só sabe andar com o "para cima" do mundo, então aqui o painel
+-- assume o controle do personagem (PlatformStand, igual ao Fly) e cuida da
+-- "gravidade" sozinho:
+--   * um raio para baixo (no "para cima" atual) acha a superfície e prende os
+--     pés nela; superfície curva vai virando o corpo aos poucos
+--   * andando contra uma parede, ela vira o chão (sobe a parede, anda no teto)
+--   * passando de uma quina, um raio "dobra" a borda e continua do outro lado
+--   * sem nada embaixo por ~1,2 s, volta para a gravidade normal
+-- WASD anda (relativo à câmera), Space pula para fora da superfície. Usa a
+-- WalkSpeed/JumpPower dos sliders e a gravidade atual (Anti-Gravidade vale).
+-- Quem está em volta vê você na parede: o personagem é seu, a posição replica.
+--
+-- Liga junto com Fly/Drone/Freecam não dá (todos mandam no personagem): ligar
+-- um deles desliga este. No respawn ele sempre desliga.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local W = { up = Vector3.yAxis, fall = 0, air = 0 }
+        V8.WallWalk = W
+
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.IgnoreWater = true
+
+        local function Proj(v, n) return v - n * v:Dot(n) end
+
+        -- distância do centro do HumanoidRootPart até a sola do pé
+        local function HipOffset(h, root)
+            if h.RigType == Enum.HumanoidRigType.R15 then
+                return h.HipHeight + root.Size.Y * 0.5
+            end
+            return root.Size.Y * 0.5 + 2   -- R6: perna fixa de 2 studs
+        end
+
+        -- animação de andar do próprio jogo (pasta Animate), se existir
+        local function LoadWalk(h)
+            local char = Char()
+            local animate = char and char:FindFirstChild("Animate")
+            local folder = animate and (animate:FindFirstChild("walk") or animate:FindFirstChild("run"))
+            local anim = folder and folder:FindFirstChildOfClass("Animation")
+            local animator = h:FindFirstChildOfClass("Animator")
+            if not anim or not animator then return nil end
+            local ok, tr = pcall(function() return animator:LoadAnimation(anim) end)
+            if not ok or not tr then return nil end
+            pcall(function()
+                tr.Looped = true
+                tr.Priority = Enum.AnimationPriority.Movement
+            end)
+            return tr
+        end
+
+        local function Stop()
+            Drop("WallWalk")
+            if W.bv then pcall(function() W.bv:Destroy() end) W.bv = nil end
+            if W.bg then pcall(function() W.bg:Destroy() end) W.bg = nil end
+            if W.anim then
+                pcall(function() W.anim:Stop(0.2) end)
+                pcall(function() W.anim:Destroy() end)
+                W.anim = nil
+            end
+            for part, cc in pairs(W.coll or {}) do
+                if part.Parent then pcall(function() part.CanCollide = cc end) end
+            end
+            W.coll = nil
+            local h, root = Hum(), Root()
+            if h then h.PlatformStand = false end
+            if root and W.up ~= Vector3.yAxis then
+                -- volta em pé, olhando para o mesmo lado (no plano do chão)
+                local look = Proj(root.CFrame.LookVector, Vector3.yAxis)
+                if look.Magnitude < 0.1 then look = Proj(-W.up, Vector3.yAxis) end
+                if look.Magnitude < 0.1 then look = Vector3.new(0, 0, -1) end
+                pcall(function()
+                    root.CFrame = CFrame.lookAt(root.Position, root.Position + look.Unit)
+                    root.AssemblyLinearVelocity = Vector3.zero
+                end)
+            end
+            W.up = Vector3.yAxis
+            W.fall, W.air = 0, 0
+            W.rot = nil
+        end
+
+        local function Key(kc) return UserInputService:IsKeyDown(kc) end
+
+        local function Step(dt)
+            local root, h = Root(), Hum()
+            if not root or not h or not W.bv or not W.bv.Parent then return end
+            -- outro modo assumiu o personagem: sai de cena
+            if IsOn("fly") or IsOn("drone") or IsOn("freecam") then
+                SetToggle("wallwalk", false)
+                return
+            end
+            dt = math.min(dt, 0.1)
+            h.PlatformStand = true
+            for part in pairs(W.coll) do
+                if part.Parent and part.CanCollide then part.CanCollide = false end
+            end
+
+            local up = W.up
+            local hip = HipOffset(h, root)
+            local pos = root.Position
+
+            -- direção pedida, relativa à câmera e projetada na superfície
+            local cam = Camera.CFrame
+            local fwd = Proj(cam.LookVector, up)
+            if fwd.Magnitude < 0.25 then fwd = Proj(cam.UpVector, up) end
+            if fwd.Magnitude < 1e-3 and W.facing then fwd = Proj(W.facing, up) end
+            if fwd.Magnitude < 1e-3 then fwd = Proj(Vector3.new(0, 0, -1), up) end
+            if fwd.Magnitude < 1e-3 then fwd = Proj(Vector3.xAxis, up) end
+            fwd = fwd.Unit
+            local right = fwd:Cross(up)
+            local ix, iz = 0, 0
+            if not V8.Typing() then
+                if Key(Enum.KeyCode.W) then iz = iz + 1 end
+                if Key(Enum.KeyCode.S) then iz = iz - 1 end
+                if Key(Enum.KeyCode.D) then ix = ix + 1 end
+                if Key(Enum.KeyCode.A) then ix = ix - 1 end
+            end
+            local move = fwd * iz + right * ix
+            if move.Magnitude > 1e-3 then move = move.Unit else move = Vector3.zero end
+            local moving = move.Magnitude > 0
+            local speed = math.max(0, State.WalkSpeed or 16)
+
+            -- 1) parede à frente vira o chão
+            if moving then
+                local reach = root.Size.Z * 0.5 + 1.6
+                local hit = workspace:Raycast(pos, move * reach, params)
+                if hit and hit.Normal:Dot(up) < 0.6 then
+                    local old = up
+                    up = hit.Normal
+                    W.up = up
+                    pos = hit.Position + up * hip
+                    W.fall, W.air = 0, 0
+                    local f = Proj(old, up)
+                    if f.Magnitude > 1e-3 then W.facing = f.Unit end
+                    move = Vector3.zero   -- o próximo quadro já anda no plano novo
+                end
+            end
+
+            -- 2) chão no "para baixo" atual
+            local ground = workspace:Raycast(pos, -up * (hip + 1.5), params)
+            if ground and W.fall <= 0 then
+                if ground.Normal:Dot(up) > 0.3 then
+                    up = up:Lerp(ground.Normal, math.min(1, dt * 12)).Unit
+                    W.up = up
+                end
+                pos = ground.Position + up * hip
+                W.fall, W.air = 0, 0
+                if not V8.Typing() and Key(Enum.KeyCode.Space) then
+                    W.fall = math.max(30, State.JumpPower or 50)
+                end
+            else
+                -- 3) passou da quina: procura a face do outro lado da borda
+                local wrapped = false
+                if not ground and moving and W.fall <= 0 then
+                    local probe = pos - up * (hip + 0.8) + move * 0.8
+                    local hit = workspace:Raycast(probe, -move * 3, params)
+                    if hit and hit.Normal:Dot(up) < 0.6 then
+                        local old = up
+                        up = hit.Normal
+                        W.up = up
+                        pos = hit.Position + up * hip
+                        local f = Proj(-old, up)
+                        if f.Magnitude > 1e-3 then W.facing = f.Unit end
+                        W.fall, W.air = 0, 0
+                        move = Vector3.zero
+                        wrapped = true
+                    end
+                end
+                if not wrapped then
+                    if not ground then W.air = W.air + dt end
+                    W.fall = math.max(W.fall - workspace.Gravity * dt, -150)
+                    if W.air > 1.2 and up ~= Vector3.yAxis then
+                        -- soltou da parede/teto: gravidade normal de novo
+                        up = Vector3.yAxis
+                        W.up = up
+                        W.fall = math.min(W.fall, 0)
+                    end
+                end
+            end
+
+            local vel = move * speed + up * W.fall
+            pos = pos + vel * dt
+
+            -- frente do corpo: para onde anda (ou a última), sempre no plano
+            if moving and move.Magnitude > 0 then W.facing = move end
+            local face = Proj(W.facing or fwd, up)
+            if face.Magnitude < 1e-3 then face = fwd end
+            face = face.Unit
+            local back = -face
+            local target = CFrame.fromMatrix(Vector3.zero, up:Cross(back), up, back)
+            W.rot = W.rot and W.rot:Lerp(target, math.min(1, dt * 14)) or target
+
+            local cf = CFrame.new(pos) * W.rot
+            root.CFrame = cf
+            root.AssemblyAngularVelocity = Vector3.zero
+            W.bv.Velocity = vel
+            if W.bg then W.bg.CFrame = cf end
+
+            -- anda com a animação de andar do jogo (parado = sem animação)
+            if W.anim then
+                local walking = moving and speed > 0
+                if walking and not W.anim.IsPlaying then
+                    pcall(function() W.anim:Play(0.15) end)
+                elseif not walking and W.anim.IsPlaying then
+                    pcall(function() W.anim:Stop(0.2) end)
+                end
+                if walking then pcall(function() W.anim:AdjustSpeed(speed / 16) end) end
+            end
+        end
+
+        local function Start()
+            local root, h, char = Root(), Hum(), Char()
+            if not root or not h or not char then error("sem personagem") end
+            for _, id in ipairs({ "fly", "drone", "freecam" }) do
+                if IsOn(id) then SetToggle(id, false, true) end
+            end
+            Stop()
+            params.FilterDescendantsInstances = { char }
+            W.up = Vector3.yAxis
+            W.fall, W.air = 0, 0
+            W.facing = Proj(root.CFrame.LookVector, Vector3.yAxis)
+            if W.facing.Magnitude < 1e-3 then W.facing = Vector3.new(0, 0, -1) end
+            W.facing = W.facing.Unit
+
+            -- colisão do corpo desligada: quem prende na superfície é o raio
+            W.coll = {}
+            for _, p in ipairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    W.coll[p] = p.CanCollide
+                    p.CanCollide = false
+                end
+            end
+
+            -- BodyVelocity anula a gravidade do motor; BodyGyro segura a rotação
+            local bv = Instance.new("BodyVelocity")
+            bv.Name = "HYGE_WallWalk"
+            bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+            bv.Velocity = Vector3.zero
+            bv.Parent = root
+            W.bv = bv
+
+            local bg = Instance.new("BodyGyro")
+            bg.Name = "HYGE_WallGyro"
+            bg.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+            bg.P = 30000
+            bg.D = 500
+            bg.CFrame = root.CFrame
+            bg.Parent = root
+            W.bg = bg
+
+            W.anim = LoadWalk(h)
+            Conn.WallWalk = RunService.RenderStepped:Connect(function(dt)
+                local ok, err = pcall(Step, dt)
+                if not ok then
+                    Log("Walk on Walls: " .. tostring(err), "error")
+                    SetToggle("wallwalk", false)
+                end
+            end)
+        end
+
+        DefineToggle({
+            id = "wallwalk", label = "Walk on Walls",
+            desc = "Anda em paredes e tetos (WASD; Space pula)",
+            enable = Start, disable = Stop,
+        })
+
+        -- o personagem novo não tem as peças de controle: desliga e avisa
+        Conn.WallRespawn = LocalPlayer.CharacterAdded:Connect(function()
+            if IsOn("wallwalk") then
+                SetToggle("wallwalk", false, true)
+                Log("Walk on Walls desligado (respawn) — ligue de novo se quiser", "warn")
+            end
+        end)
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
 -- FÁBRICA DE UI v7
 -- Tiles de estatística, sliders com campo numérico + reset, switches genéricos
 -- (não ligados ao registry), avatar, chips, confirmação e botões com gate de
@@ -3292,6 +3760,19 @@ do
         grid     = { {3,3,8,8,0,2,1}, {13,3,8,8,0,2,1}, {3,13,8,8,0,2,1},
                      {13,13,8,8,0,2,1} },
         chat     = { {2,3,20,15,0,7,1}, {5,16,3,6,25,1} },
+        -- v8.1: Troll, Playtime Shop, Emotes e botões da Home
+        mask     = { {2,4,20,16,0,8,1}, {5.5,8.5,5,2,20,1}, {13.5,8.5,5,2,-20,1},
+                     {7,14,10,3,0,2} },
+        star     = { {6,6,12,12,0,2}, {6,6,12,12,45,2} },
+        crown    = { {4,15,16,4,0,1}, {4,7,3.5,10,0,1}, {10.25,4,3.5,13,0,1},
+                     {16.5,7,3.5,10,0,1} },
+        heart    = { {3,5,10,10,0,5}, {11,5,10,10,0,5}, {6.5,8.5,11,11,45,2} },
+        gem      = { {6,6,12,12,45,2} },
+        play     = { {7,5,2.5,14,0,1}, {7.45,7.25,12.6,2.5,33.7,1},
+                     {7.45,14.25,12.6,2.5,-33.7,1} },
+        swap     = { {3,6,16,2.5,0,1}, {14.5,3.5,6,2.5,40,1},
+                     {5,15.5,16,2.5,0,1}, {3.5,18,6,2.5,40,1} },
+        link     = { {2,8,11,8,0,4,1}, {11,8,11,8,0,4,1} },
     }
 
     Icon = function(parent, kind, color, size, order)
@@ -3806,6 +4287,565 @@ do
     end
 end
 --------------------------------------------------------------------------------
+-- v8.1 — REDE E DISCO (helpers do executor)
+--
+-- O Roblox não deixa LocalScript fazer HTTP. Executores expõem request()
+-- (ou http_request / syn.request / http.request) e game:HttpGet. Tudo aqui é
+-- testado antes de usar: sem suporte, quem chama recebe nil + o motivo — nunca
+-- uma resposta inventada. Usado pela troca de servidor (Início) e pelo chat
+-- HYGE (Chat › HYGE).
+-- V8.Disk lê/grava arquivos pequenos na pasta do executor (playtime da loja).
+-- Tudo em V8.Net / V8.Disk: zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    V8.Net = {}
+    V8.Disk = {}
+    local N, D = V8.Net, V8.Disk
+
+    N.Http = nil
+    pcall(function() N.Http = game:GetService("HttpService") end)
+
+    -- a função request do executor (a primeira que existir), ou nil
+    N.Fn = function()
+        if typeof(request) == "function" then return request end
+        if typeof(http_request) == "function" then return http_request end
+        if typeof(syn) == "table" and typeof(syn.request) == "function" then return syn.request end
+        if typeof(http) == "table" and typeof(http.request) == "function" then return http.request end
+        return nil
+    end
+
+    N.CanPost = function() return N.Fn() ~= nil end
+
+    N.Encode = function(s)
+        local ok, r = pcall(function() return N.Http:UrlEncode(tostring(s)) end)
+        if ok and type(r) == "string" then return r end
+        return (tostring(s):gsub("[^%w%-_%.~]", function(c)
+            return string.format("%%%02X", string.byte(c))
+        end))
+    end
+
+    -- devolve ok, corpo (ou o erro), status
+    N.Request = function(method, url, body, headers)
+        local fn = N.Fn()
+        if fn then
+            local ok, res = pcall(fn, { Url = url, Method = method,
+                Headers = headers or {}, Body = body })
+            if not ok then return false, tostring(res), 0 end
+            if type(res) ~= "table" then return false, "resposta vazia do executor", 0 end
+            local code = tonumber(res.StatusCode) or 0
+            local good = (code >= 200 and code < 300) or (code == 0 and res.Success == true)
+            return good, tostring(res.Body or ""), code
+        end
+        if method == "GET" then
+            local ok, res = pcall(function() return game:HttpGet(url) end)
+            if ok and type(res) == "string" then return true, res, 200 end
+            return false, "executor sem HTTP (nem request() nem game:HttpGet)", 0
+        end
+        return false, "executor sem request(): só dá para ler, não para enviar", 0
+    end
+
+    -- JSON de ida e volta. Devolve a tabela ou nil + motivo
+    N.Json = function(method, url, tbl)
+        if not N.Http then return nil, "HttpService indisponível" end
+        local body, headers
+        if tbl ~= nil then
+            local ok, enc = pcall(function() return N.Http:JSONEncode(tbl) end)
+            if not ok then return nil, "JSON: " .. tostring(enc) end
+            body = enc
+            headers = { ["Content-Type"] = "application/json" }
+        end
+        local ok, res, code = N.Request(method, url, body, headers)
+        if not ok then
+            local why = tostring(res)
+            if #why > 120 then why = why:sub(1, 120) .. "…" end
+            return nil, (code and code > 0 and ("HTTP " .. code .. ": ") or "") .. why
+        end
+        local okD, data = pcall(function() return N.Http:JSONDecode(res) end)
+        if not okD or type(data) ~= "table" then return nil, "a resposta não é JSON" end
+        return data
+    end
+
+    ----------------------------------------------------------------------------
+    -- disco
+    ----------------------------------------------------------------------------
+    D.Ok = function()
+        return typeof(writefile) == "function" and typeof(readfile) == "function"
+            and typeof(isfile) == "function"
+    end
+
+    D.Read = function(path)
+        if not D.Ok() then return nil, "executor sem readfile" end
+        local exists = false
+        pcall(function() exists = isfile(path) end)
+        if not exists then return nil, "arquivo não existe" end
+        local ok, raw = pcall(function() return readfile(path) end)
+        if ok and type(raw) == "string" then return raw end
+        return nil, "falha ao ler " .. path
+    end
+
+    D.Write = function(path, text)
+        if not D.Ok() then return false, "executor sem writefile" end
+        local ok, err = pcall(function()
+            local folder = path:match("^(.+)/[^/]+$")
+            if folder and typeof(makefolder) == "function" then
+                local has = false
+                if typeof(isfolder) == "function" then
+                    pcall(function() has = isfolder(folder) end)
+                end
+                if not has then pcall(function() makefolder(folder) end) end
+            end
+            writefile(path, text)
+        end)
+        if ok then return true end
+        return false, tostring(err)
+    end
+end
+--------------------------------------------------------------------------------
+-- v8.1 — TEMPO DE JOGO + COSMÉTICOS (base da Playtime Shop)
+--
+-- Moeda da loja = tempo com o HYGE aberto: 1 ponto por minuto. O total vai em
+-- HYGE/playtime.json (arquivo próprio, gravado a cada minuto e no Unload —
+-- separado da config para não depender do "salvar ao fechar"). Executor sem
+-- writefile: conta só a sessão atual, e a loja avisa.
+--
+-- Tudo o que a loja vende é visual e local:
+--   Ranks / Icons / Titles  -> aparecem no painel (perfil da Home, chat HYGE)
+--   Effects / Nametags      -> criados no SEU personagem pelo SEU cliente:
+--                              só você vê (instância criada no cliente não
+--                              replica para os outros)
+--   Bundles                 -> pacotes; o preço cai pelo que você já tem
+-- Nada aqui é vendido por Robux nem mexe em dados do jogo.
+--
+-- V8.Play = dados + regras; V8.Cos = efeitos/nametag no personagem.
+-- A UI fica em 40_tabs/09_shop.lua. Zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Play = {
+            Total = 0,            -- segundos acumulados (todas as sessões)
+            Spent = 0,            -- pontos gastos
+            Owned = {},           -- [itemId] = true
+            Equip = {},           -- [slot] = itemId
+            Path = "HYGE/playtime.json",
+            Start = os.clock(),
+            Listeners = {},
+            Status = "",
+        }
+        local P = V8.Play
+
+        P.Cats = { "All", "Ranks", "Icons", "Titles", "Effects", "Nametags", "Bundles" }
+        P.SlotOf = { Ranks = "rank", Icons = "icon", Titles = "title",
+                     Effects = "effect", Nametags = "nametag" }
+
+        -- preço em pontos (= minutos jogados com o painel aberto)
+        P.Items = {
+            -- Ranks
+            { id = "rank_bronze",   cat = "Ranks", name = "Bronze",   price = 30,
+              color = Color3.fromRGB(205, 127, 50),  desc = "O primeiro degrau" },
+            { id = "rank_prata",    cat = "Ranks", name = "Prata",    price = 120,
+              color = Color3.fromRGB(196, 200, 210), desc = "Duas horas de casa" },
+            { id = "rank_ouro",     cat = "Ranks", name = "Ouro",     price = 360,
+              color = Color3.fromRGB(255, 200, 60),  desc = "Seis horas de casa" },
+            { id = "rank_platina",  cat = "Ranks", name = "Platina",  price = 900,
+              color = Color3.fromRGB(140, 228, 228), desc = "Quinze horas de casa" },
+            { id = "rank_diamante", cat = "Ranks", name = "Diamante", price = 1800,
+              color = Color3.fromRGB(110, 175, 255), desc = "Trinta horas de casa" },
+            { id = "rank_lenda",    cat = "Ranks", name = "Lenda",    price = 3600,
+              color = Color3.fromRGB(255, 90, 120),  desc = "Sessenta horas de casa" },
+            -- Icons (desenho vetorial ao lado do seu nome no painel)
+            { id = "icon_bolt",  cat = "Icons", name = "Raio",     price = 20,  icon = "bolt" },
+            { id = "icon_star",  cat = "Icons", name = "Estrela",  price = 45,  icon = "star" },
+            { id = "icon_heart", cat = "Icons", name = "Coração",  price = 45,  icon = "heart" },
+            { id = "icon_ghost", cat = "Icons", name = "Fantasma", price = 90,  icon = "ghost" },
+            { id = "icon_gem",   cat = "Icons", name = "Joia",     price = 240, icon = "gem" },
+            { id = "icon_crown", cat = "Icons", name = "Coroa",    price = 600, icon = "crown" },
+            -- Titles
+            { id = "title_novato",     cat = "Titles", name = "Novato",          price = 10 },
+            { id = "title_explorador", cat = "Titles", name = "Explorador",      price = 60 },
+            { id = "title_coruja",     cat = "Titles", name = "Coruja Noturna",  price = 180 },
+            { id = "title_veterano",   cat = "Titles", name = "Veterano",        price = 480 },
+            { id = "title_sem_vida",   cat = "Titles", name = "Sem Vida Social", price = 1200 },
+            { id = "title_lenda",      cat = "Titles", name = "Lenda do HYGE",   price = 3000 },
+            -- Effects (no seu personagem, só você vê)
+            { id = "fx_brilho",  cat = "Effects", name = "Brilho",  price = 40,  fx = "light",
+              desc = "Luz em volta do personagem" },
+            { id = "fx_faiscas", cat = "Effects", name = "Faíscas", price = 90,  fx = "sparkles",
+              desc = "Faíscas saindo do corpo" },
+            { id = "fx_rastro",  cat = "Effects", name = "Rastro",  price = 150, fx = "trail",
+              desc = "Rastro de luz ao andar" },
+            { id = "fx_aura",    cat = "Effects", name = "Aura",    price = 300, fx = "aura",
+              desc = "Partículas flutuando em volta" },
+            { id = "fx_fogo",    cat = "Effects", name = "Fogo",    price = 500, fx = "fire",
+              desc = "Chamas no corpo (não queima)" },
+            -- Nametags (placa acima da cabeça, só você vê)
+            { id = "tag_classica",  cat = "Nametags", name = "Clássica",  price = 25,  style = "classic",
+              desc = "Fundo escuro, texto branco" },
+            { id = "tag_neon",      cat = "Nametags", name = "Neon",      price = 120, style = "neon",
+              desc = "Contorno brilhante na cor do tema" },
+            { id = "tag_dourada",   cat = "Nametags", name = "Dourada",   price = 420, style = "gold",
+              desc = "Texto dourado" },
+            { id = "tag_arcoiris",  cat = "Nametags", name = "Arco-íris", price = 900, style = "rainbow",
+              desc = "Cores correndo pelo nome" },
+            -- Bundles
+            { id = "pack_inicio",   cat = "Bundles", name = "Pacote Início",   price = 50,
+              items = { "rank_bronze", "icon_bolt", "title_novato", "tag_classica" } },
+            { id = "pack_veterano", cat = "Bundles", name = "Pacote Veterano", price = 900,
+              items = { "rank_ouro", "icon_ghost", "title_veterano", "fx_rastro" } },
+            { id = "pack_lenda",    cat = "Bundles", name = "Pacote Lenda",    price = 6900,
+              items = { "rank_lenda", "icon_crown", "title_lenda", "fx_fogo", "tag_arcoiris" } },
+        }
+        P.ById = {}
+        for i, it in ipairs(P.Items) do
+            it.order = i
+            P.ById[it.id] = it
+        end
+
+        ----------------------------------------------------------------------------
+        -- consultas
+        ----------------------------------------------------------------------------
+        P.Points = function() return math.max(0, math.floor(P.Total / 60) - P.Spent) end
+        P.Session = function() return os.clock() - P.Start end
+
+        P.Fmt = function(sec)
+            sec = math.max(0, math.floor(tonumber(sec) or 0))
+            local h, m = math.floor(sec / 3600), math.floor(sec % 3600 / 60)
+            if h > 0 then return h .. "h " .. string.format("%02d", m) .. "min" end
+            if m > 0 then return m .. "min" end
+            return sec .. "s"
+        end
+
+        P.Equipped = function(slot)
+            local id = P.Equip[slot]
+            return id and P.ById[id] or nil
+        end
+
+        -- pacote: preço proporcional ao que ainda falta
+        P.BundlePrice = function(it)
+            local full, missing, have = 0, 0, 0
+            for _, sub in ipairs(it.items or {}) do
+                local s = P.ById[sub]
+                if s then
+                    full = full + s.price
+                    if P.Owned[sub] then have = have + 1 else missing = missing + s.price end
+                end
+            end
+            local price = (full > 0) and math.ceil(it.price * missing / full) or it.price
+            return price, have, #(it.items or {})
+        end
+
+        P.PriceOf = function(it)
+            if it.cat == "Bundles" then return (P.BundlePrice(it)) end
+            return it.price
+        end
+
+        -- "Ouro · Veterano" (rank e título equipados)
+        P.Line = function()
+            local parts = {}
+            local r, t = P.Equipped("rank"), P.Equipped("title")
+            if r then table.insert(parts, r.name) end
+            if t then table.insert(parts, t.name) end
+            return table.concat(parts, " · ")
+        end
+
+        P.OnChange = function(fn) table.insert(P.Listeners, fn) end
+        P.Changed = function()
+            for _, fn in ipairs(P.Listeners) do pcall(fn) end
+        end
+
+        ----------------------------------------------------------------------------
+        -- disco
+        ----------------------------------------------------------------------------
+        P.Save = function(silent)
+            local Http = V8.Net and V8.Net.Http
+            if not Http then return false end
+            local owned = {}
+            for id in pairs(P.Owned) do table.insert(owned, id) end
+            table.sort(owned)
+            local ok, json = pcall(function()
+                return Http:JSONEncode({ v = 1, total = math.floor(P.Total),
+                    spent = P.Spent, owned = owned, equip = P.Equip })
+            end)
+            if not ok then return false end
+            local wrote, err = V8.Disk.Write(P.Path, json)
+            if not wrote and not silent then
+                Log("Playtime não foi salvo: " .. tostring(err), "error")
+            end
+            return wrote
+        end
+
+        P.Load = function()
+            local raw, why = V8.Disk.Read(P.Path)
+            if not raw then
+                P.Status = V8.Disk.Ok() and "Primeira sessão: o contador começa agora."
+                    or "Executor sem writefile/readfile: o tempo desta sessão se perde ao sair."
+                return false, why
+            end
+            local ok, d = pcall(function() return V8.Net.Http:JSONDecode(raw) end)
+            if not ok or type(d) ~= "table" then
+                P.Status = "playtime.json ilegível — começando do zero (o arquivo antigo será sobrescrito)."
+                return false
+            end
+            local total = tonumber(d.total)
+            if total and total >= 0 and total < 1e9 then P.Total = total end
+            local spent = tonumber(d.spent)
+            if spent and spent >= 0 and spent < 1e9 then P.Spent = math.floor(spent) end
+            if type(d.owned) == "table" then
+                for _, id in ipairs(d.owned) do
+                    if type(id) == "string" and P.ById[id] then P.Owned[id] = true end
+                end
+            end
+            if type(d.equip) == "table" then
+                for slot, id in pairs(d.equip) do
+                    local it = type(id) == "string" and P.ById[id]
+                    if it and P.Owned[id] and P.SlotOf[it.cat] == slot then P.Equip[slot] = id end
+                end
+            end
+            P.Status = "Salvo em " .. P.Path .. " a cada minuto."
+            return true
+        end
+
+        ----------------------------------------------------------------------------
+        -- compra / equipar
+        ----------------------------------------------------------------------------
+        P.Buy = function(id)
+            local it = P.ById[id]
+            if not it then return false, "item desconhecido" end
+            local price = P.PriceOf(it)
+            if it.cat == "Bundles" then
+                local _, have, total = P.BundlePrice(it)
+                if have >= total then return false, "você já tem tudo deste pacote" end
+            elseif P.Owned[id] then
+                return false, "você já tem este item"
+            end
+            local pts = P.Points()
+            if pts < price then return false, "faltam " .. (price - pts) .. " ponto(s)" end
+            P.Spent = P.Spent + price
+            P.Owned[id] = true
+            for _, sub in ipairs(it.items or {}) do
+                if P.ById[sub] then P.Owned[sub] = true end
+            end
+            P.Save(true)
+            P.Changed()
+            return true, price
+        end
+
+        P.EquipItem = function(id)
+            local it = P.ById[id]
+            local slot = it and P.SlotOf[it.cat]
+            if not slot or not P.Owned[id] then return false end
+            P.Equip[slot] = id
+            P.Save(true)
+            P.Changed()
+            return true
+        end
+
+        P.Unequip = function(slot)
+            if not P.Equip[slot] then return end
+            P.Equip[slot] = nil
+            P.Save(true)
+            P.Changed()
+        end
+
+        P.UnequipAll = function()
+            for k in pairs(P.Equip) do P.Equip[k] = nil end
+            P.Save(true)
+            P.Changed()
+        end
+
+        -- contador: o scheduler roda os dois (V8.Job), sem loop próprio
+        do
+            local last = os.clock()
+            V8.Job(1, function()
+                local now = os.clock()
+                P.Total = P.Total + math.clamp(now - last, 0, 5)
+                last = now
+            end)
+        end
+        V8.Job(60, function() P.Save(true) end)
+
+        P.Load()
+
+        ----------------------------------------------------------------------------
+        -- COSMÉTICOS NO PERSONAGEM (efeito + nametag equipados)
+        ----------------------------------------------------------------------------
+        V8.Cos = { fx = {}, tag = nil }
+        local C = V8.Cos
+
+        C.Clear = function()
+            for _, inst in ipairs(C.fx) do pcall(function() inst:Destroy() end) end
+            C.fx = {}
+            if C.tag then pcall(function() C.tag:Destroy() end) end
+            C.tag = nil
+        end
+
+        local function Keep(inst)
+            table.insert(C.fx, inst)
+            return inst
+        end
+
+        local function Effect(root, kind)
+            local accent = THEME.Accent
+            if kind == "light" then
+                local l = Keep(Instance.new("PointLight"))
+                l.Brightness = 1.6
+                l.Range = 14
+                l.Color = accent
+                l.Shadows = false
+                l.Parent = root
+            elseif kind == "sparkles" then
+                local s = Keep(Instance.new("Sparkles"))
+                s.SparkleColor = accent
+                s.Parent = root
+            elseif kind == "trail" then
+                local a0 = Keep(Instance.new("Attachment"))
+                a0.Name = "HYGE_TrailTop"
+                a0.Position = Vector3.new(0, 1.1, 0)
+                a0.Parent = root
+                local a1 = Keep(Instance.new("Attachment"))
+                a1.Name = "HYGE_TrailBottom"
+                a1.Position = Vector3.new(0, -1.1, 0)
+                a1.Parent = root
+                local t = Keep(Instance.new("Trail"))
+                t.Attachment0 = a0
+                t.Attachment1 = a1
+                t.Lifetime = 0.45
+                t.MinLength = 0.05
+                t.FaceCamera = true
+                t.LightEmission = 0.6
+                t.Color = ColorSequence.new(accent)
+                t.Transparency = NumberSequence.new(0.2, 1)
+                t.Parent = root
+            elseif kind == "aura" then
+                local e = Keep(Instance.new("ParticleEmitter"))
+                e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+                e.Color = ColorSequence.new(accent)
+                e.LightEmission = 0.7
+                e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5),
+                    NumberSequenceKeypoint.new(1, 0) })
+                e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2),
+                    NumberSequenceKeypoint.new(1, 1) })
+                e.Lifetime = NumberRange.new(0.8, 1.4)
+                e.Rate = 22
+                e.Speed = NumberRange.new(0.5, 1.5)
+                e.SpreadAngle = Vector2.new(180, 180)
+                e.Rotation = NumberRange.new(0, 360)
+                e.RotSpeed = NumberRange.new(-90, 90)
+                e.Parent = root
+            elseif kind == "fire" then
+                local f = Keep(Instance.new("Fire"))
+                f.Size = 3.5
+                f.Heat = 4
+                f.Color = Color3.fromRGB(255, 140, 40)
+                f.SecondaryColor = Color3.fromRGB(255, 60, 20)
+                f.Parent = root
+            end
+        end
+
+        local function Nametag(head, style)
+            local bb = Instance.new("BillboardGui")
+            bb.Name = "HYGE_Nametag"
+            bb.Adornee = head
+            bb.Size = UDim2.new(0, 220, 0, 46)
+            bb.StudsOffset = Vector3.new(0, 3.6, 0)
+            bb.MaxDistance = 150
+            bb.LightInfluence = 0
+            bb.Parent = head
+
+            local rank = P.Equipped("rank")
+            local title = P.Equipped("title")
+            local name = LocalPlayer.DisplayName or LocalPlayer.Name
+            if rank then name = "[" .. rank.name .. "] " .. name end
+
+            local holder = Instance.new("Frame")
+            holder.Size = UDim2.new(1, 0, 1, 0)
+            holder.BackgroundColor3 = Color3.new(0, 0, 0)
+            holder.BackgroundTransparency = (style == "classic") and 0.45 or 1
+            holder.BorderSizePixel = 0
+            holder.Parent = bb
+            Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 10)
+
+            local top = Instance.new("TextLabel")
+            top.Size = UDim2.new(1, 0, 0, title and 26 or 46)
+            top.BackgroundTransparency = 1
+            top.Text = name
+            top.Font = Enum.Font.GothamBlack
+            top.TextSize = 18
+            top.TextColor3 = Color3.new(1, 1, 1)
+            top.TextStrokeTransparency = 0.5
+            top.Parent = holder
+
+            if title then
+                local sub = Instance.new("TextLabel")
+                sub.Size = UDim2.new(1, 0, 0, 18)
+                sub.Position = UDim2.new(0, 0, 0, 26)
+                sub.BackgroundTransparency = 1
+                sub.Text = title.name
+                sub.Font = Enum.Font.GothamBold
+                sub.TextSize = 13
+                sub.TextColor3 = Color3.fromRGB(220, 220, 228)
+                sub.TextStrokeTransparency = 0.6
+                sub.Parent = holder
+            end
+
+            if rank and rank.color and style == "classic" then
+                top.TextColor3 = rank.color
+            elseif style == "neon" then
+                top.TextStrokeTransparency = 1
+                local st = Instance.new("UIStroke", top)
+                st.Thickness = 2
+                st.Color = THEME.Accent
+                st.Transparency = 0.15
+            elseif style == "gold" then
+                top.TextColor3 = Color3.fromRGB(255, 205, 80)
+                top.TextStrokeColor3 = Color3.fromRGB(90, 55, 10)
+                top.TextStrokeTransparency = 0.2
+            elseif style == "rainbow" then
+                local g = Instance.new("UIGradient", top)
+                g.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 70)),
+                    ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 190, 60)),
+                    ColorSequenceKeypoint.new(0.4, Color3.fromRGB(120, 230, 90)),
+                    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(70, 200, 255)),
+                    ColorSequenceKeypoint.new(0.8, Color3.fromRGB(160, 100, 255)),
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 70, 70)),
+                })
+                g.Offset = Vector2.new(-0.5, 0)
+                -- tween infinito (vai e volta): nenhum loop do painel envolvido
+                TweenService:Create(g, TweenInfo.new(2.5, Enum.EasingStyle.Linear,
+                    Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(0.5, 0) }):Play()
+            end
+            return bb
+        end
+
+        C.Apply = function()
+            C.Clear()
+            local char = Char()
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            local head = char and char:FindFirstChild("Head")
+            local fx = P.Equipped("effect")
+            if fx and root then pcall(Effect, root, fx.fx) end
+            local tag = P.Equipped("nametag")
+            if tag and head then
+                local ok, bb = pcall(Nametag, head, tag.style)
+                if ok then C.tag = bb end
+            end
+        end
+
+        Conn.CosChar = LocalPlayer.CharacterAdded:Connect(function(char)
+            pcall(function()
+                char:WaitForChild("HumanoidRootPart", 5)
+                char:WaitForChild("Head", 5)
+            end)
+            pcall(C.Apply)
+        end)
+        P.OnChange(function() pcall(C.Apply) end)
+        -- troca de tema: efeitos na cor nova (V8.Renders roda no ApplyTheme)
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(C.Apply) end)
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
 -- ABA HOME (dashboard)
 --------------------------------------------------------------------------------
 do
@@ -3814,7 +4854,8 @@ do
     ----------------------------------------------------------------------------
     -- VISÃO GERAL
     ----------------------------------------------------------------------------
-    local overview = CreateCard(tab, "VISÃO GERAL", 1)
+    -- v8.1: MAPA ATUAL (0) e PERFIL (1) entram antes, em 01_home_server.lua
+    local overview = CreateCard(tab, "VISÃO GERAL", 2)
     local grid = Grid(overview, 4, 48)
     Tiles = {}
 
@@ -3909,7 +4950,7 @@ do
     ----------------------------------------------------------------------------
     -- QUICK ACTIONS (pílulas com switch real)
     ----------------------------------------------------------------------------
-    local quick = CreateCard(tab, "AÇÕES RÁPIDAS", 2)
+    local quick = CreateCard(tab, "AÇÕES RÁPIDAS", 3)
     SubLabel(quick, "Um clique liga/desliga. O switch mostra o estado real do toggle.", -1)
 
     local qGrid = Grid(quick, 2, 40)   -- v8.0: janela estreita (era 4)
@@ -4061,7 +5102,7 @@ do
     ----------------------------------------------------------------------------
     -- ATALHOS (rodapé compacto)
     ----------------------------------------------------------------------------
-    local info = CreateCard(tab, nil, 3)
+    local info = CreateCard(tab, nil, 4)
     local keysLbl = SubLabel(info, "", 1)
     keysLbl.TextSize = 10
 
@@ -4184,6 +5225,7 @@ do
         fly = "bolt", noclip = "ghost", esp = "eye", god = "shield",
         invisible = "circle", infjump = "up", wall = "box", chatspy = "clip",
         fullbright = "sun", antiafk = "clock", freecam = "cam", drone = "wifi",
+        antifall = "shield", antigrav = "up", wallwalk = "mask",   -- v8.1
     }
     local slotUI = {}
 
@@ -4661,6 +5703,280 @@ do
     pcall(D.Tick)
 end
 --------------------------------------------------------------------------------
+-- v8.1 — INÍCIO: MAPA ATUAL + PERFIL
+-- Mapa: nome do jogo, Place ID, Job ID e jogadores, com os botões rápidos
+-- REJOIN (volta para este servidor), TROCAR SERVIDOR (outro servidor público
+-- com vaga) e DISCORD (copia CONFIG.Discord).
+-- Perfil: tempo de jogo (V8.Play, o mesmo que vira ponto na Playtime Shop),
+-- sessão, pontos e idade da conta; o rank/título/ícone equipados aparecem
+-- também no cartão do avatar.
+-- Entra DEPOIS de 01_home_dashboard.lua (usa V8.Dash). Zero locais novos.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local home = Tabs.Home
+        local P = V8.Play
+        V8.Hop = { busy = false }
+        local H = V8.Hop
+
+        ----------------------------------------------------------------------------
+        -- ações
+        ----------------------------------------------------------------------------
+        H.Rejoin = function()
+            if game.JobId == "" then
+                Toast("Rejoin não funciona no Studio", "warn", 2)
+                return
+            end
+            Log("Rejoin: voltando para este servidor...", "action")
+            Toast("Reconectando...", nil, 3)
+            local ok, err = pcall(function()
+                if #Players:GetPlayers() <= 1 then
+                    -- sozinho, este servidor fecha quando você sai: vai para um novo
+                    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                else
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+                end
+            end)
+            if not ok then
+                Log("Rejoin falhou: " .. tostring(err), "error")
+                Toast("Rejoin falhou", "error")
+            end
+        end
+
+        -- lista pública de servidores (API do Roblox, pelo HTTP do executor).
+        -- Sem HTTP: Teleport comum — o Roblox escolhe e pode cair no mesmo.
+        H.Hop = function()
+            if H.busy then
+                Toast("Já estou procurando um servidor...", "warn", 2)
+                return
+            end
+            if game.JobId == "" then
+                Toast("Trocar de servidor não funciona no Studio", "warn", 2)
+                return
+            end
+            H.busy = true
+            Toast("Procurando outro servidor...", nil, 3)
+            task.spawn(function()
+                local base = "https://games.roblox.com/v1/games/" .. game.PlaceId
+                    .. "/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100"
+                local pool, cursor, lastErr = {}, nil, nil
+                for _ = 1, 3 do
+                    local url = base .. (cursor and ("&cursor=" .. V8.Net.Encode(cursor)) or "")
+                    local data, err = V8.Net.Json("GET", url)
+                    if not data then
+                        lastErr = err
+                        break
+                    end
+                    for _, s in ipairs(type(data.data) == "table" and data.data or {}) do
+                        local playing, maxp = tonumber(s.playing), tonumber(s.maxPlayers)
+                        if type(s.id) == "string" and s.id ~= game.JobId
+                            and playing and maxp and playing < maxp then
+                            table.insert(pool, s)
+                        end
+                    end
+                    cursor = data.nextPageCursor
+                    if #pool >= 8 or type(cursor) ~= "string" then break end
+                end
+                local ok, err = pcall(function()
+                    if #pool > 0 then
+                        local s = pool[math.random(1, #pool)]
+                        Log("Trocando de servidor (" .. tostring(s.playing) .. "/"
+                            .. tostring(s.maxPlayers) .. " jogadores)", "action")
+                        TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
+                    else
+                        Log("Sem lista de servidores (" .. tostring(lastErr or "nenhum outro com vaga")
+                            .. ") — o Roblox escolhe o servidor e pode ser este mesmo", "warn")
+                        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                    end
+                end)
+                if not ok then
+                    Log("Troca de servidor falhou: " .. tostring(err), "error")
+                    Toast("Troca de servidor falhou", "error")
+                    H.busy = false
+                    return
+                end
+                task.delay(10, function() H.busy = false end)
+            end)
+        end
+
+        H.Discord = function()
+            local link = tostring(CONFIG.Discord or "")
+            if link == "" then
+                Log("Nenhum convite do Discord configurado: preencha CONFIG.Discord "
+                    .. "no topo do script", "warn")
+                Toast("Sem link do Discord (CONFIG.Discord)", "warn", 3)
+                return
+            end
+            Copy(link, "Link do Discord")
+        end
+
+        Conn.TpFail = TeleportService.TeleportInitFailed:Connect(function(player, _, msg)
+            if player ~= LocalPlayer then return end
+            H.busy = false
+            Log("Teleporte recusado pelo Roblox: " .. tostring(msg), "error")
+            Toast("Teleporte falhou", "error", 3)
+        end)
+
+        ----------------------------------------------------------------------------
+        -- card MAPA ATUAL
+        ----------------------------------------------------------------------------
+        local map = CreateCard(home, "MAPA ATUAL", 0)
+
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 66)
+        row.LayoutOrder = 1
+        row.Parent = map
+        V8.Cell(row, 0)
+
+        local thumb = Instance.new("ImageLabel")
+        thumb.Size = UDim2.new(0, 46, 0, 46)
+        thumb.Position = UDim2.new(0, 0, 0.5, -23)
+        thumb.BackgroundColor3 = THEME.Track
+        thumb.BorderSizePixel = 0
+        thumb.Image = "rbxthumb://type=Asset&id=" .. tostring(game.PlaceId) .. "&w=150&h=150"
+        thumb.Parent = row
+        Paint(thumb, "BackgroundColor3", "Track")
+        Instance.new("UICorner", thumb).CornerRadius = UDim.new(0, 10)
+
+        local nameLbl = Instance.new("TextLabel")
+        nameLbl.Size = UDim2.new(1, -58, 0, 20)
+        nameLbl.Position = UDim2.new(0, 58, 0, 9)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Text = "Carregando o nome do jogo..."
+        nameLbl.TextColor3 = THEME.Text
+        nameLbl.Font = Enum.Font.GothamBold
+        nameLbl.TextSize = 15
+        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        nameLbl.Parent = row
+        Paint(nameLbl, "TextColor3", "Text")
+
+        local idLbl = Instance.new("TextLabel")
+        idLbl.Size = UDim2.new(1, -58, 0, 14)
+        idLbl.Position = UDim2.new(0, 58, 0, 30)
+        idLbl.BackgroundTransparency = 1
+        idLbl.Text = ""
+        idLbl.TextColor3 = THEME.Dim
+        idLbl.Font = Enum.Font.Code
+        idLbl.TextSize = 11
+        idLbl.TextXAlignment = Enum.TextXAlignment.Left
+        idLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        idLbl.Parent = row
+        Paint(idLbl, "TextColor3", "Dim")
+
+        local countLbl = Instance.new("TextLabel")
+        countLbl.Size = UDim2.new(1, -58, 0, 14)
+        countLbl.Position = UDim2.new(0, 58, 0, 45)
+        countLbl.BackgroundTransparency = 1
+        countLbl.Text = ""
+        countLbl.TextColor3 = THEME.Accent2
+        countLbl.Font = Enum.Font.GothamBold
+        countLbl.TextSize = 11
+        countLbl.TextXAlignment = Enum.TextXAlignment.Left
+        countLbl.Parent = row
+        Paint(countLbl, "TextColor3", "Accent2")
+
+        task.spawn(function()
+            local ok, info = pcall(function()
+                return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
+            end)
+            if ok and type(info) == "table" and info.Name then
+                nameLbl.Text = tostring(info.Name)
+            else
+                nameLbl.Text = "Jogo " .. tostring(game.PlaceId)
+            end
+        end)
+
+        local btns = Grid(map, 3, 34)
+        btns.LayoutOrder = 2
+
+        local bRejoin = CreateButton(btns, "REJOIN", "Warning", 34)
+        bRejoin.LayoutOrder = 1
+        bRejoin.MouseButton1Click:Connect(function()
+            Confirm("Sair e voltar para ESTE mesmo servidor?", H.Rejoin)
+        end)
+
+        local bHop = CreateButton(btns, "TROCAR SERVIDOR", "Accent", 34)
+        bHop.LayoutOrder = 2
+        bHop.MouseButton1Click:Connect(function()
+            Confirm("Sair deste servidor e entrar em outro do mesmo jogo?", H.Hop)
+        end)
+
+        local bDisc = CreateButton(btns, "DISCORD", "Accent2", 34)
+        bDisc.LayoutOrder = 3
+        bDisc.MouseButton1Click:Connect(H.Discord)
+
+        ----------------------------------------------------------------------------
+        -- card PERFIL
+        ----------------------------------------------------------------------------
+        local prof = CreateCard(home, "PERFIL", 1)
+        local tiles = Grid(prof, 2, 48)
+        tiles.LayoutOrder = 1
+        local T = {}
+        T.total   = StatTile(tiles, "TEMPO DE JOGO (HYGE)", "—", 1, "Accent2")
+        T.session = StatTile(tiles, "ESTA SESSÃO", "—", 2)
+        T.points  = StatTile(tiles, "PONTOS DA LOJA", "—", 3, "Success")
+        T.age     = StatTile(tiles, "IDADE DA CONTA", "—", 4)
+
+        local equipLbl = SubLabel(prof, "", 2)
+
+        ----------------------------------------------- rank/título no avatar
+        local me = V8.Dash and V8.Dash.NameRow and V8.Dash.NameRow.Parent
+        local line
+        if me then
+            line = Instance.new("TextLabel")
+            line.Size = UDim2.new(1, -20, 0, 14)
+            line.Position = UDim2.new(0, 10, 0, 176)
+            line.BackgroundTransparency = 1
+            line.Text = ""
+            line.TextColor3 = THEME.Accent2
+            line.Font = Enum.Font.GothamBold
+            line.TextSize = 11
+            line.TextTruncate = Enum.TextTruncate.AtEnd
+            line.Parent = me
+            Paint(line, "TextColor3", "Accent2")
+        end
+        local icon   -- ícone comprado, ao lado do nome
+
+        local function Profile()
+            local eq = P.Line()
+            local rank = P.Equipped("rank")
+            if line then
+                line.Text = (eq ~= "" and (eq .. "  ·  ") or "") .. P.Fmt(P.Total) .. " jogadas"
+                line.TextColor3 = (rank and rank.color) or THEME.Accent2
+            end
+            local ic = P.Equipped("icon")
+            if icon then icon:Destroy() icon = nil end
+            if ic and V8.Dash and V8.Dash.NameRow then
+                icon = Icon(V8.Dash.NameRow, ic.icon, (rank and rank.color) or THEME.Accent, 16, 0)
+            end
+            equipLbl.Text = (eq ~= "" and ("Equipado: " .. eq .. ".  ") or "Nada equipado.  ")
+                .. "Rank, ícone e título se compram com tempo de jogo na Playtime Shop."
+        end
+
+        local function Tick()
+            T.total.Text = P.Fmt(P.Total)
+            T.session.Text = P.Fmt(P.Session())
+            T.points.Text = tostring(P.Points())
+            T.age.Text = tostring(LocalPlayer.AccountAge or 0) .. " dias"
+            idLbl.Text = "Place " .. tostring(game.PlaceId) .. "   ·   Job "
+                .. (game.JobId ~= "" and game.JobId or "estúdio")
+            countLbl.Text = #Players:GetPlayers() .. "/" .. Players.MaxPlayers .. " jogadores no servidor"
+            if line then
+                local eq = P.Line()
+                line.Text = (eq ~= "" and (eq .. "  ·  ") or "") .. P.Fmt(P.Total) .. " jogadas"
+            end
+        end
+
+        P.OnChange(function() pcall(Profile) pcall(Tick) end)
+        V8.TabTick.Home = Tick
+        OnTabOpen("Home", function() pcall(Tick) end)
+        pcall(Profile)
+        pcall(Tick)
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
 -- ABA MOVEMENT
 --------------------------------------------------------------------------------
 do
@@ -4674,6 +5990,8 @@ do
     SwitchRow(main, "noclip", "Noclip", Toggles.noclip.desc)
     SwitchRow(main, "infjump", "Infinite Jump", Toggles.infjump.desc)
     SwitchRow(main, "god", "God Mode", Toggles.god.desc)
+    SwitchRow(main, "antifall", "Anti-Fall", Toggles.antifall.desc)        -- v8.1
+    SwitchRow(main, "antigrav", "Anti-Gravidade", Toggles.antigrav.desc)  -- v8.1
 
     ----------------------------------------------------------------------------
     -- VELOCIDADES
@@ -4705,6 +6023,13 @@ do
                 h.JumpPower = v
             end
         end,
+    })
+
+    -- v8.1: força da gravidade com Anti-Gravidade ligado (0% = flutua)
+    V8.GravSlider = SliderRow(speeds, {
+        label = "Gravidade (Anti-Gravidade)", min = 0, max = 100, def = State.GravityPct,
+        suffix = "%", order = 4,
+        apply = function(v) if V8.AntiGrav then V8.AntiGrav.Set(v) end end,
     })
 
     ----------------------------------------------------------------------------
@@ -5023,10 +6348,37 @@ do
             or (p.DisplayName:lower():find(filter, 1, true) ~= nil)
     end
 
+    -- v8.1: ESP de UM jogador. Marcar alguém liga o ESP (se estava desligado)
+    -- só nos marcados; desmarcar o último devolve o ESP como estava.
+    V8.EspPick = { auto = false }
+    V8.EspPick.Flip = function(p)
+        local pick = EspOpts.Pick
+        if pick[p.UserId] then pick[p.UserId] = nil else pick[p.UserId] = true end
+        local any = next(pick) ~= nil
+        if any and not IsOn("esp") then
+            SetToggle("esp", true, true)
+            V8.EspPick.auto = true
+        elseif not any and V8.EspPick.auto then
+            V8.EspPick.auto = false
+            SetToggle("esp", false, true)
+        end
+        Log((pick[p.UserId] and "ESP em " or "ESP removido de ") .. p.Name
+            .. (any and "" or " — ESP volta a mostrar todos"), "action")
+        if RefreshStatus then RefreshStatus() end
+    end
+    -- desligar o ESP por qualquer caminho limpa as marcações
+    if Toggles.esp then
+        table.insert(Toggles.esp.listeners, function(on)
+            if on then return end
+            for k in pairs(EspOpts.Pick) do EspOpts.Pick[k] = nil end
+            V8.EspPick.auto = false
+        end)
+    end
+
     local function MakeRow(p)
         local row = Instance.new("Frame")
         row.Name = "Row_" .. p.UserId
-        row.Size = UDim2.new(1, 0, 0, 56)
+        row.Size = UDim2.new(1, 0, 0, 62)
         row.BackgroundColor3 = THEME.Btn
         row.BorderSizePixel = 0
         row.Parent = list
@@ -5040,82 +6392,65 @@ do
         local av = Avatar(row, p.UserId, 40)
         av.Position = UDim2.new(0, 8, 0.5, -20)
 
-        local dn = Instance.new("TextLabel")
-        dn.Size = UDim2.new(1, -300, 0, 17)
-        dn.Position = UDim2.new(0, 56, 0, 9)
-        dn.BackgroundTransparency = 1
+        -- v8.1: 3 linhas à esquerda, 4 botões (2x2) à direita
+        local function Line(y, h, font, size, key)
+            local l = Instance.new("TextLabel")
+            l.Size = UDim2.new(1, -206, 0, h)
+            l.Position = UDim2.new(0, 56, 0, y)
+            l.BackgroundTransparency = 1
+            l.Text = ""
+            l.TextColor3 = THEME[key]
+            l.Font = font
+            l.TextSize = size
+            l.TextXAlignment = Enum.TextXAlignment.Left
+            l.TextTruncate = Enum.TextTruncate.AtEnd
+            l.Parent = row
+            Paint(l, "TextColor3", key)
+            return l
+        end
+        local dn = Line(7, 17, Enum.Font.GothamBold, 13, "Text")
         dn.Text = p.DisplayName .. (p == LocalPlayer and "   (você)" or "")
-        dn.TextColor3 = THEME.Text
-        dn.Font = Enum.Font.GothamBold
-        dn.TextSize = 13
-        dn.TextXAlignment = Enum.TextXAlignment.Left
-        dn.TextTruncate = Enum.TextTruncate.AtEnd
-        dn.Parent = row
-        Paint(dn, "TextColor3", "Text")
-
-        local un = Instance.new("TextLabel")
-        un.Size = UDim2.new(1, -300, 0, 14)
-        un.Position = UDim2.new(0, 56, 0, 27)
-        un.BackgroundTransparency = 1
+        local un = Line(24, 14, Enum.Font.Code, 11, "Dim")
         un.Text = "@" .. p.Name
-        un.TextColor3 = THEME.Dim
-        un.Font = Enum.Font.Code
-        un.TextSize = 11
-        un.TextXAlignment = Enum.TextXAlignment.Left
-        un.Parent = row
-        Paint(un, "TextColor3", "Dim")
+        local hp = Line(40, 14, Enum.Font.Code, 10, "Success")
+        hp.Size = UDim2.new(0, 72, 0, 14)
+        local meta = Line(40, 14, Enum.Font.Code, 10, "Dim")
+        meta.Position = UDim2.new(0, 132, 0, 40)
+        meta.Size = UDim2.new(1, -282, 0, 14)
 
-        local meta = Instance.new("TextLabel")
-        meta.AnchorPoint = Vector2.new(1, 0)
-        meta.Size = UDim2.new(0, 240, 0, 14)
-        meta.Position = UDim2.new(1, -150, 0, 41)
-        meta.BackgroundTransparency = 1
-        meta.Text = ""
-        meta.TextColor3 = THEME.Dim
-        meta.Font = Enum.Font.Code
-        meta.TextSize = 10
-        meta.TextXAlignment = Enum.TextXAlignment.Right
-        meta.Parent = row
-        Paint(meta, "TextColor3", "Dim")
-
-        local hp = Instance.new("TextLabel")
-        hp.AnchorPoint = Vector2.new(1, 0)
-        hp.Size = UDim2.new(0, 240, 0, 16)
-        hp.Position = UDim2.new(1, -150, 0, 10)
-        hp.BackgroundTransparency = 1
-        hp.Text = ""
-        hp.TextColor3 = THEME.Success
-        hp.Font = Enum.Font.Code
-        hp.TextSize = 11
-        hp.TextXAlignment = Enum.TextXAlignment.Right
-        hp.Parent = row
-        Paint(hp, "TextColor3", "Success")
-
-        local sel = CreateButton(row, "SELECIONAR", "Accent", 24)
-        sel.Size = UDim2.new(0, 88, 0, 24)
-        sel.Position = UDim2.new(1, -140, 0, 8)
+        local function Btn(text, key, x, y)
+            local b = CreateButton(row, text, key, 24)
+            b.Size = UDim2.new(0, 64, 0, 24)
+            b.Position = UDim2.new(1, x, 0, y)
+            b.TextSize = 11
+            return b
+        end
+        local sel = Btn("ALVO", "Accent", -138, 6)
         sel.MouseButton1Click:Connect(function() SelectPlayer(p) end)
 
-        local tp = CreateButton(row, "TP", "Success", 24)
-        tp.Size = UDim2.new(0, 40, 0, 24)
-        tp.Position = UDim2.new(1, -140, 0, 34)
+        local esp = Btn("ESP", "Success", -70, 6)
+        esp.MouseButton1Click:Connect(function()
+            V8.EspPick.Flip(p)
+            UpdatePlayerRows()
+        end)
+
+        local tp = Btn("TP", "Success", -138, 33)
         tp.MouseButton1Click:Connect(function() Goto(p) end)
 
-        local spec = CreateButton(row, "SPECTATE", "Accent2", 24)
-        spec.Size = UDim2.new(0, 44, 0, 24)
-        spec.Position = UDim2.new(1, -96, 0, 34)
-        spec.Text = "OLHAR"
+        local spec = Btn("SPEC", "Accent2", -70, 33)
         spec.MouseButton1Click:Connect(function()
             if State.SpectateTarget == p then StopSpectate() else StartSpectate(p) end
+            UpdatePlayerRows()
         end)
 
         if p == LocalPlayer then
             tp.Visible = false
             spec.Visible = false
+            esp.Visible = false
         end
 
         local entry = { frame = row, player = p, meta = meta, hp = hp,
-            stroke = stroke, select = sel }
+            stroke = stroke, select = sel, esp = esp, spec = spec }
         PlayerRows[p.UserId] = entry
         return entry
     end
@@ -5159,7 +6494,7 @@ do
 
                 if h then
                     local pct = h.MaxHealth > 0 and (h.Health / h.MaxHealth) or 0
-                    e.hp.Text = math.floor(h.Health) .. " / " .. math.floor(h.MaxHealth) .. " HP"
+                    e.hp.Text = math.floor(h.Health) .. "/" .. math.floor(h.MaxHealth) .. " HP"
                     e.hp.TextColor3 = pct > 0.5 and THEME.Success
                         or (pct > 0.25 and THEME.Warning or THEME.Danger)
                 else
@@ -5183,13 +6518,15 @@ do
                 end
 
                 local team = p.Team and p.Team.Name or "sem equipe"
-                e.meta.Text = "ping " .. ping .. "  ·  " .. dist .. "  ·  " .. team
-                    .. "  ·  " .. Elapsed(State.JoinTimes[p.UserId]
+                e.meta.Text = (p == LocalPlayer and ("ping " .. ping .. " · ") or "")
+                    .. dist .. " · " .. team .. " · " .. Elapsed(State.JoinTimes[p.UserId]
                         and (os.clock() - State.JoinTimes[p.UserId]) or nil)
 
                 local isSel = (State.SelectedPlayer == p)
                 e.stroke.Transparency = isSel and 0.15 or 1
-                e.select.Text = isSel and "SELECIONADO" or "SELECIONAR"
+                e.select.Text = isSel and "É O ALVO" or "ALVO"
+                e.esp.Text = EspOpts.Pick[p.UserId] and "ESP ON" or "ESP"
+                e.spec.Text = (State.SpectateTarget == p) and "PARAR" or "SPEC"
             end
         end
     end
@@ -5404,86 +6741,7 @@ do
             .. "Pra chegar em todo mundo precisa do Remote no servidor.", 6)
     end
 
-    ----------------------------------------------------------------------------
-    -- TROLL (v8.0) — tudo aqui depende de Remote no servidor, exceto Fake Message
-    ----------------------------------------------------------------------------
-    local troll = CreateCard(tab, "TROLL", 5)
-    SubLabel(troll, "Fling/Spin/Trip/Launch/Sit/Scale/Balloon só funcionam com "
-        .. "RemoteEvent + validação no servidor. Sem o Remote o botão fica "
-        .. "indisponível — nada aqui é fingido.", -1)
-
-    local trollGrid = Grid(troll, 3, 32)
-
-    ActionBtn(trollGrid, "FLING", "Danger", "Fling", function()
-        local p = RequireSelected()
-        if p then FlingPlayer(p) end
-    end, "Aplicar Fling no jogador selecionado?")
-
-    local spinBtn
-    spinBtn = ActionBtn(trollGrid, "SPIN: OFF", "Warning", "Spin", function()
-        local p = RequireSelected()
-        if not p then return end
-        local on = not TrollState.Spin[p.UserId]
-        SpinPlayer(p, on)
-        spinBtn.Text = on and "SPIN: ON" or "SPIN: OFF"
-    end)
-
-    ActionBtn(trollGrid, "TRIP", "Warning", "Trip", function()
-        local p = RequireSelected()
-        if p then TripPlayer(p) end
-    end)
-
-    ActionBtn(trollGrid, "LAUNCH", "Danger", "Launch", function()
-        local p = RequireSelected()
-        if p then LaunchPlayer(p) end
-    end, "Lançar o jogador selecionado bem alto?")
-
-    ActionBtn(trollGrid, "FORCE SIT", "Warning", "Sit", function()
-        local p = RequireSelected()
-        if p then SitPlayer(p) end
-    end)
-
-    local balloonBtn
-    balloonBtn = ActionBtn(trollGrid, "BALLOON: OFF", "Accent", "Balloon", function()
-        local p = RequireSelected()
-        if not p then return end
-        local on = not TrollState.Balloon[p.UserId]
-        BalloonPlayer(p, on)
-        balloonBtn.Text = on and "BALLOON: ON" or "BALLOON: OFF"
-    end)
-
-    ActionBtn(trollGrid, "TINY", "Accent", "Scale", function()
-        local p = RequireSelected()
-        if p then ScalePlayer(p, "tiny") end
-    end, "Encolher o jogador selecionado?")
-
-    ActionBtn(trollGrid, "NORMAL", "Success", "Scale", function()
-        local p = RequireSelected()
-        if p then ScalePlayer(p, "normal") end
-    end)
-
-    ActionBtn(trollGrid, "GIANT", "Accent", "Scale", function()
-        local p = RequireSelected()
-        if p then ScalePlayer(p, "giant") end
-    end, "Deixar o jogador selecionado gigante?")
-
-    Divider(troll).LayoutOrder = 10
-
-    local fakeGrid = Grid(troll, 2, 32)
-    fakeGrid.LayoutOrder = 11
-
-    ActionBtn(fakeGrid, "FAKE KICK MSG", "Warning", nil, function()
-        local p = RequireSelected()
-        if p then FakeMessage(p, "kick") end
-    end)
-
-    ActionBtn(fakeGrid, "FAKE BAN MSG", "Danger", nil, function()
-        local p = RequireSelected()
-        if p then FakeMessage(p, "ban") end
-    end)
-
-    SubLabel(troll, "Fake Message só aparece na SUA tela — não afeta o alvo nem o "
-        .. "servidor, é só uma piscada de sistema local.", 12)
+    -- v8.1: o card TROLL mudou para a seção própria (40_tabs/12_troll.lua)
 
     OnTabOpen("Moderation", UpdateSelectedInfo)
     UpdateSelectedInfo()
@@ -5623,317 +6881,597 @@ do
     UpdateServerInfo()
 end
 --------------------------------------------------------------------------------
--- ABA EMOTES (animações por ID + favoritos)
+-- ABA EMOTES (catálogo pesquisável + tocar por ID + favoritos)
 --
--- Limitação do Roblox, não do painel: o Animator só carrega AnimationId cujo
+-- Limitação do Roblox, não do painel: o Animator só carrega animação cujo
 -- asset pertença ao dono do jogo (você ou o grupo) ou à própria Roblox. ID de
--- animação de terceiro simplesmente não carrega — por isso o erro aparece no
--- log em vez de fingir que tocou.
+-- terceiro "carrega" com duração 0 e não anima nada — o painel confere isso
+-- depois de tocar e avisa no log (e marca a linha do catálogo), em vez de
+-- fingir que tocou.
 --
--- Só mexe no SEU personagem. Forçar animação em outro jogador é server-side e
--- precisaria de Remote com validação, igual kick/freeze.
+-- v8.1:
+--   * catálogo pesquisável: emotes padrão DO JOGO (lidos do script Animate do
+--     seu personagem — sempre carregam, R6 e R15) + emotes e danças que a
+--     Roblox publicou (só R15)
+--   * velocidade de reprodução (Playback Speed) e "Andar com o emote":
+--     desligado, o emote para quando você anda (como no Roblox); ligado, ele
+--     continua enquanto você se move
+--
+-- Só mexe no SEU personagem. A animação replica para os outros normalmente
+-- (você é o dono da física dele). Forçar emote em outra pessoa é server-side.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
 --------------------------------------------------------------------------------
 do
-    local tab = CreateTab("Emotes")
+    local function Build()
+        local tab = CreateTab("Emotes")
+        if SET.EmoteWalk == nil then SET.EmoteWalk = false end
 
-    local currentBox      -- label de status "tocando agora"
-    local favList, favEmpty, RenderFavs
+        local E = { failed = {}, filter = "Todos", query = "" }
+        V8.Emotes = E
+        local currentBox   -- "tocando agora"
 
-    ----------------------------------------------------------------------------
-    -- MOTOR
-    ----------------------------------------------------------------------------
-
-    -- Aceita "123456", "rbxassetid://123456" e a URL do catálogo.
-    local function ParseId(raw)
-        if not raw then return nil end
-        local s = tostring(raw):gsub("%s+", "")
-        if s == "" then return nil end
-        local n = s:match("(%d%d%d%d+)")
-        return n and tonumber(n) or nil
-    end
-
-    local function Animator()
-        local h = Hum()
-        if not h then return nil end
-        local a = h:FindFirstChildOfClass("Animator")
-        if not a then
-            local ok = pcall(function()
-                a = Instance.new("Animator")
-                a.Parent = h
-            end)
-            if not ok then return nil end
+        ----------------------------------------------------------------------------
+        -- MOTOR
+        ----------------------------------------------------------------------------
+        -- Aceita "123456", "rbxassetid://123456" e a URL do catálogo.
+        local function ParseId(raw)
+            if not raw then return nil end
+            local s = tostring(raw):gsub("%s+", "")
+            if s == "" then return nil end
+            local n = s:match("(%d%d%d%d+)")
+            return n and tonumber(n) or nil
         end
-        return a
-    end
+        E.ParseId = ParseId
 
-    local function SetStatus(text, colorKey)
-        if not currentBox then return end
-        currentBox.Text = text
-        currentBox.TextColor3 = THEME[colorKey or "Dim"]
-    end
-
-    Emote.Stop = function(quiet)
-        if Emote.track then
-            pcall(function() Emote.track:Stop(0.15) end)
-            pcall(function() Emote.track:Destroy() end)
-        end
-        Emote.track = nil
-        Emote.id = nil
-        -- libera a animação do voo, se o fly estiver ligado
-        pcall(function() if FlyPose then FlyPose.muted = false end end)
-        SetStatus("Nada tocando.", "Dim")
-        if not quiet then Log("Emote parado", "action") end
-    end
-
-    Emote.Play = function(raw, label)
-        local id = ParseId(raw)
-        if not id then
-            Log("ID de animação inválido: " .. tostring(raw), "warn")
-            Toast("ID inválido", "warn", 2)
-            return false
-        end
-
-        local h = Hum()
-        if not h then
-            Toast("Sem personagem", "warn", 2)
-            return false
-        end
-
-        local anim = Animator()
-        if not anim then
-            Log("Não consegui acessar o Animator do personagem", "error")
-            return false
-        end
-
-        Emote.Stop(true)
-
-        -- o emote vence a pose/animação do voo (as duas escrevem nas juntas)
-        pcall(function() if FlyPose and FlyPose.active then FlyPose.Stop() end end)
-        pcall(function()
-            if FlyPose then FlyPose.muted = true end
-            if flyTrack and flyTrack.IsPlaying then flyTrack:Stop(0.15) end
-            if FlyPose and FlyPose.idleTrack and FlyPose.idleTrack.IsPlaying then
-                FlyPose.idleTrack:Stop(0.15)
+        local function Animator()
+            local h = Hum()
+            if not h then return nil end
+            local a = h:FindFirstChildOfClass("Animator")
+            if not a then
+                local ok = pcall(function()
+                    a = Instance.new("Animator")
+                    a.Parent = h
+                end)
+                if not ok then return nil end
             end
-        end)
-
-        local obj = Instance.new("Animation")
-        obj.AnimationId = "rbxassetid://" .. id
-        local ok, track = pcall(function() return anim:LoadAnimation(obj) end)
-        pcall(function() obj:Destroy() end)
-
-        if not ok or not track then
-            Log("Animação " .. id .. " não carregou. O asset precisa pertencer "
-                .. "ao dono do jogo (ou à Roblox).", "error")
-            Toast("Animação não carregou", "error", 3)
-            return false
+            return a
         end
 
-        local ok2, err = pcall(function()
-            track.Priority = Enum.AnimationPriority.Action4
-            track.Looped = true
-            track:Play(0.15)
-            track:AdjustSpeed(Emote.Speed or 1)
-        end)
-        if not ok2 then
-            Log("Falha ao tocar a animação: " .. tostring(err), "error")
-            pcall(function() track:Destroy() end)
-            return false
+        local function SetStatus(text, colorKey)
+            if not currentBox then return end
+            currentBox.Text = text
+            currentBox.TextColor3 = THEME[colorKey or "Dim"]
         end
 
-        Emote.track = track
-        Emote.id = id
-        SetStatus((label or ("ID " .. id)) .. "  •  em loop", "Success")
-        Log("Emote tocando: " .. (label or tostring(id)), "action")
-        return true
-    end
-
-    ----------------------------------------------------------------------------
-    -- TOCAR POR ID
-    ----------------------------------------------------------------------------
-    local play = CreateCard(tab, "TOCAR ANIMAÇÃO", 1)
-
-    SubLabel(play, "Cole o ID da animação (aceita rbxassetid:// ou a URL do "
-        .. "catálogo). Toca em loop até você apertar PARAR.", 1)
-
-    local idBox = CreateInput(play, "rbxassetid://0000000000", 34)
-    idBox.LayoutOrder = 2
-
-    local rowA = Instance.new("Frame")
-    rowA.Size = UDim2.new(1, 0, 0, 34)
-    rowA.BackgroundTransparency = 1
-    rowA.LayoutOrder = 3
-    rowA.Parent = play
-
-    local playBtn = CreateButton(rowA, "TOCAR", "Accent", 34)
-    playBtn.Size = UDim2.new(0.5, -4, 0, 34)
-
-    local stopBtn = CreateButton(rowA, "PARAR", "Danger", 34)
-    stopBtn.Size = UDim2.new(0.5, -4, 0, 34)
-    stopBtn.Position = UDim2.new(0.5, 4, 0, 0)
-
-    currentBox = SubLabel(play, "Nada tocando.", 4)
-
-    SliderRow(play, {
-        label = "Velocidade", min = 10, max = 300, def = 100, suffix = "%", order = 5,
-        apply = function(v)
-            Emote.Speed = v / 100
+        Emote.Stop = function(quiet)
+            Drop("EmoteMove")
             if Emote.track then
-                pcall(function() Emote.track:AdjustSpeed(Emote.Speed) end)
+                pcall(function() Emote.track:Stop(0.15) end)
+                pcall(function() Emote.track:Destroy() end)
             end
-        end,
-    })
-
-    playBtn.MouseButton1Click:Connect(function()
-        Emote.Play(idBox.Text)
-    end)
-    stopBtn.MouseButton1Click:Connect(function()
-        Emote.Stop()
-    end)
-    idBox.FocusLost:Connect(function(enter)
-        if enter then Emote.Play(idBox.Text) end
-    end)
-
-    ----------------------------------------------------------------------------
-    -- FAVORITOS
-    ----------------------------------------------------------------------------
-    local fav = CreateCard(tab, "FAVORITOS", 2)
-
-    SubLabel(fav, "Salve os IDs que você mais usa. O nome também funciona no "
-        .. "comando: emote <nome>.", 1)
-
-    local nameBox = CreateInput(fav, "nome do emote (ex: dance)", 34)
-    nameBox.LayoutOrder = 2
-
-    local addBtn = CreateButton(fav, "SALVAR O ID ACIMA NOS FAVORITOS", "Accent2", 34)
-    addBtn.LayoutOrder = 3
-
-    favList = Instance.new("Frame")
-    favList.Size = UDim2.new(1, 0, 0, 0)
-    favList.AutomaticSize = Enum.AutomaticSize.Y
-    favList.BackgroundTransparency = 1
-    favList.LayoutOrder = 4
-    favList.Parent = fav
-    local favLayout = Instance.new("UIListLayout", favList)
-    favLayout.Padding = UDim.new(0, 5)
-    favLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-    favEmpty = SubLabel(fav, "Nenhum favorito salvo.", 5)
-
-    RenderFavs = function()
-        for _, c in ipairs(favList:GetChildren()) do
-            if c:IsA("Frame") then c:Destroy() end
+            Emote.track = nil
+            Emote.id = nil
+            -- libera a animação do voo, se o fly estiver ligado
+            pcall(function() if FlyPose then FlyPose.muted = false end end)
+            SetStatus("Nada tocando.", "Dim")
+            if not quiet then Log("Emote parado", "action") end
         end
-        favEmpty.Visible = (#State.Emotes == 0)
 
-        for i, e in ipairs(State.Emotes) do
-            local row = Instance.new("Frame")
-            row.Size = UDim2.new(1, 0, 0, 32)
-            row.BackgroundColor3 = THEME.Btn
-            row.BorderSizePixel = 0
-            row.LayoutOrder = i
-            row.Parent = favList
-            Paint(row, "BackgroundColor3", "Btn")
-            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+        -- entry (opcional): linha do catálogo — r15 = só toca em R15
+        Emote.Play = function(raw, label, entry)
+            local id = ParseId(raw)
+            if not id then
+                Log("ID de animação inválido: " .. tostring(raw), "warn")
+                Toast("ID inválido", "warn", 2)
+                return false
+            end
 
-            local nb = Instance.new("TextBox")
-            nb.Size = UDim2.new(1, -244, 1, 0)
-            nb.Position = UDim2.new(0, 10, 0, 0)
-            nb.BackgroundTransparency = 1
-            nb.Text = e.name
-            nb.TextColor3 = THEME.Text
-            nb.Font = Enum.Font.GothamMedium
-            nb.TextSize = 12
-            nb.TextXAlignment = Enum.TextXAlignment.Left
-            nb.ClearTextOnFocus = false
-            nb.Parent = row
-            Paint(nb, "TextColor3", "Text")
-            nb.FocusLost:Connect(function()
-                local t = nb.Text
-                if t == "" then nb.Text = e.name return end
-                Log("Emote renomeado: " .. e.name .. " -> " .. t, "action")
-                e.name = t
-            end)
+            local h = Hum()
+            if not h then
+                Toast("Sem personagem", "warn", 2)
+                return false
+            end
+            if entry and entry.r15 and h.RigType == Enum.HumanoidRigType.R6 then
+                Log(tostring(label or id) .. " é um emote R15 — seu personagem é R6 "
+                    .. "(este jogo usa R6). Os emotes 'Padrão' funcionam.", "warn")
+                Toast("Emote só para R15", "warn", 2)
+                return false
+            end
 
-            local idLbl = Instance.new("TextLabel")
-            idLbl.AnchorPoint = Vector2.new(1, 0.5)
-            idLbl.Position = UDim2.new(1, -150, 0.5, 0)
-            idLbl.Size = UDim2.new(0, 150, 1, 0)
-            idLbl.BackgroundTransparency = 1
-            idLbl.Text = tostring(e.id)
-            idLbl.TextColor3 = THEME.Dim
-            idLbl.Font = Enum.Font.Code
-            idLbl.TextSize = 11
-            idLbl.TextXAlignment = Enum.TextXAlignment.Right
-            idLbl.Parent = row
-            Paint(idLbl, "TextColor3", "Dim")
+            local anim = Animator()
+            if not anim then
+                Log("Não consegui acessar o Animator do personagem", "error")
+                return false
+            end
 
-            local go = CreateButton(row, "TOCAR", "Accent", 24)
-            go.Size = UDim2.new(0, 62, 0, 24)
-            go.Position = UDim2.new(1, -138, 0.5, -12)
-            go.MouseButton1Click:Connect(function()
-                Emote.Play(e.id, e.name)
-            end)
+            Emote.Stop(true)
 
-            local del = CreateButton(row, "EXCLUIR", "Danger", 24)
-            del.Size = UDim2.new(0, 68, 0, 24)
-            del.Position = UDim2.new(1, -66, 0.5, -12)
-            del.MouseButton1Click:Connect(function()
-                for k, item in ipairs(State.Emotes) do
-                    if item == e then
-                        table.remove(State.Emotes, k)
-                        break
-                    end
+            -- o emote vence a pose/animação do voo (as duas escrevem nas juntas)
+            pcall(function() if FlyPose and FlyPose.active then FlyPose.Stop() end end)
+            pcall(function()
+                if FlyPose then FlyPose.muted = true end
+                if flyTrack and flyTrack.IsPlaying then flyTrack:Stop(0.15) end
+                if FlyPose and FlyPose.idleTrack and FlyPose.idleTrack.IsPlaying then
+                    FlyPose.idleTrack:Stop(0.15)
                 end
-                Log("Emote removido: " .. e.name, "action")
+            end)
+
+            local obj = Instance.new("Animation")
+            obj.AnimationId = "rbxassetid://" .. id
+            local ok, track = pcall(function() return anim:LoadAnimation(obj) end)
+            pcall(function() obj:Destroy() end)
+
+            if not ok or not track then
+                Log("Animação " .. id .. " não carregou. O asset precisa pertencer "
+                    .. "ao dono do jogo (ou à Roblox).", "error")
+                Toast("Animação não carregou", "error", 3)
+                return false
+            end
+
+            local ok2, err = pcall(function()
+                track.Priority = Enum.AnimationPriority.Action4
+                track.Looped = true
+                track:Play(0.15)
+                track:AdjustSpeed(Emote.Speed or 1)
+            end)
+            if not ok2 then
+                Log("Falha ao tocar a animação: " .. tostring(err), "error")
+                pcall(function() track:Destroy() end)
+                return false
+            end
+
+            Emote.track = track
+            Emote.id = id
+            label = label or ("ID " .. id)
+            SetStatus(label .. "  •  em loop", "Success")
+            Log("Emote tocando: " .. label, "action")
+
+            -- "Andar com o emote" desligado: andar encerra o emote
+            Conn.EmoteMove = h:GetPropertyChangedSignal("MoveDirection"):Connect(function()
+                if SET.EmoteWalk or Emote.track ~= track then return end
+                if h.MoveDirection.Magnitude > 0.1 then
+                    Emote.Stop(true)
+                    Log("Emote parou porque você andou (ligue 'Andar com o emote' "
+                        .. "para continuar andando com ele)")
+                end
+            end)
+
+            -- asset recusado pelo Roblox: a track existe, mas com duração 0
+            task.delay(3, function()
+                if Emote.track ~= track then return end
+                local len = 0
+                pcall(function() len = track.Length end)
+                if len > 0 then return end
+                E.failed[id] = true
+                Emote.Stop(true)
+                SetStatus("Não carregou: " .. label, "Danger")
+                Log("Animação " .. id .. " (" .. label .. ") não carregou — o Roblox recusou "
+                    .. "o asset neste jogo", "error")
+                if E.Render then pcall(E.Render) end
+            end)
+            return true
+        end
+
+        ----------------------------------------------------------------------------
+        -- CATÁLOGO
+        -- Emotes e danças que a própria Roblox publicou (R15). Os IDs ainda não
+        -- foram conferidos um a um em jogo: o que não carregar é avisado no log e
+        -- marcado como "não carregou" na lista.
+        ----------------------------------------------------------------------------
+        E.Catalog = {
+            -- danças
+            { "Hype Dance", 3695333486, "Dança" },     { "Line Dance", 4049037604, "Dança" },
+            { "Baby Dance", 4265725525, "Dança" },     { "Dorky Dance", 4212455378, "Dança" },
+            { "Air Dance", 4555808220, "Dança" },      { "Floss Dance", 5917459365, "Dança" },
+            { "Dolphin Dance", 5918726674, "Dança" },  { "Old Town Road", 5937560570, "Dança" },
+            { "Rodeo Dance", 5918728267, "Dança" },    { "Around Town", 3303391864, "Dança" },
+            { "Top Rock", 3361276673, "Dança" },       { "Fancy Feet", 3333432454, "Dança" },
+            { "Robot", 3338025566, "Dança" },          { "Monkey", 3333499508, "Dança" },
+            { "Fashionable", 3333331310, "Dança" },    { "Twirl", 3334968680, "Dança" },
+            { "Bunny Hop", 4641985101, "Dança" },      { "Rock Out", 5915714366, "Dança" },
+            -- emotes
+            { "Salute", 3360689775, "Emote" },         { "Tilt", 3360692915, "Emote" },
+            { "Stadium", 3360686498, "Emote" },        { "Shrug", 3576968026, "Emote" },
+            { "Hello", 3576686446, "Emote" },          { "Point", 3576823880, "Emote" },
+            { "Godlike", 3337994105, "Emote" },        { "Superhero Reveal", 3695373233, "Emote" },
+            { "Heisman Pose", 3695263073, "Emote" },   { "Celebrate", 3338097973, "Emote" },
+            { "Haha", 3337966527, "Emote" },           { "Greatest", 3338042785, "Emote" },
+            { "Sneaky", 3334424322, "Emote" },         { "Bodybuilder", 3333387824, "Emote" },
+            { "Happy", 4841405708, "Emote" },          { "Jumping Wave", 4940564896, "Emote" },
+            { "Confused", 4940561610, "Emote" },       { "Cower", 4940563117, "Emote" },
+            { "Zombie", 4210116953, "Emote" },         { "Curtsy", 4555816777, "Emote" },
+            { "Sleep", 4686925579, "Emote" },          { "Shy", 3337978742, "Emote" },
+            { "T", 3338010159, "Emote" },              { "Tree", 4049551434, "Emote" },
+            { "Fishing", 3994127840, "Emote" },
+        }
+
+        -- emotes padrão do jogo: o script Animate do personagem guarda os IDs
+        -- (/e wave, /e dance...). Sempre carregam, R6 ou R15.
+        local DEFAULTS = {
+            { "wave", "Acenar" }, { "point", "Apontar" }, { "cheer", "Comemorar" },
+            { "laugh", "Rir" }, { "dance", "Dança 1" }, { "dance2", "Dança 2" },
+            { "dance3", "Dança 3" },
+        }
+        E.FromGame = function()
+            local out = {}
+            local char = Char()
+            local animate = char and char:FindFirstChild("Animate")
+            if not animate then return out end
+            for _, d in ipairs(DEFAULTS) do
+                local folder = animate:FindFirstChild(d[1])
+                local a = folder and folder:FindFirstChildOfClass("Animation")
+                local id = a and ParseId(a.AnimationId)
+                if id then table.insert(out, { name = d[2], id = id, kind = "Padrão" }) end
+            end
+            return out
+        end
+
+        E.All = function()
+            local rows = E.FromGame()
+            for _, c in ipairs(E.Catalog) do
+                table.insert(rows, { name = c[1], id = c[2], kind = c[3], r15 = true })
+            end
+            return rows
+        end
+
+        local function AddFav(id, name)
+            for _, f in ipairs(State.Emotes) do
+                if tonumber(f.id) == tonumber(id) then
+                    Toast(name .. " já está nos favoritos", "warn", 1.6)
+                    return
+                end
+            end
+            table.insert(State.Emotes, { name = name, id = id })
+            Log("Emote salvo: " .. name .. " (" .. id .. ")", "ok")
+            Toast("Salvo nos favoritos", "ok", 1.5)
+            if V8.RenderEmotes then V8.RenderEmotes() end
+        end
+
+        ----------------------------------------------------------------------------
+        -- AGORA (status, parar, velocidade, andar com o emote)
+        ----------------------------------------------------------------------------
+        local now = CreateCard(tab, "TOCANDO AGORA", 1)
+        currentBox = SubLabel(now, "Nada tocando.", 1)
+        currentBox.Font = Enum.Font.GothamBold
+        currentBox.TextSize = 12
+
+        local nowBtns = Grid(now, 2, 32)
+        nowBtns.LayoutOrder = 2
+        local stopBtn = CreateButton(nowBtns, "PARAR", "Danger", 32)
+        stopBtn.LayoutOrder = 1
+        stopBtn.MouseButton1Click:Connect(function() Emote.Stop() end)
+
+        local rnd = CreateButton(nowBtns, "DANÇA ALEATÓRIA", "Accent", 32)
+        rnd.LayoutOrder = 2
+        rnd.MouseButton1Click:Connect(function()
+            local pool = {}
+            local h = Hum()
+            local r6 = h and h.RigType == Enum.HumanoidRigType.R6
+            for _, e in ipairs(E.All()) do
+                local dance = e.kind == "Dança" or (e.kind == "Padrão" and e.name:find("Dança"))
+                if dance and not E.failed[e.id] and not (r6 and e.r15) then
+                    table.insert(pool, e)
+                end
+            end
+            if #pool == 0 then
+                Toast("Nenhuma dança disponível para este personagem", "warn", 2)
+                return
+            end
+            local e = pool[math.random(1, #pool)]
+            Emote.Play(e.id, e.name, e)
+        end)
+
+        SliderRow(now, {
+            label = "Velocidade (Playback Speed)", min = 10, max = 300, def = 100,
+            suffix = "%", order = 3,
+            apply = function(v)
+                Emote.Speed = v / 100
+                if Emote.track then
+                    pcall(function() Emote.track:AdjustSpeed(Emote.Speed) end)
+                end
+            end,
+        })
+
+        CheckRow(now, "Andar com o emote",
+            "Desligado: o emote para quando você anda (como no Roblox)",
+            function() return SET.EmoteWalk == true end,
+            function(v) SET.EmoteWalk = v and true or false end, 4)
+
+        ----------------------------------------------------------------------------
+        -- CATÁLOGO (busca + filtro + lista)
+        ----------------------------------------------------------------------------
+        local cat = CreateCard(tab, "CATÁLOGO", 2)
+        local search = CreateInput(cat, "Buscar emote ou dança...", 32)
+        search.LayoutOrder = 1
+
+        local pills = Grid(cat, 4, 28)
+        pills.LayoutOrder = 2
+        local pillBtns = {}
+
+        local countLbl = SubLabel(cat, "", 3)
+
+        local list = Instance.new("Frame")
+        list.Size = UDim2.new(1, 0, 0, 0)
+        list.AutomaticSize = Enum.AutomaticSize.Y
+        list.BackgroundTransparency = 1
+        list.LayoutOrder = 4
+        list.Parent = cat
+        do
+            local l = Instance.new("UIListLayout", list)
+            l.Padding = UDim.new(0, 5)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+
+        local function PaintPills()
+            for name, b in pairs(pillBtns) do
+                local on = (name == E.filter)
+                b.BackgroundColor3 = on and THEME.Accent or THEME.Btn
+                b.TextColor3 = on and THEME.Main or THEME.Text
+            end
+        end
+
+        for i, name in ipairs({ "Todos", "Danças", "Emotes", "Padrão" }) do
+            local b = Instance.new("TextButton")
+            b.BackgroundColor3 = THEME.Btn
+            b.Text = name
+            b.TextColor3 = THEME.Text
+            b.Font = Enum.Font.GothamBold
+            b.TextSize = 11
+            b.AutoButtonColor = false
+            b.LayoutOrder = i
+            b.Parent = pills
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+            pillBtns[name] = b
+            b.MouseButton1Click:Connect(function()
+                E.filter = name
+                PaintPills()
+                E.Render()
+            end)
+        end
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, PaintPills)
+
+        local KIND_OF = { ["Danças"] = "Dança", ["Emotes"] = "Emote", ["Padrão"] = "Padrão" }
+
+        local function Row(e, order)
+            local row = Instance.new("TextButton")
+            row.Size = UDim2.new(1, 0, 0, 40)
+            row.BackgroundColor3 = THEME.Btn
+            row.Text = ""
+            row.AutoButtonColor = false
+            row.LayoutOrder = order
+            row.Parent = list
+            Paint(row, "BackgroundColor3", "Btn")
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 9)
+
+            local nm = Instance.new("TextLabel")
+            nm.Size = UDim2.new(1, -140, 0, 18)
+            nm.Position = UDim2.new(0, 12, 0, 4)
+            nm.BackgroundTransparency = 1
+            nm.Text = e.name
+            nm.TextColor3 = THEME.Text
+            nm.Font = Enum.Font.GothamBold
+            nm.TextSize = 12
+            nm.TextXAlignment = Enum.TextXAlignment.Left
+            nm.TextTruncate = Enum.TextTruncate.AtEnd
+            nm.Parent = row
+            Paint(nm, "TextColor3", "Text")
+
+            local failed = E.failed[e.id]
+            local sub = Instance.new("TextLabel")
+            sub.Size = UDim2.new(1, -140, 0, 13)
+            sub.Position = UDim2.new(0, 12, 0, 22)
+            sub.BackgroundTransparency = 1
+            sub.Text = failed and "não carregou neste jogo"
+                or (e.kind == "Padrão" and "padrão do jogo" or (e.kind .. " · R15"))
+            sub.TextColor3 = failed and THEME.Danger or THEME.Dim
+            sub.Font = Enum.Font.GothamMedium
+            sub.TextSize = 10
+            sub.TextXAlignment = Enum.TextXAlignment.Left
+            sub.Parent = row
+            Paint(sub, "TextColor3", failed and "Danger" or "Dim")
+
+            local play = CreateButton(row, "TOCAR", "Accent", 26)
+            play.Size = UDim2.new(0, 62, 0, 26)
+            play.Position = UDim2.new(1, -128, 0.5, -13)
+            play.TextSize = 11
+            play.MouseButton1Click:Connect(function() Emote.Play(e.id, e.name, e) end)
+
+            local fav = CreateButton(row, "+ FAV", "Accent2", 26)
+            fav.Size = UDim2.new(0, 56, 0, 26)
+            fav.Position = UDim2.new(1, -62, 0.5, -13)
+            fav.TextSize = 11
+            fav.MouseButton1Click:Connect(function() AddFav(e.id, e.name) end)
+
+            row.MouseButton1Click:Connect(function() Emote.Play(e.id, e.name, e) end)
+        end
+
+        E.Render = function()
+            for _, c in ipairs(list:GetChildren()) do
+                if c:IsA("GuiObject") then c:Destroy() end
+            end
+            local q = E.query
+            local want = KIND_OF[E.filter]
+            local shown, total = 0, 0
+            for _, e in ipairs(E.All()) do
+                total = total + 1
+                local passKind = (want == nil) or (e.kind == want)
+                local passQ = (q == "") or (e.name:lower():find(q, 1, true) ~= nil)
+                if passKind and passQ then
+                    shown = shown + 1
+                    Row(e, shown)
+                end
+            end
+            local h = Hum()
+            countLbl.Text = shown .. " de " .. total .. " animações"
+                .. ((h and h.RigType == Enum.HumanoidRigType.R6)
+                    and "   ·   personagem R6: só os 'padrão' tocam" or "")
+        end
+
+        search:GetPropertyChangedSignal("Text"):Connect(function()
+            E.query = search.Text:lower():gsub("^%s+", ""):gsub("%s+$", "")
+            E.Render()
+        end)
+        -- personagem novo (R6/R15, Animate diferente): a lista acompanha
+        OnTabOpen("Emotes", function() pcall(E.Render) end)
+        PaintPills()
+        E.Render()
+
+        ----------------------------------------------------------------------------
+        -- TOCAR POR ID
+        ----------------------------------------------------------------------------
+        local play = CreateCard(tab, "TOCAR POR ID", 3)
+        SubLabel(play, "Cole o ID da animação (aceita rbxassetid:// ou a URL do "
+            .. "catálogo). Toca em loop até você apertar PARAR.", 1)
+
+        local idBox = CreateInput(play, "rbxassetid://0000000000", 34)
+        idBox.LayoutOrder = 2
+
+        local nameBox = CreateInput(play, "nome para salvar nos favoritos (opcional)", 32)
+        nameBox.LayoutOrder = 3
+
+        local rowA = Grid(play, 2, 32)
+        rowA.LayoutOrder = 4
+        local playBtn = CreateButton(rowA, "TOCAR", "Accent", 32)
+        playBtn.LayoutOrder = 1
+        local addBtn = CreateButton(rowA, "SALVAR NOS FAVORITOS", "Accent2", 32)
+        addBtn.LayoutOrder = 2
+
+        playBtn.MouseButton1Click:Connect(function() Emote.Play(idBox.Text) end)
+        idBox.FocusLost:Connect(function(enter)
+            if enter then Emote.Play(idBox.Text) end
+        end)
+        addBtn.MouseButton1Click:Connect(function()
+            local id = ParseId(idBox.Text)
+            if not id then
+                Toast("Cole um ID válido no campo acima", "warn", 2)
+                return
+            end
+            local nm = nameBox.Text
+            if nm == "" then nm = "Emote " .. (#State.Emotes + 1) end
+            nameBox.Text = ""
+            AddFav(id, nm)
+        end)
+
+        ----------------------------------------------------------------------------
+        -- FAVORITOS
+        ----------------------------------------------------------------------------
+        local fav = CreateCard(tab, "FAVORITOS", 4)
+        SubLabel(fav, "Os favoritos vão na config em disco. O nome também funciona no "
+            .. "comando: emote <nome>.", 1)
+
+        local favList = Instance.new("Frame")
+        favList.Size = UDim2.new(1, 0, 0, 0)
+        favList.AutomaticSize = Enum.AutomaticSize.Y
+        favList.BackgroundTransparency = 1
+        favList.LayoutOrder = 4
+        favList.Parent = fav
+        do
+            local l = Instance.new("UIListLayout", favList)
+            l.Padding = UDim.new(0, 5)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+
+        local favEmpty = SubLabel(fav, "Nenhum favorito salvo — use + FAV no catálogo.", 5)
+
+        local function RenderFavs()
+            for _, c in ipairs(favList:GetChildren()) do
+                if c:IsA("Frame") then c:Destroy() end
+            end
+            favEmpty.Visible = (#State.Emotes == 0)
+
+            for i, e in ipairs(State.Emotes) do
+                local row = Instance.new("Frame")
+                row.Size = UDim2.new(1, 0, 0, 32)
+                row.BackgroundColor3 = THEME.Btn
+                row.BorderSizePixel = 0
+                row.LayoutOrder = i
+                row.Parent = favList
+                Paint(row, "BackgroundColor3", "Btn")
+                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+                local nb = Instance.new("TextBox")
+                nb.Size = UDim2.new(1, -244, 1, 0)
+                nb.Position = UDim2.new(0, 10, 0, 0)
+                nb.BackgroundTransparency = 1
+                nb.Text = e.name
+                nb.TextColor3 = THEME.Text
+                nb.Font = Enum.Font.GothamMedium
+                nb.TextSize = 12
+                nb.TextXAlignment = Enum.TextXAlignment.Left
+                nb.ClearTextOnFocus = false
+                nb.Parent = row
+                Paint(nb, "TextColor3", "Text")
+                nb.FocusLost:Connect(function()
+                    local t = nb.Text
+                    if t == "" then nb.Text = e.name return end
+                    Log("Emote renomeado: " .. e.name .. " -> " .. t, "action")
+                    e.name = t
+                end)
+
+                local idLbl = Instance.new("TextLabel")
+                idLbl.AnchorPoint = Vector2.new(1, 0.5)
+                idLbl.Position = UDim2.new(1, -150, 0.5, 0)
+                idLbl.Size = UDim2.new(0, 90, 1, 0)
+                idLbl.BackgroundTransparency = 1
+                idLbl.Text = tostring(e.id)
+                idLbl.TextColor3 = THEME.Dim
+                idLbl.Font = Enum.Font.Code
+                idLbl.TextSize = 11
+                idLbl.TextXAlignment = Enum.TextXAlignment.Right
+                idLbl.Parent = row
+                Paint(idLbl, "TextColor3", "Dim")
+
+                local go = CreateButton(row, "TOCAR", "Accent", 24)
+                go.Size = UDim2.new(0, 62, 0, 24)
+                go.Position = UDim2.new(1, -138, 0.5, -12)
+                go.MouseButton1Click:Connect(function() Emote.Play(e.id, e.name) end)
+
+                local del = CreateButton(row, "EXCLUIR", "Danger", 24)
+                del.Size = UDim2.new(0, 68, 0, 24)
+                del.Position = UDim2.new(1, -70, 0.5, -12)
+                del.MouseButton1Click:Connect(function()
+                    for k, item in ipairs(State.Emotes) do
+                        if item == e then
+                            table.remove(State.Emotes, k)
+                            break
+                        end
+                    end
+                    Log("Emote removido: " .. e.name, "action")
+                    RenderFavs()
+                end)
+            end
+        end
+
+        local clearBtn = CreateButton(fav, "LIMPAR TODOS", "Line", 30)
+        clearBtn.LayoutOrder = 6
+        clearBtn.MouseButton1Click:Connect(function()
+            if #State.Emotes == 0 then return end
+            Confirm("Apagar todos os " .. #State.Emotes .. " favoritos?", function()
+                for i = #State.Emotes, 1, -1 do State.Emotes[i] = nil end
+                Log("Favoritos de emote limpos", "action")
                 RenderFavs()
             end)
-        end
-    end
-
-    addBtn.MouseButton1Click:Connect(function()
-        local id = ParseId(idBox.Text)
-        if not id then
-            Toast("Cole um ID válido no campo acima", "warn", 2)
-            return
-        end
-        local nm = nameBox.Text
-        if nm == "" then nm = "Emote " .. (#State.Emotes + 1) end
-        table.insert(State.Emotes, { name = nm, id = id })
-        nameBox.Text = ""
-        Log("Emote salvo: " .. nm .. " (" .. id .. ")", "ok")
-        Toast("Emote salvo", "ok", 1.5)
-        RenderFavs()
-    end)
-
-    local clearBtn = CreateButton(fav, "LIMPAR TODOS", "Line", 30)
-    clearBtn.LayoutOrder = 6
-    clearBtn.MouseButton1Click:Connect(function()
-        Confirm("Apagar todos os " .. #State.Emotes .. " favoritos?", function()
-            for i = #State.Emotes, 1, -1 do State.Emotes[i] = nil end
-            Log("Favoritos de emote limpos", "action")
-            RenderFavs()
         end)
-    end)
 
-    RenderFavs()
-    V8.RenderEmotes = RenderFavs  -- v8.0: 50_v8/03_persist.lua re-renderiza favoritos importados
+        RenderFavs()
+        V8.RenderEmotes = RenderFavs  -- 50_v8/03_persist.lua re-renderiza favoritos importados
 
-    ----------------------------------------------------------------------------
-    -- AVISO
-    ----------------------------------------------------------------------------
-    local info = CreateCard(tab, "COMO FUNCIONA", 3)
-    SubLabel(info, "1. O Roblox só carrega animação cujo asset pertença ao dono "
-        .. "do jogo (você/seu grupo) ou à própria Roblox. ID de terceiro falha "
-        .. "e o erro aparece no console.", 1)
-    SubLabel(info, "2. A animação roda no SEU personagem e replica normalmente "
-        .. "para os outros jogadores — é você quem tem network ownership dele.", 2)
-    SubLabel(info, "3. Forçar emote em outro jogador é server-side. Sem Remote "
-        .. "com validação, o painel não faz e não finge que fez.", 3)
-    SubLabel(info, "4. O emote continua durante o Fly: ao tocar, a pose de "
-        .. "superman é desligada para não brigar pelas mesmas juntas.", 4)
-    SubLabel(info, "5. Respawn derruba a animação (o personagem é outro). "
-        .. "É só apertar TOCAR de novo.", 5)
+        ----------------------------------------------------------------------------
+        -- COMO FUNCIONA
+        ----------------------------------------------------------------------------
+        local info = CreateCard(tab, "COMO FUNCIONA", 5)
+        SubLabel(info, "1. O Roblox só carrega animação cujo asset pertença ao dono do "
+            .. "jogo ou à própria Roblox. O que não carregar é avisado no console e "
+            .. "marcado na lista.", 1)
+        SubLabel(info, "2. 'Padrão' são os emotes do próprio jogo (/e wave, /e dance...): "
+            .. "funcionam em R6 e R15. O resto do catálogo é R15.", 2)
+        SubLabel(info, "3. A animação roda no SEU personagem e os outros jogadores veem. "
+            .. "Forçar emote em outra pessoa é server-side — o painel não faz.", 3)
+        SubLabel(info, "4. Durante o Fly, tocar um emote desliga a pose de voo (as duas "
+            .. "mexem nas mesmas juntas). Respawn derruba a animação.", 4)
+    end
+    Build()
 end
 --------------------------------------------------------------------------------
 -- ABA SETTINGS
@@ -5954,8 +7492,93 @@ do
     Keybinds.freecam = Enum.KeyCode.C
     Keybinds.drone   = Enum.KeyCode.G
 
-    for _, id in ipairs(ToggleOrder) do
-        KeybindRow(keyCard, id, Toggles[id].label)
+    for i, id in ipairs(ToggleOrder) do
+        KeybindRow(keyCard, id, Toggles[id].label).LayoutOrder = i
+    end
+
+    -- v8.1: a tecla que abre/fecha o painel também é remapeável (vai na config)
+    do
+        local function PanelKeyRow()
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, 0, 0, 44)
+            row.LayoutOrder = 0
+            row.Parent = keyCard
+            V8.Cell(row, 5)
+
+            local name = Instance.new("TextLabel")
+            name.Size = UDim2.new(1, -110, 1, 0)
+            name.BackgroundTransparency = 1
+            name.Text = "Abrir/fechar o painel"
+            name.TextColor3 = THEME.Text
+            name.Font = Enum.Font.GothamBold
+            name.TextSize = 13
+            name.TextXAlignment = Enum.TextXAlignment.Left
+            name.Parent = row
+            Paint(name, "TextColor3", "Text")
+
+            local btn = Instance.new("TextButton")
+            btn.AnchorPoint = Vector2.new(1, 0.5)
+            btn.Position = UDim2.new(1, 0, 0.5, 0)
+            btn.Size = UDim2.new(0, 96, 0, 28)
+            btn.BackgroundColor3 = THEME.Btn
+            btn.Text = KeyName(CONFIG.PanelKey)
+            btn.TextColor3 = THEME.Accent2
+            btn.Font = Enum.Font.GothamBold
+            btn.TextSize = 12
+            btn.AutoButtonColor = false
+            btn.Parent = row
+            Paint(btn, "BackgroundColor3", "Btn")
+            Paint(btn, "TextColor3", "Accent2")
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+            local st = Instance.new("UIStroke", btn)
+            st.Transparency = 0.6
+            Paint(st, "Color", "Accent")
+            V8.PanelKeyLabel = btn
+
+            btn.MouseButton1Click:Connect(function()
+                StopCapture()   -- encerra outra captura em andamento
+                Drop("PanelCapture")
+                capturing = "panel"
+                btn.Text = "aperte..."
+                Toast("Aperte a nova tecla do painel", nil, 3)
+                Conn.PanelCapture = UserInputService.InputBegan:Connect(function(input)
+                    if capturing ~= "panel" then
+                        Drop("PanelCapture")
+                        btn.Text = KeyName(CONFIG.PanelKey)
+                        return
+                    end
+                    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+                    local kc = input.KeyCode
+                    if kc == Enum.KeyCode.Unknown then return end
+                    Drop("PanelCapture")
+                    -- solta a captura só depois deste evento: senão o handler
+                    -- global vê a tecla nova e já abre/fecha o painel
+                    task.defer(function()
+                        if capturing == "panel" then capturing = nil end
+                    end)
+                    local clash
+                    if kc == Enum.KeyCode.Escape or kc == Enum.KeyCode.Backspace
+                        or kc == Enum.KeyCode.Return then
+                        clash = "uso do Roblox"
+                    elseif kc == CONFIG.ConsoleKey then
+                        clash = "barra de comandos"
+                    elseif kc == CONFIG.SearchKey and not CONFIG.SearchCtrl then
+                        clash = "busca global"
+                    end
+                    for tid, k in pairs(Keybinds) do
+                        if k == kc then clash = Toggles[tid] and Toggles[tid].label or tid end
+                    end
+                    if clash then
+                        Toast("[" .. KeyName(kc) .. "] já é de " .. clash .. " — nada mudou", "warn", 3)
+                    else
+                        CONFIG.PanelKey = kc
+                        Log("Tecla do painel = " .. KeyName(kc), "ok")
+                    end
+                    btn.Text = KeyName(CONFIG.PanelKey)
+                end)
+            end)
+        end
+        PanelKeyRow()
     end
 
     local kBtns = Grid(keyCard, 2, 30)
@@ -5983,7 +7606,9 @@ do
         Keybinds.freecam = Enum.KeyCode.C
         Keybinds.drone   = Enum.KeyCode.G
         for id, lbl in pairs(KeybindLabels) do lbl.Text = KeyName(Keybinds[id]) end
-        Log("Keybinds restaurados (F/N/E/C/G)", "ok")
+        CONFIG.PanelKey = Enum.KeyCode.B   -- v8.1: a tecla do painel também volta
+        if V8.PanelKeyLabel then V8.PanelKeyLabel.Text = KeyName(CONFIG.PanelKey) end
+        Log("Keybinds restaurados (painel B · F/N/E/C/G)", "ok")
     end
     resetKeys.MouseButton1Click:Connect(ResetKeys)
 
@@ -6028,7 +7653,7 @@ do
     end
 
     local scaleSet = SliderRow(look, {
-        label = "Escala da interface", min = 70, max = 130, def = 100, suffix = "%", order = 2,
+        label = "Tamanho da GUI", min = 70, max = 130, def = 100, suffix = "%", order = 2,
         apply = function(v)
             CONFIG.UiScale = v / 100
             WindowScale.Scale = CONFIG.UiScale
@@ -6105,17 +7730,20 @@ do
     local PRESETS = {
         Default  = { fly = false, noclip = false, esp = false, fullbright = false,
                      infjump = false, god = false, invisible = false, wall = false,
-                     chatspy = false, antiafk = true, freecam = false, drone = false },
+                     chatspy = false, antiafk = true, freecam = false, drone = false,
+                     antifall = false, antigrav = false, wallwalk = false },
         Admin    = { esp = true, fullbright = true, antiafk = true, chatspy = true,
                      noclip = false, fly = false, drone = false, freecam = false },
         Visual   = { esp = true, fullbright = true, wall = true, chatspy = false,
                      fly = false, noclip = false, drone = false, freecam = false },
         Movement = { fly = true, noclip = true, infjump = true, esp = false,
-                     fullbright = false, drone = false, freecam = false },
+                     fullbright = false, drone = false, freecam = false,
+                     antifall = true, wallwalk = false },
         Minimal  = { antiafk = true, fly = false, noclip = false, esp = false,
                      fullbright = false, infjump = false, god = false,
                      invisible = false, wall = false, chatspy = false,
-                     freecam = false, drone = false },
+                     freecam = false, drone = false, antifall = false,
+                     antigrav = false, wallwalk = false },
     }
 
     ApplyPreset = function(name)
@@ -6256,28 +7884,327 @@ do
     Paint(txt, "TextColor3", "Dim")
 end
 --------------------------------------------------------------------------------
--- v8.0 — ABA SHOP (ícone de sacola do dock)
--- Ainda não existe loja no HYGE: a aba só avisa. Nada aqui é clicável nem
--- finge vender/desbloquear alguma coisa.
+-- v8.1 — PLAYTIME SHOP (ícone de sacola do dock)
+-- Loja do próprio painel paga com tempo de jogo: 1 ponto por minuto com o HYGE
+-- aberto (V8.Play, 30_kit/05_playtime.lua). Categorias: All, Ranks, Icons,
+-- Titles, Effects, Nametags, Bundles. Tudo é visual e local — nada de Robux,
+-- nada que mexa no jogo. Effects e Nametags são criados pelo SEU cliente no
+-- seu personagem: só você vê (a loja diz isso na cara, não esconde).
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
 --------------------------------------------------------------------------------
 do
-    local tab = CreateTab("Shop")
-    local card = CreateCard(tab, "SHOP", 1)
+    local function Build()
+        local tab = CreateTab("Shop")
+        local P = V8.Play
+        local S = { cat = "All" }
+        V8.Shop = S
 
-    local big = Instance.new("TextLabel")
-    big.Size = UDim2.new(1, 0, 0, 34)
-    big.BackgroundTransparency = 1
-    big.Text = "Em breve"
-    big.TextColor3 = THEME.Text
-    big.Font = Enum.Font.GothamBold
-    big.TextSize = 24
-    big.TextXAlignment = Enum.TextXAlignment.Left
-    big.LayoutOrder = 1
-    big.Parent = card
-    Paint(big, "TextColor3", "Text")
+        ----------------------------------------------------------------------------
+        -- SALDO
+        ----------------------------------------------------------------------------
+        local wallet = CreateCard(tab, "SALDO", 1)
+        local tiles = Grid(wallet, 3, 48)
+        tiles.LayoutOrder = 1
+        local tPoints = StatTile(tiles, "PONTOS", "—", 1, "Success")
+        local tTime = StatTile(tiles, "TEMPO DE JOGO", "—", 2, "Accent2")
+        local tItems = StatTile(tiles, "ITENS", "—", 3)
+        local status = SubLabel(wallet, "", 2)
 
-    SubLabel(card, "A loja ainda não existe no HYGE. Quando ela entrar, os itens "
-        .. "aparecem aqui — por enquanto não há nada para comprar ou desbloquear.", 2)
+        ----------------------------------------------------------------------------
+        -- EQUIPADO
+        ----------------------------------------------------------------------------
+        local eq = CreateCard(tab, "EQUIPADO", 2)
+        local eqLbl = SubLabel(eq, "", 1)
+        eqLbl.TextColor3 = THEME.Text
+        eqLbl.Font = Enum.Font.GothamMedium
+        eqLbl.TextSize = 12
+        for _, e in ipairs(Painted) do   -- SubLabel nasce "Dim": troca no registry
+            if e.inst == eqLbl then e.key = "Text" end
+        end
+
+        local off = CreateButton(eq, "TIRAR TUDO", "Line", 30)
+        off.LayoutOrder = 2
+        off.MouseButton1Click:Connect(function()
+            P.UnequipAll()
+            Log("Playtime Shop: tudo desequipado", "action")
+        end)
+
+        ----------------------------------------------------------------------------
+        -- ITENS (categorias + lista)
+        ----------------------------------------------------------------------------
+        local shop = CreateCard(tab, "ITENS", 3)
+        local pills = Grid(shop, 4, 28)
+        pills.LayoutOrder = 1
+        local pillBtns = {}
+
+        local list = Instance.new("Frame")
+        list.Size = UDim2.new(1, 0, 0, 0)
+        list.AutomaticSize = Enum.AutomaticSize.Y
+        list.BackgroundTransparency = 1
+        list.LayoutOrder = 3
+        list.Parent = shop
+        do
+            local l = Instance.new("UIListLayout", list)
+            l.Padding = UDim.new(0, 6)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+
+        local hint = SubLabel(shop, "", 2)
+
+        local CAT_HINT = {
+            All      = "Tudo o que dá para comprar com tempo de jogo.",
+            Ranks    = "Seu rank aparece no perfil da Home, na nametag e no chat HYGE.",
+            Icons    = "Desenho ao lado do seu nome no perfil da Home.",
+            Titles   = "Título embaixo do nome (perfil, nametag e chat HYGE).",
+            Effects  = "Efeito no seu personagem — criado no seu cliente: SÓ VOCÊ VÊ.",
+            Nametags = "Placa acima da sua cabeça — criada no seu cliente: SÓ VOCÊ VÊ.",
+            Bundles  = "Pacotes com desconto; o preço cai pelo que você já tem.",
+        }
+        local CAT_ICON = { Ranks = "shield", Icons = "star", Titles = "clip",
+            Effects = "sun", Nametags = "user", Bundles = "bag" }
+
+        local function PaintPills()
+            for name, b in pairs(pillBtns) do
+                local on = (name == S.cat)
+                b.BackgroundColor3 = on and THEME.Accent or THEME.Btn
+                b.TextColor3 = on and THEME.Main or THEME.Text
+            end
+        end
+
+        -- miniatura à esquerda de cada item
+        local function Preview(parent, it)
+            local box = Instance.new("Frame")
+            box.Size = UDim2.new(0, 36, 0, 36)
+            box.Position = UDim2.new(0, 8, 0.5, -18)
+            box.BackgroundColor3 = it.color or THEME.Track
+            box.BorderSizePixel = 0
+            box.Parent = parent
+            if not it.color then Paint(box, "BackgroundColor3", "Track") end
+            Instance.new("UICorner", box).CornerRadius = UDim.new(0, 9)
+            if it.cat == "Titles" then
+                local t = Instance.new("TextLabel")
+                t.Size = UDim2.new(1, 0, 1, 0)
+                t.BackgroundTransparency = 1
+                t.Text = "Aa"
+                t.TextColor3 = THEME.Text
+                t.Font = Enum.Font.GothamBlack
+                t.TextSize = 14
+                t.Parent = box
+                Paint(t, "TextColor3", "Text")
+            elseif it.cat ~= "Ranks" then
+                local ic = Icon(box, it.icon or CAT_ICON[it.cat] or "dot", THEME.Text, 20, 1)
+                ic.AnchorPoint = Vector2.new(0.5, 0.5)
+                ic.Position = UDim2.new(0.5, 0, 0.5, 0)
+            end
+        end
+
+        local function Describe(it)
+            if it.cat == "Bundles" then
+                local names = {}
+                for _, sub in ipairs(it.items or {}) do
+                    local s = P.ById[sub]
+                    if s then table.insert(names, s.name) end
+                end
+                local _, have, total = P.BundlePrice(it)
+                return table.concat(names, " + ")
+                    .. (have > 0 and ("  (você já tem " .. have .. "/" .. total .. ")") or "")
+            end
+            return it.desc or it.cat
+        end
+
+        local function Row(it, order)
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, 0, 0, 52)
+            row.BackgroundColor3 = THEME.Btn
+            row.BorderSizePixel = 0
+            row.LayoutOrder = order
+            row.Parent = list
+            Paint(row, "BackgroundColor3", "Btn")
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+            Preview(row, it)
+
+            local nm = Instance.new("TextLabel")
+            nm.Size = UDim2.new(1, -160, 0, 18)
+            nm.Position = UDim2.new(0, 54, 0, 8)
+            nm.BackgroundTransparency = 1
+            nm.Text = it.name
+            nm.TextColor3 = THEME.Text
+            nm.Font = Enum.Font.GothamBold
+            nm.TextSize = 13
+            nm.TextXAlignment = Enum.TextXAlignment.Left
+            nm.TextTruncate = Enum.TextTruncate.AtEnd
+            nm.Parent = row
+            Paint(nm, "TextColor3", "Text")
+
+            local ds = Instance.new("TextLabel")
+            ds.Size = UDim2.new(1, -160, 0, 14)
+            ds.Position = UDim2.new(0, 54, 0, 27)
+            ds.BackgroundTransparency = 1
+            ds.Text = (S.cat == "All" and (it.cat .. " · ") or "") .. Describe(it)
+            ds.TextColor3 = THEME.Dim
+            ds.Font = Enum.Font.GothamMedium
+            ds.TextSize = 10
+            ds.TextXAlignment = Enum.TextXAlignment.Left
+            ds.TextTruncate = Enum.TextTruncate.AtEnd
+            ds.Parent = row
+            Paint(ds, "TextColor3", "Dim")
+
+            -- botão: preço / equipar / equipado / completo
+            local slot = P.SlotOf[it.cat]
+            local owned = P.Owned[it.id]
+            local price = P.PriceOf(it)
+            local text, key
+            if it.cat == "Bundles" then
+                local _, have, total = P.BundlePrice(it)
+                if have >= total then
+                    text, key = "COMPLETO", "Line"
+                else
+                    text, key = price .. " PTS", (P.Points() >= price) and "Success" or "Line"
+                end
+            elseif owned then
+                if slot and P.Equip[slot] == it.id then
+                    text, key = "EQUIPADO", "Success"
+                else
+                    text, key = "EQUIPAR", "Accent"
+                end
+            else
+                text, key = price .. " PTS", (P.Points() >= price) and "Success" or "Line"
+            end
+
+            local b = CreateButton(row, text, key, 30)
+            b.AnchorPoint = Vector2.new(1, 0.5)
+            b.Position = UDim2.new(1, -10, 0.5, 0)
+            b.Size = UDim2.new(0, 92, 0, 30)
+            b.TextSize = 11
+            if key == "Line" then
+                b.TextColor3 = THEME.Dim
+                Paint(b, "TextColor3", "Dim")
+            end
+
+            b.MouseButton1Click:Connect(function()
+                if text == "COMPLETO" then
+                    Toast("Você já tem tudo deste pacote", nil, 2)
+                elseif text == "EQUIPADO" then
+                    P.Unequip(slot)
+                    Log("Playtime Shop: " .. it.name .. " desequipado", "action")
+                elseif text == "EQUIPAR" then
+                    P.EquipItem(it.id)
+                    Log("Playtime Shop: " .. it.name .. " equipado", "ok")
+                    Toast(it.name .. " equipado", "ok", 1.6)
+                else
+                    if P.Points() < price then
+                        Toast("Faltam " .. (price - P.Points()) .. " pontos ("
+                            .. P.Fmt((price - P.Points()) * 60) .. " de jogo)", "warn", 3)
+                        return
+                    end
+                    Confirm("Comprar " .. it.name .. " por " .. price .. " pontos?", function()
+                        local ok, res = P.Buy(it.id)
+                        if not ok then
+                            Toast(tostring(res), "warn", 3)
+                            return
+                        end
+                        Log("Playtime Shop: comprou " .. it.name .. " (" .. tostring(res)
+                            .. " pts)", "ok")
+                        Toast(it.name .. " comprado", "ok", 2)
+                        -- item avulso já entra equipado
+                        if slot then P.EquipItem(it.id) end
+                    end)
+                end
+            end)
+        end
+
+        S.Render = function()
+            for _, c in ipairs(list:GetChildren()) do
+                if c:IsA("GuiObject") then c:Destroy() end
+            end
+            local n = 0
+            for _, it in ipairs(P.Items) do
+                if S.cat == "All" or it.cat == S.cat then
+                    n = n + 1
+                    Row(it, n)
+                end
+            end
+            hint.Text = CAT_HINT[S.cat] or ""
+        end
+
+        S.Tick = function()
+            tPoints.Text = tostring(P.Points())
+            tTime.Text = P.Fmt(P.Total)
+            local owned, total = 0, 0
+            for _, it in ipairs(P.Items) do
+                if it.cat ~= "Bundles" then
+                    total = total + 1
+                    if P.Owned[it.id] then owned = owned + 1 end
+                end
+            end
+            tItems.Text = owned .. "/" .. total
+            local nextMin = 60 - math.floor(P.Total % 60)
+            status.Text = "1 ponto por minuto com o HYGE aberto — próximo em " .. nextMin
+                .. "s.  " .. tostring(P.Status or "")
+        end
+
+        local SLOT_NAME = { rank = "Rank", icon = "Ícone", title = "Título",
+            effect = "Efeito", nametag = "Nametag" }
+        local function RenderEquip()
+            local parts = {}
+            for _, slot in ipairs({ "rank", "icon", "title", "effect", "nametag" }) do
+                local it = P.Equipped(slot)
+                table.insert(parts, SLOT_NAME[slot] .. ": " .. (it and it.name or "—"))
+            end
+            eqLbl.Text = table.concat(parts, "   ·   ")
+        end
+
+        for i, name in ipairs(P.Cats) do
+            local b = Instance.new("TextButton")
+            b.BackgroundColor3 = THEME.Btn
+            b.Text = name
+            b.TextColor3 = THEME.Text
+            b.Font = Enum.Font.GothamBold
+            b.TextSize = 11
+            b.AutoButtonColor = false
+            b.LayoutOrder = i
+            b.Parent = pills
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+            pillBtns[name] = b
+            b.MouseButton1Click:Connect(function()
+                S.cat = name
+                PaintPills()
+                S.Render()
+            end)
+        end
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, PaintPills)
+
+        -- a lista só redesenha quando algo muda (compra, equipar, carregar)
+        P.OnChange(function()
+            pcall(S.Render)
+            pcall(S.Tick)
+            pcall(RenderEquip)
+        end)
+        -- a cada minuto o saldo sobe: o preço pode ficar verde sem compra nenhuma
+        do
+            local lastPts = -1
+            V8.TabTick.Shop = function()
+                S.Tick()
+                local pts = P.Points()
+                if pts ~= lastPts then
+                    lastPts = pts
+                    S.Render()
+                end
+            end
+        end
+        OnTabOpen("Shop", function()
+            pcall(S.Tick)
+            pcall(S.Render)
+        end)
+
+        PaintPills()
+        S.Render()
+        S.Tick()
+        RenderEquip()
+    end
+    Build()
 end
 --------------------------------------------------------------------------------
 -- v8.0 — ABA SCRIPTS (ícone de terminal do dock)
@@ -6485,15 +8412,587 @@ do
     status.Text = "Nenhuma mensagem ainda   ·   " .. mode
 end
 --------------------------------------------------------------------------------
+-- v8.1 — SEÇÃO TROLL (ícone de máscara do dock)
+-- * Walk on Walls (20_features/10_wallwalk.lua): roda no SEU personagem, então
+--   funciona em qualquer jogo — e os outros veem você andando na parede.
+-- * Ações no alvo (veio da aba Moderação): Fling/Spin/Trip/Launch/Sit/Scale/
+--   Balloon mexem no personagem de OUTRA pessoa, e isso só o servidor pode
+--   fazer. Sem o RemoteEvent (script em server/) o botão fica indisponível e
+--   explica o motivo — nada é fingido. Fake Message é só na sua tela.
+-- O alvo é o jogador escolhido em Jogadores › Lista (botão ALVO).
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local tab = CreateTab("Troll")
+
+        ----------------------------------------------------------------------------
+        -- MOVIMENTO
+        ----------------------------------------------------------------------------
+        local mov = CreateCard(tab, "MOVIMENTO", 1)
+        SwitchRow(mov, "wallwalk", "Walk on Walls", Toggles.wallwalk.desc)
+        SubLabel(mov, "Ande contra uma parede para subir nela; continue para chegar ao "
+            .. "teto. WASD segue a câmera, Space pula para fora da superfície e, sem "
+            .. "nada embaixo por ~1 s, a gravidade volta ao normal. Usa a WalkSpeed e o "
+            .. "JumpPower de Personagem. Desliga sozinho no respawn ou se Fly/Drone/"
+            .. "Freecam forem ligados.", 2)
+
+        ----------------------------------------------------------------------------
+        -- ALVO
+        ----------------------------------------------------------------------------
+        local tgt = CreateCard(tab, "ALVO", 2)
+        local holder = Instance.new("Frame")
+        holder.Size = UDim2.new(1, 0, 0, 58)
+        holder.LayoutOrder = 1
+        holder.Parent = tgt
+        V8.Cell(holder, 0)
+
+        local av = Avatar(holder, 1, 40)
+        av.Position = UDim2.new(0, 0, 0.5, -20)
+
+        local name = Instance.new("TextLabel")
+        name.Size = UDim2.new(1, -160, 0, 18)
+        name.Position = UDim2.new(0, 50, 0, 11)
+        name.BackgroundTransparency = 1
+        name.Text = "Nenhum alvo"
+        name.TextColor3 = THEME.Text
+        name.Font = Enum.Font.GothamBold
+        name.TextSize = 14
+        name.TextXAlignment = Enum.TextXAlignment.Left
+        name.TextTruncate = Enum.TextTruncate.AtEnd
+        name.Parent = holder
+        Paint(name, "TextColor3", "Text")
+
+        local sub = Instance.new("TextLabel")
+        sub.Size = UDim2.new(1, -160, 0, 14)
+        sub.Position = UDim2.new(0, 50, 0, 30)
+        sub.BackgroundTransparency = 1
+        sub.Text = "escolha em Jogadores › Lista (botão ALVO)"
+        sub.TextColor3 = THEME.Dim
+        sub.Font = Enum.Font.Code
+        sub.TextSize = 11
+        sub.TextXAlignment = Enum.TextXAlignment.Left
+        sub.TextTruncate = Enum.TextTruncate.AtEnd
+        sub.Parent = holder
+        Paint(sub, "TextColor3", "Dim")
+
+        local pick = CreateButton(holder, "ESCOLHER", "Accent", 28)
+        pick.AnchorPoint = Vector2.new(1, 0.5)
+        pick.Position = UDim2.new(1, 0, 0.5, 0)
+        pick.Size = UDim2.new(0, 96, 0, 28)
+        pick.TextSize = 11
+        pick.MouseButton1Click:Connect(function() ShowTab("Players") end)
+
+        local function Target()
+            local p = State.SelectedPlayer
+            if not p or not p.Parent then
+                name.Text = "Nenhum alvo"
+                sub.Text = "escolha em Jogadores › Lista (botão ALVO)"
+                av.Image = "rbxthumb://type=AvatarHeadShot&id=1&w=48&h=48"
+                return
+            end
+            av.Image = "rbxthumb://type=AvatarHeadShot&id=" .. p.UserId .. "&w=48&h=48"
+            name.Text = p.DisplayName
+            local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+            local mine = Root()
+            sub.Text = "@" .. p.Name .. ((root and mine)
+                and ("  ·  " .. math.floor((root.Position - mine.Position).Magnitude) .. "m")
+                or "  ·  sem personagem")
+        end
+
+        ----------------------------------------------------------------------------
+        -- AÇÕES NO ALVO (servidor)
+        ----------------------------------------------------------------------------
+        local troll = CreateCard(tab, "AÇÕES NO ALVO", 3)
+        SubLabel(troll, "Mexer no personagem de outra pessoa é coisa do servidor: estes "
+            .. "botões só funcionam com o RemoteEvent + validação (script pronto em "
+            .. "server/). Sem o Remote o botão fica indisponível — nada aqui é fingido.", -1)
+
+        local grid = Grid(troll, 3, 32)
+
+        ActionBtn(grid, "FLING", "Danger", "Fling", function()
+            local p = RequireSelected()
+            if p then FlingPlayer(p) end
+        end, "Aplicar Fling no alvo?")
+
+        local spinBtn
+        spinBtn = ActionBtn(grid, "SPIN: OFF", "Warning", "Spin", function()
+            local p = RequireSelected()
+            if not p then return end
+            local on = not TrollState.Spin[p.UserId]
+            SpinPlayer(p, on)
+            spinBtn.Text = on and "SPIN: ON" or "SPIN: OFF"
+        end)
+
+        ActionBtn(grid, "TRIP", "Warning", "Trip", function()
+            local p = RequireSelected()
+            if p then TripPlayer(p) end
+        end)
+
+        ActionBtn(grid, "LAUNCH", "Danger", "Launch", function()
+            local p = RequireSelected()
+            if p then LaunchPlayer(p) end
+        end, "Lançar o alvo bem alto?")
+
+        ActionBtn(grid, "FORCE SIT", "Warning", "Sit", function()
+            local p = RequireSelected()
+            if p then SitPlayer(p) end
+        end)
+
+        local balloonBtn
+        balloonBtn = ActionBtn(grid, "BALLOON: OFF", "Accent", "Balloon", function()
+            local p = RequireSelected()
+            if not p then return end
+            local on = not TrollState.Balloon[p.UserId]
+            BalloonPlayer(p, on)
+            balloonBtn.Text = on and "BALLOON: ON" or "BALLOON: OFF"
+        end)
+
+        ActionBtn(grid, "TINY", "Accent", "Scale", function()
+            local p = RequireSelected()
+            if p then ScalePlayer(p, "tiny") end
+        end, "Encolher o alvo?")
+
+        ActionBtn(grid, "NORMAL", "Success", "Scale", function()
+            local p = RequireSelected()
+            if p then ScalePlayer(p, "normal") end
+        end)
+
+        ActionBtn(grid, "GIANT", "Accent", "Scale", function()
+            local p = RequireSelected()
+            if p then ScalePlayer(p, "giant") end
+        end, "Deixar o alvo gigante?")
+
+        Divider(troll).LayoutOrder = 10
+
+        local fake = Grid(troll, 2, 32)
+        fake.LayoutOrder = 11
+
+        ActionBtn(fake, "FAKE KICK MSG", "Warning", nil, function()
+            local p = RequireSelected()
+            if p then FakeMessage(p, "kick") end
+        end)
+
+        ActionBtn(fake, "FAKE BAN MSG", "Danger", nil, function()
+            local p = RequireSelected()
+            if p then FakeMessage(p, "ban") end
+        end)
+
+        SubLabel(troll, "Fake Message só aparece na SUA tela — não afeta o alvo nem o "
+            .. "servidor.", 12)
+
+        -- os botões de liga/desliga seguem o alvo atual
+        local function Sync()
+            local p = State.SelectedPlayer
+            local id = p and p.UserId
+            -- sem o Remote o botão mostra "(servidor)": não mexe no texto
+            if Remotes.Spin then
+                spinBtn.Text = (id and TrollState.Spin[id]) and "SPIN: ON" or "SPIN: OFF"
+            end
+            if Remotes.Balloon then
+                balloonBtn.Text = (id and TrollState.Balloon[id]) and "BALLOON: ON" or "BALLOON: OFF"
+            end
+        end
+
+        V8.TabTick.Troll = function() Target() Sync() end
+        OnTabOpen("Troll", function() pcall(Target) pcall(Sync) end)
+        Target()
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
+-- v8.1 — CHAT HYGE (Chat › HYGE)
+-- Conversa entre quem usa o HYGE: sala "Este servidor" (mesmo JobId) e sala
+-- "Global" (todos os servidores). Dois clientes Roblox não falam direto um
+-- com o outro, então as mensagens passam por um relay HTTP — o servidor
+-- pequeno em server/chat-relay (Node, sem dependências; veja o README).
+-- Sem relay configurado (CONFIG.ChatRelay ou o campo da aba) o chat fica
+-- desligado e diz isso; nenhuma mensagem é inventada.
+--
+-- Precisa do HTTP do executor: request() para enviar; para só ler, também
+-- serve game:HttpGet. Nomes vêm do próprio cliente e o relay NÃO os verifica.
+-- Texto recebido é sempre escapado antes de ir para a tela (RichText).
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local tab = CreateTab("HyChat")
+        if SET.ChatRelay == nil then SET.ChatRelay = "" end
+        if SET.ChatOn == nil then SET.ChatOn = true end
+        if SET.ChatToasts == nil then SET.ChatToasts = true end
+
+        local CH = {
+            Room = "server", Seq = 0, Boot = nil, Busy = false, Loaded = false,
+            Msgs = { server = {}, global = {} }, Here = {}, Online = 0,
+            Last = -math.huge, Err = nil, Max = 80,
+        }
+        V8.HyChat = CH
+        local Enc = function(s) return V8.Net.Encode(s) end
+
+        CH.Url = function()
+            local u = tostring((SET.ChatRelay ~= "" and SET.ChatRelay) or CONFIG.ChatRelay or "")
+            u = u:gsub("^%s+", ""):gsub("%s+$", ""):gsub("/+$", "")
+            if u ~= "" and not u:match("^https?://") then u = "https://" .. u end
+            return u
+        end
+        CH.Job = function() return game.JobId ~= "" and game.JobId or "studio" end
+        CH.Tag = function() return (V8.Play and V8.Play.Line()) or "" end
+
+        local function Esc(s)
+            return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+                :gsub("\"", "&quot;"):gsub("'", "&apos;"))
+        end
+        local function Hex(c)
+            return string.format("#%02X%02X%02X", math.floor(c.R * 255 + 0.5),
+                math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+        end
+
+        ----------------------------------------------------------------------------
+        -- CONVERSA
+        ----------------------------------------------------------------------------
+        local talk = CreateCard(tab, "CONVERSA", 1)
+
+        local pills = Grid(talk, 2, 30)
+        pills.LayoutOrder = 1
+        local pillBtns = {}
+
+        local status = SubLabel(talk, "", 2)
+
+        local inRow = Instance.new("Frame")
+        inRow.Size = UDim2.new(1, 0, 0, 34)
+        inRow.BackgroundTransparency = 1
+        inRow.LayoutOrder = 3
+        inRow.Parent = talk
+
+        local box = CreateInput(inRow, "Mensagem para os usuários HYGE...", 34)
+        box.Size = UDim2.new(1, -100, 0, 34)
+
+        local send = CreateButton(inRow, "ENVIAR", "Accent", 34)
+        send.AnchorPoint = Vector2.new(1, 0)
+        send.Position = UDim2.new(1, 0, 0, 0)
+        send.Size = UDim2.new(0, 92, 0, 34)
+
+        local feed = Instance.new("Frame")
+        feed.Size = UDim2.new(1, 0, 0, 0)
+        feed.AutomaticSize = Enum.AutomaticSize.Y
+        feed.BackgroundTransparency = 1
+        feed.LayoutOrder = 4
+        feed.Parent = talk
+        do
+            local l = Instance.new("UIListLayout", feed)
+            l.Padding = UDim.new(0, 4)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+        local empty = SubLabel(talk, "", 5)
+
+        local function PaintPills()
+            for room, b in pairs(pillBtns) do
+                local on = (room == CH.Room)
+                b.BackgroundColor3 = on and THEME.Accent or THEME.Btn
+                b.TextColor3 = on and THEME.Main or THEME.Text
+            end
+        end
+
+        CH.AddLine = function(m)
+            local l = Instance.new("TextLabel")
+            l.Size = UDim2.new(1, 0, 0, 0)
+            l.AutomaticSize = Enum.AutomaticSize.Y
+            l.BackgroundTransparency = 1
+            l.RichText = true
+            local mine = (m.uid == LocalPlayer.UserId)
+            local who = (m.tag ~= "" and ("[" .. m.tag .. "] ") or "") .. m.name
+            l.Text = "<font color=\"" .. Hex(THEME.Dim) .. "\">" .. os.date("%H:%M", m.t)
+                .. "</font>  <b><font color=\"" .. Hex(mine and THEME.Accent2 or THEME.Accent)
+                .. "\">" .. Esc(who) .. "</font></b>:  " .. Esc(m.text)
+            l.TextColor3 = THEME.Text
+            l.Font = Enum.Font.Gotham
+            l.TextSize = 12
+            l.TextWrapped = true
+            l.TextXAlignment = Enum.TextXAlignment.Left
+            l.LayoutOrder = -(m.seq or 0)   -- mais nova em cima
+            l.Parent = feed
+            -- guarda só as últimas CH.Max linhas na tela
+            local lines = {}
+            for _, c in ipairs(feed:GetChildren()) do
+                if c:IsA("TextLabel") then table.insert(lines, c) end
+            end
+            if #lines > CH.Max then
+                table.sort(lines, function(a, b) return a.LayoutOrder > b.LayoutOrder end)
+                for i = 1, #lines - CH.Max do lines[i]:Destroy() end
+            end
+            empty.Visible = false
+        end
+
+        CH.RenderFeed = function()
+            for _, c in ipairs(feed:GetChildren()) do
+                if c:IsA("TextLabel") then c:Destroy() end
+            end
+            local msgs = CH.Msgs[CH.Room]
+            for _, m in ipairs(msgs) do CH.AddLine(m) end
+            empty.Visible = (#msgs == 0)
+            empty.Text = (CH.Url() == "") and ""
+                or (CH.Room == "server" and "Ninguém escreveu neste servidor ainda."
+                    or "Nenhuma mensagem global ainda.")
+        end
+
+        CH.RenderStatus = function()
+            local url = CH.Url()
+            if url == "" then
+                status.Text = "Desligado: nenhum servidor de chat configurado. Cole o endereço "
+                    .. "do relay em Conexão, abaixo (o relay está em server/chat-relay — README)."
+                status.TextColor3 = THEME.Warning
+                return
+            end
+            if SET.ChatOn == false then
+                status.Text = "Pausado (Conexão › Conectar ao chat HYGE)."
+                status.TextColor3 = THEME.Dim
+                return
+            end
+            if CH.Err then
+                status.Text = "Sem conexão com o relay: " .. CH.Err .. " — tentando de novo."
+                status.TextColor3 = THEME.Danger
+                return
+            end
+            if not CH.Loaded then
+                status.Text = "Conectando em " .. url .. "..."
+                status.TextColor3 = THEME.Dim
+                return
+            end
+            local names = {}
+            for _, u in ipairs(CH.Here) do
+                if type(u) == "table" and tonumber(u.uid) ~= LocalPlayer.UserId then
+                    table.insert(names, tostring(u.name or "?"):sub(1, 40))
+                end
+            end
+            status.Text = "Conectado  ·  " .. (#names + 1) .. " com HYGE neste servidor"
+                .. (#names > 0 and (" (" .. table.concat(names, ", ") .. " e você)") or " (só você)")
+                .. "  ·  " .. CH.Online .. " no total"
+                .. (V8.Net.CanPost() and "" or "  ·  seu executor só LÊ (sem request())")
+            status.TextColor3 = THEME.Success
+        end
+
+        ----------------------------------------------------------------------------
+        -- rede
+        ----------------------------------------------------------------------------
+        CH.Poll = function()
+            if CH.Busy then return end
+            local url = CH.Url()
+            if url == "" or SET.ChatOn == false then return end
+            CH.Busy = true
+            CH.Last = os.clock()
+            task.spawn(function()
+                local q = "/v1/poll?job=" .. Enc(CH.Job()) .. "&after=" .. CH.Seq
+                    .. "&uid=" .. LocalPlayer.UserId .. "&name=" .. Enc(LocalPlayer.DisplayName)
+                    .. "&tag=" .. Enc(CH.Tag()) .. "&place=" .. game.PlaceId
+                    .. ((CONFIG.ChatKey or "") ~= "" and ("&key=" .. Enc(CONFIG.ChatKey)) or "")
+                local data, err = V8.Net.Json("GET", url .. q)
+                CH.Busy = false
+                if not data or data.ok ~= true then
+                    local why = err or tostring(data and data.error or "resposta inválida")
+                    if CH.Err ~= why then Log("Chat HYGE: " .. why, "warn") end
+                    CH.Err = why
+                    pcall(CH.RenderStatus)
+                    return
+                end
+                if CH.Err then Log("Chat HYGE: conectado de novo", "ok") end
+                CH.Err = nil
+
+                -- relay reiniciou: a numeração recomeça, então a lista também
+                if data.boot ~= nil and CH.Boot ~= nil and data.boot ~= CH.Boot then
+                    CH.Boot = data.boot
+                    CH.Seq = 0
+                    CH.Msgs.server, CH.Msgs.global = {}, {}
+                    pcall(CH.RenderFeed)
+                    CH.Last = -math.huge   -- busca o histórico no próximo segundo
+                    return
+                end
+                CH.Boot = data.boot
+
+                local fresh
+                for _, m in ipairs(type(data.messages) == "table" and data.messages or {}) do
+                    local seq = tonumber(m.seq)
+                    if seq and seq > CH.Seq then
+                        CH.Seq = seq
+                        local room = (m.room == "global") and "global" or "server"
+                        local msg = {
+                            seq = seq, room = room, uid = tonumber(m.uid),
+                            name = tostring(m.name or "?"):sub(1, 40),
+                            tag = tostring(m.tag or ""):sub(1, 40),
+                            text = tostring(m.text or ""):sub(1, 200),
+                            t = tonumber(m.t) or os.time(),
+                        }
+                        local list = CH.Msgs[room]
+                        table.insert(list, msg)
+                        while #list > CH.Max do table.remove(list, 1) end
+                        if room == CH.Room then pcall(CH.AddLine, msg) end
+                        if msg.uid ~= LocalPlayer.UserId then fresh = msg end
+                    end
+                end
+                CH.Here = type(data.here) == "table" and data.here or {}
+                CH.Online = tonumber(data.online) or 0
+
+                -- aviso de mensagem nova (não no histórico da primeira leitura)
+                local viewing = V8.IsOpen and V8.IsOpen() and State.ActiveTab == "HyChat"
+                if fresh and CH.Loaded and SET.ChatToasts and not viewing then
+                    Toast("HYGE " .. (fresh.room == "global" and "global" or "servidor")
+                        .. " · " .. fresh.name .. ": " .. fresh.text, nil, 4)
+                end
+                CH.Loaded = true
+                pcall(CH.RenderStatus)
+                if #CH.Msgs[CH.Room] == 0 then pcall(CH.RenderFeed) end
+            end)
+        end
+
+        CH.Send = function()
+            local text = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
+            if text == "" then
+                Toast("Escreva a mensagem primeiro", "warn", 1.6)
+                return
+            end
+            local url = CH.Url()
+            if url == "" then
+                Toast("Configure o servidor do chat em Conexão", "warn", 3)
+                return
+            end
+            if not V8.Net.CanPost() then
+                Log("Chat HYGE: este executor não expõe request() — dá para ler, não "
+                    .. "para enviar", "error")
+                Toast("Executor sem request(): não dá para enviar", "error", 3)
+                return
+            end
+            if #text > 200 then text = text:sub(1, 200) end
+            box.Text = ""
+            local room = CH.Room
+            task.spawn(function()
+                local data, err = V8.Net.Json("POST", url .. "/v1/send", {
+                    key = CONFIG.ChatKey or "", uid = LocalPlayer.UserId,
+                    name = LocalPlayer.DisplayName, tag = CH.Tag(), job = CH.Job(),
+                    place = game.PlaceId, room = room, text = text,
+                })
+                if not data or data.ok ~= true then
+                    local why = err or tostring(data and data.error or "resposta inválida")
+                    Log("Chat HYGE: mensagem NÃO enviada — " .. why, "error")
+                    Toast("Mensagem não enviada", "error", 3)
+                    return
+                end
+                -- a própria mensagem volta pelo poll: é a confirmação real
+                CH.Last = -math.huge
+            end)
+        end
+
+        send.MouseButton1Click:Connect(CH.Send)
+        box.FocusLost:Connect(function(enter) if enter then CH.Send() end end)
+
+        for i, r in ipairs({ { "server", "ESTE SERVIDOR" }, { "global", "GLOBAL" } }) do
+            local b = Instance.new("TextButton")
+            b.BackgroundColor3 = THEME.Btn
+            b.Text = r[2]
+            b.TextColor3 = THEME.Text
+            b.Font = Enum.Font.GothamBold
+            b.TextSize = 11
+            b.AutoButtonColor = false
+            b.LayoutOrder = i
+            b.Parent = pills
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+            pillBtns[r[1]] = b
+            b.MouseButton1Click:Connect(function()
+                CH.Room = r[1]
+                PaintPills()
+                CH.RenderFeed()
+            end)
+        end
+
+        ----------------------------------------------------------------------------
+        -- CONEXÃO
+        ----------------------------------------------------------------------------
+        local conn = CreateCard(tab, "CONEXÃO", 2)
+        SubLabel(conn, "Endereço do relay (server/chat-relay). Suas mensagens, seu "
+            .. "UserId e seu nome passam por esse servidor — use um em que você confia. "
+            .. "O relay não verifica nomes: qualquer um pode digitar qualquer nome.", -1)
+
+        local urlBox = CreateInput(conn, "https://seu-relay.exemplo.com", 32)
+        urlBox.LayoutOrder = 1
+        urlBox.Font = Enum.Font.Code
+        urlBox.TextSize = 12
+        urlBox.Text = CH.Url()
+
+        local g = Grid(conn, 2, 30)
+        g.LayoutOrder = 2
+        local save = CreateButton(g, "SALVAR E CONECTAR", "Success", 30)
+        save.LayoutOrder = 1
+        local test = CreateButton(g, "TESTAR AGORA", "Accent", 30)
+        test.LayoutOrder = 2
+
+        save.MouseButton1Click:Connect(function()
+            SET.ChatRelay = urlBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+            urlBox.Text = CH.Url()
+            CH.Seq, CH.Boot, CH.Loaded, CH.Err = 0, nil, false, nil
+            CH.Msgs.server, CH.Msgs.global = {}, {}
+            CH.RenderFeed()
+            CH.RenderStatus()
+            if CH.Url() == "" then
+                Log("Chat HYGE desligado (sem endereço)", "action")
+            else
+                Log("Chat HYGE: relay = " .. CH.Url(), "ok")
+                CH.Poll()
+            end
+        end)
+        test.MouseButton1Click:Connect(function()
+            CH.Last = -math.huge
+            CH.Poll()
+        end)
+
+        CheckRow(conn, "Conectar ao chat HYGE", "Desligado, o painel não consulta o relay",
+            function() return SET.ChatOn ~= false end,
+            function(v)
+                SET.ChatOn = v and true or false
+                CH.RenderStatus()
+                if v then CH.Poll() end
+            end, 3)
+        CheckRow(conn, "Avisar mensagem nova", "Toast quando chega mensagem com a aba fechada",
+            function() return SET.ChatToasts ~= false end,
+            function(v) SET.ChatToasts = v and true or false end, 4)
+
+        ----------------------------------------------------------------------------
+        -- ritmo: 2 s com a aba aberta, 6 s fechada, 15 s se o relay falhou
+        ----------------------------------------------------------------------------
+        V8.Job(1, function()
+            if CH.Url() == "" or SET.ChatOn == false then return end
+            local viewing = V8.IsOpen and V8.IsOpen() and State.ActiveTab == "HyChat"
+            local every = CH.Err and 15 or (viewing and 2 or 6)
+            if os.clock() - CH.Last >= every then CH.Poll() end
+        end)
+        OnTabOpen("HyChat", function()
+            pcall(CH.RenderStatus)
+            CH.Last = math.min(CH.Last, os.clock() - 1.5)   -- abre e já busca
+        end)
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function()
+            PaintPills()
+            pcall(CH.RenderFeed)    -- RichText não entra no registry: redesenha
+            pcall(CH.RenderStatus)
+            -- config importada/carregada pode trazer outro endereço
+            if not urlBox:IsFocused() then urlBox.Text = CH.Url() end
+        end)
+
+        PaintPills()
+        CH.RenderFeed()
+        CH.RenderStatus()
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
 -- v8.0 — DOCK (navegação principal)
 -- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
--- abre o painel; a bolinha "H" só aparece no modo sidebar). 7 seções:
---   Início · Personagem · Shop · Scripts · Jogadores · Configurações · Chat
+-- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
+--   Início · Personagem · Playtime Shop · Troll · Emotes · Jogadores ·
+--   Configurações · Chat
 -- O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel.
 -- Navegação dentro da seção (as duas posicionadas pelo V8.Shell):
---   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores)
---   * Scripts usa uma segunda barra de ícones logo acima do dock
---     (Console, Emotes) — igual às imagens de referência
+--   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores,
+--     Configurações › Ajustes · Console, Chat › HYGE · Jogo)
+--   * uma seção com subdock = true ganha uma segunda barra de ícones logo
+--     acima do dock (nenhuma usa na v8.1; o mecanismo continua disponível)
 -- O título grande da janela (V8.Shell.SetTitle) acompanha a seção ativa.
 -- A sidebar continua existindo: SET.Dock escolhe dock OU sidebar (Ajustes).
 -- Tudo em V8.Dock: zero locais novos. Entra DEPOIS das abas (40_tabs) no build.
@@ -6513,16 +9012,18 @@ do
           tabs = { { "Home", "Painel" }, { "Server", "Servidor" } } },
         { id = "char",    icon = "user",     label = "Personagem",
           tabs = { { "Movement", "Movimento" }, { "Visuals", "Visual" } } },
-        { id = "shop",    icon = "bag",      label = "Shop",
+        { id = "shop",    icon = "bag",      label = "Playtime Shop",
           tabs = { { "Shop", "Shop" } } },
-        { id = "scripts", icon = "terminal", label = "Scripts", subdock = true,
-          tabs = { { "Scripts", "Console", "terminal" }, { "Emotes", "Emotes", "smile" } } },
+        { id = "troll",   icon = "mask",     label = "Troll",
+          tabs = { { "Troll", "Troll" } } },
+        { id = "emotes",  icon = "smile",    label = "Emotes",
+          tabs = { { "Emotes", "Emotes" } } },
         { id = "players", icon = "users",    label = "Jogadores",
           tabs = { { "Players", "Lista" }, { "Moderation", "Moderação" } } },
         { id = "config",  icon = "gear",     label = "Configurações",
-          tabs = { { "Settings", "Configurações" } } },
+          tabs = { { "Settings", "Ajustes" }, { "Scripts", "Console" } } },
         { id = "chat",    icon = "chat",     label = "Chat",
-          tabs = { { "Chat", "Chat" } } },
+          tabs = { { "HyChat", "HYGE" }, { "Chat", "Jogo" } } },
     }
 
     K.ById = {}        -- id -> seção
@@ -6602,7 +9103,7 @@ do
     K.Bar = function() return bar end
     local tip = Tip(bar)
 
-    -- os 7 botões: ícone sozinho; o ativo ganha o nome ao lado (sem fundo)
+    -- os 8 botões: ícone sozinho; o ativo ganha o nome ao lado (sem fundo)
     for i, s in ipairs(K.Sections) do
         local b = Instance.new("TextButton")
         b.Name = s.id
@@ -6910,7 +9411,7 @@ do
     ----------------------------------------------------------------------------
     do
         local nav = CreateCard(Tabs.Settings, "NAVEGAÇÃO", 8)
-        SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 7 ícones, sempre "
+        SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 8 ícones, sempre "
             .. "visível, e é ele que abre o painel. Desligue para voltar à sidebar "
             .. "dentro da janela larga (com a bolinha H para abrir).", 0)
 
@@ -6927,7 +9428,8 @@ do
             SubLabel(nav, "Cards de status da Home: escreva os três toggles "
                 .. "separados por espaço (padrão: fly noclip esp). Vale qualquer "
                 .. "id da lista: fly, noclip, infjump, god, invisible, wall, esp, "
-                .. "chatspy, fullbright, antiafk, freecam, drone.", 2)
+                .. "chatspy, fullbright, antiafk, freecam, drone, antifall, antigrav, "
+                .. "wallwalk.", 2)
 
             local box = CreateInput(nav, "fly noclip esp", 32)
             box.LayoutOrder = 3
@@ -7295,9 +9797,16 @@ do
         Content.Size = UDim2.new(1, wOff, 1, -(top + bottom))
     end
 
-    -- compatibilidade: quem pedia "abrir o console" agora abre a aba Scripts
+    -- compatibilidade: quem pedia "abrir o console" agora abre a aba do
+    -- console (v8.1: Configurações › Console); com ela aberta, fecha o painel
     H.ToggleConsole = function()
-        if V8.Dock and V8.Dock.Open then V8.Dock.Open("scripts", true) end
+        local open = V8.IsOpen and V8.IsOpen()
+        if open and State.ActiveTab == "Scripts" then
+            if V8.SetOpen then V8.SetOpen(false) end
+            return
+        end
+        ShowTab("Scripts")
+        if not open and V8.SetOpen then V8.SetOpen(true) end
     end
 
     ----------------------------------------------------------------------------
@@ -7727,7 +10236,10 @@ do
                        "Rate", "ColorKey", "AllyKey", "TeamColors" }
     local SET_KEYS = { "Animations", "Toasts", "ShowLogs", "Confirm", "EspAuto",
                        "MaxLog", "Compact", "Transparency", "AutoSave", "SitOnLoad",
-                       "Dock", "Slots", "WinPos", "Island" }
+                       "Dock", "Slots", "WinPos", "Island",
+                       -- v8.1
+                       "Auto", "AutoRejoin", "EmoteWalk", "ChatRelay", "ChatOn",
+                       "ChatToasts" }
 
     C.Snapshot = function()
         local d = {
@@ -7744,6 +10256,7 @@ do
                 jump  = State.JumpPower,
                 drone = State.DroneSpeed,
                 wall  = State.WallAlpha,
+                grav  = State.GravityPct,   -- v8.1
             },
             waypoints = {},
             emotes    = {},
@@ -7825,6 +10338,7 @@ do
             if d.speeds.jump and JumpSlider then pcall(JumpSlider, d.speeds.jump) end
             if d.speeds.drone and DroneSpeedSlider then pcall(DroneSpeedSlider, d.speeds.drone) end
             if d.speeds.wall then State.WallAlpha = d.speeds.wall end
+            if d.speeds.grav and V8.GravSlider then pcall(V8.GravSlider, d.speeds.grav) end
         end
 
         -- keybinds
@@ -7839,6 +10353,7 @@ do
             end
         end
         if d.panelkey and KC(d.panelkey) then CONFIG.PanelKey = KC(d.panelkey) end
+        if V8.PanelKeyLabel then V8.PanelKeyLabel.Text = KeyName(CONFIG.PanelKey) end
         if d.consolekey and KC(d.consolekey) then CONFIG.ConsoleKey = KC(d.consolekey) end
         if d.searchkey and KC(d.searchkey) then CONFIG.SearchKey = KC(d.searchkey) end
         if d.searchctrl ~= nil then CONFIG.SearchCtrl = d.searchctrl end
@@ -8675,6 +11190,88 @@ do
     pcall(I.Update, State.Fps, nil)
 end
 --------------------------------------------------------------------------------
+-- v8.1 — RECURSOS AUTOMÁTICOS (Configurações › Ajustes › Automático)
+-- * escolha quais funções ligam sozinhas toda vez que o painel carrega
+--   (SET.Auto, vai na config em disco). O BootStep "Automático" roda depois do
+--   "Config", então vale o que estava salvo.
+-- * "Reconectar se cair": quando o Roblox mostra a tela de erro (desconexão,
+--   expulsão), pede para entrar de novo no mesmo jogo — até 5 tentativas.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Auto = { rejoining = false }
+        local A = V8.Auto
+        if type(SET.Auto) ~= "table" then SET.Auto = {} end
+        if SET.AutoRejoin == nil then SET.AutoRejoin = false end
+
+        local function Auto()
+            if type(SET.Auto) ~= "table" then SET.Auto = {} end
+            return SET.Auto
+        end
+
+        A.List = {
+            { "antiafk",    "Anti-AFK",      "Evita o kick por inatividade" },
+            { "antifall",   "Anti-Fall",     "Sem tombo, sem dano de queda, salva do void" },
+            { "esp",        "ESP",           nil },
+            { "fullbright", "Fullbright",    nil },
+            { "infjump",    "Infinite Jump", nil },
+            { "chatspy",    "Chat Spy",      "Chat do servidor no console" },
+            { "noclip",     "Noclip",        nil },
+        }
+
+        A.Run = function()
+            local on = {}
+            for _, item in ipairs(A.List) do
+                local id = item[1]
+                if Auto()[id] and Toggles[id] and not IsOn(id) then
+                    SetToggle(id, true, true)
+                    if IsOn(id) then table.insert(on, item[2]) end
+                end
+            end
+            if #on > 0 then
+                Log("Automático: " .. table.concat(on, ", ") .. " ligado(s) ao carregar", "ok")
+            end
+            if RefreshStatus then RefreshStatus() end
+        end
+
+        local card = CreateCard(Tabs.Settings, "AUTOMÁTICO", 5)
+        SubLabel(card, "Liga sozinho toda vez que o painel carrega (a partir do próximo "
+            .. "carregamento). Vai junto na config em disco.", -1)
+        for i, item in ipairs(A.List) do
+            CheckRow(card, item[2], item[3],
+                function() return Auto()[item[1]] == true end,
+                function(v) Auto()[item[1]] = v and true or nil end, i)
+        end
+
+        CheckRow(card, "Reconectar se cair",
+            "Desconectou ou foi expulso: entra de novo no jogo (até 5 tentativas)",
+            function() return SET.AutoRejoin == true end,
+            function(v) SET.AutoRejoin = v and true or false end, 20)
+
+        Conn.AutoRejoin = GuiService.ErrorMessageChanged:Connect(function(arg)
+            if not SET.AutoRejoin or A.rejoining then return end
+            local msg = type(arg) == "string" and arg or ""
+            if msg == "" then pcall(function() msg = GuiService:GetErrorMessage() end) end
+            if type(msg) ~= "string" or msg == "" then return end
+            A.rejoining = true
+            Log("Desconectado (" .. msg .. ") — reconectando...", "warn")
+            task.spawn(function()
+                for i = 1, 5 do
+                    task.wait(i == 1 and 2 or 10)
+                    local ok, err = pcall(function()
+                        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                    end)
+                    Log("Reconectar: tentativa " .. i .. (ok and "" or (" falhou: " .. tostring(err))),
+                        ok and "action" or "error")
+                end
+                A.rejoining = false
+            end)
+        end)
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
 -- NAVEGAÇÃO, COMANDOS, ORB, SCHEDULER, RESPAWN, UNLOAD, BOOT
 --------------------------------------------------------------------------------
 local CmdBar, CmdInput, ToggleCmdBar, RunCommand  -- forward
@@ -8700,12 +11297,14 @@ AddNav("Server", 2)
 AddNav("Movement", 3)
 AddNav("Visuals", 4)
 AddNav("Shop", 5)
-AddNav("Scripts", 6)
+AddNav("Troll", 6)        -- v8.1
 AddNav("Emotes", 7)
 AddNav("Players", 8)
 AddNav("Moderation", 9)
 AddNav("Settings", 10)
-AddNav("Chat", 11)
+AddNav("Scripts", 11)
+AddNav("HyChat", 12)      -- v8.1
+AddNav("Chat", 13)
 
 --------------------------------------------------------------------------------
 -- BARRA DE COMANDOS (histórico, autocomplete, aliases)
@@ -9111,6 +11710,37 @@ do
         if UpdateServerInfo then UpdateServerInfo() end
     end)
 
+    ----------------------------------------------------------------------------
+    -- v8.1: Início (servidor), Personagem (gravidade) e Playtime Shop
+    ----------------------------------------------------------------------------
+    DefCmd("rejoin", "rejoin", "sai e volta para este mesmo servidor", function()
+        if V8.Hop then V8.Hop.Rejoin() end
+    end)
+
+    DefCmd("hop", "hop", "troca para outro servidor público do jogo", function()
+        if V8.Hop then V8.Hop.Hop() end
+    end, "serverhop")
+
+    DefCmd("discord", "discord", "copia o convite do Discord (CONFIG.Discord)", function()
+        if V8.Hop then V8.Hop.Discord() end
+    end)
+
+    DefCmd("gravity", "gravity <0-100>", "% da gravidade com Anti-Gravidade ligado", function(args)
+        local v = tonumber(args[1])
+        if not v then Log("uso: gravity <0-100>", "warn") return end
+        if V8.GravSlider then V8.GravSlider(v) elseif V8.AntiGrav then V8.AntiGrav.Set(v) end
+        Log("Gravidade (Anti-Gravidade) = " .. State.GravityPct .. "%"
+            .. (IsOn("antigrav") and "" or "  — ligue o antigrav para valer"), "ok")
+    end, "grav")
+
+    DefCmd("playtime", "playtime", "tempo de jogo e pontos da Playtime Shop", function()
+        local P = V8.Play
+        if not P then return end
+        Log("Tempo de jogo: " .. P.Fmt(P.Total) .. "  ·  sessão " .. P.Fmt(P.Session())
+            .. "  ·  " .. P.Points() .. " ponto(s)"
+            .. (P.Line() ~= "" and ("  ·  " .. P.Line()) or ""), "ok")
+    end, "pt")
+
     DefCmd("center", "center", "traz a janela de volta para o centro da tela", function()
         if V8.Win then V8.Win.Center() end
     end)
@@ -9460,6 +12090,9 @@ V8.ModeKeys = {
                 Enum.KeyCode.LeftControl },
     fly     = { Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
                 Enum.KeyCode.Space, Enum.KeyCode.LeftControl, Enum.KeyCode.LeftShift },
+    -- v8.1
+    wallwalk = { Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+                 Enum.KeyCode.Space },
 }
 V8.KeyWarned = {}
 
@@ -9528,6 +12161,11 @@ do
         table.insert(jobs, { i = interval, acc = math.huge, fn = fn })
     end
 
+    -- v8.1: jobs registrados antes do scheduler existir (V8.Job em 04_state);
+    -- daqui em diante V8.Job registra direto
+    for _, j in ipairs(V8.Jobs) do Every(j[1], j[2]) end
+    V8.Job = Every
+
     local frames, frameClock = 0, 0
     Conn.Loop = RunService.Heartbeat:Connect(function(dt)
         frames = frames + 1
@@ -9589,6 +12227,8 @@ do
         elseif tab == "Server" then
             if UpdateServerInfo then UpdateServerInfo() end
         end
+        -- v8.1: abas novas se atualizam sozinhas (só a visível trabalha)
+        if V8.TabTick and V8.TabTick[tab] then pcall(V8.TabTick[tab]) end
     end)
 
     -- v8.0: faxina do registry de tema. Listas que se redesenham (jogadores,
@@ -9696,6 +12336,7 @@ Conn.PlayerRemoving = Players.PlayerRemoving:Connect(function(p)
     TrollState.Spin[id] = nil
     TrollState.Balloon[id] = nil
     pcall(RemoveEsp, id)
+    EspOpts.Pick[id] = nil   -- v8.1: ESP por jogador
     if State.SpectateTarget == p then pcall(StopSpectate) end
     if State.SelectedPlayer == p then
         State.SelectedPlayer = nil
@@ -9738,12 +12379,16 @@ Unload = function()
         if V8.Cfg and SET.AutoSave then V8.Cfg.Save(true) end
     end)
 
+    -- v8.1: tempo de jogo da Playtime Shop (arquivo próprio, independe do autosave)
+    pcall(function() if V8.Play then V8.Play.Save(true) end end)
+
     for _, id in ipairs(ToggleOrder) do
         if IsOn(id) then pcall(Toggles[id].disable) end
     end
     pcall(StopSpectate)
     pcall(ClearEsp)
     pcall(function() Emote.Stop(true) end)
+    pcall(function() if V8.Cos then V8.Cos.Clear() end end)   -- v8.1: efeitos/nametag
 
     for name in pairs(Conn) do pcall(Drop, name) end
     for _, inst in ipairs(Bin) do pcall(function() inst:Destroy() end) end
@@ -9792,6 +12437,9 @@ do
     BootStep("Waypoints",     function() if RenderWaypoints then RenderWaypoints() end end)
     BootStep("ServerInfo",    function() if UpdateServerInfo then UpdateServerInfo() end end)
     BootStep("Config",        function() if V8.Cfg then V8.Cfg.Load(true) end end)
+    -- v8.1: funções marcadas em Configurações › Automático (depois da config)
+    BootStep("Automático",    function() if V8.Auto then V8.Auto.Run() end end)
+    BootStep("Cosméticos",    function() if V8.Cos then V8.Cos.Apply() end end)
     BootStep("Friends",       function() if V8.Dash then V8.Dash.Friends(true) end end)
     BootStep("SetOpen",       function() SetOpen(true) end)
     -- v8.0: em tela baixa a janela "acima do dock" pode nascer cortada

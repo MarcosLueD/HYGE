@@ -402,6 +402,37 @@ do
         if UpdateServerInfo then UpdateServerInfo() end
     end)
 
+    ----------------------------------------------------------------------------
+    -- v8.1: Início (servidor), Personagem (gravidade) e Playtime Shop
+    ----------------------------------------------------------------------------
+    DefCmd("rejoin", "rejoin", "sai e volta para este mesmo servidor", function()
+        if V8.Hop then V8.Hop.Rejoin() end
+    end)
+
+    DefCmd("hop", "hop", "troca para outro servidor público do jogo", function()
+        if V8.Hop then V8.Hop.Hop() end
+    end, "serverhop")
+
+    DefCmd("discord", "discord", "copia o convite do Discord (CONFIG.Discord)", function()
+        if V8.Hop then V8.Hop.Discord() end
+    end)
+
+    DefCmd("gravity", "gravity <0-100>", "% da gravidade com Anti-Gravidade ligado", function(args)
+        local v = tonumber(args[1])
+        if not v then Log("uso: gravity <0-100>", "warn") return end
+        if V8.GravSlider then V8.GravSlider(v) elseif V8.AntiGrav then V8.AntiGrav.Set(v) end
+        Log("Gravidade (Anti-Gravidade) = " .. State.GravityPct .. "%"
+            .. (IsOn("antigrav") and "" or "  — ligue o antigrav para valer"), "ok")
+    end, "grav")
+
+    DefCmd("playtime", "playtime", "tempo de jogo e pontos da Playtime Shop", function()
+        local P = V8.Play
+        if not P then return end
+        Log("Tempo de jogo: " .. P.Fmt(P.Total) .. "  ·  sessão " .. P.Fmt(P.Session())
+            .. "  ·  " .. P.Points() .. " ponto(s)"
+            .. (P.Line() ~= "" and ("  ·  " .. P.Line()) or ""), "ok")
+    end, "pt")
+
     DefCmd("center", "center", "traz a janela de volta para o centro da tela", function()
         if V8.Win then V8.Win.Center() end
     end)

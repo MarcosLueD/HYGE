@@ -18,6 +18,9 @@ do
     BootStep("Waypoints",     function() if RenderWaypoints then RenderWaypoints() end end)
     BootStep("ServerInfo",    function() if UpdateServerInfo then UpdateServerInfo() end end)
     BootStep("Config",        function() if V8.Cfg then V8.Cfg.Load(true) end end)
+    -- v8.1: funções marcadas em Configurações › Automático (depois da config)
+    BootStep("Automático",    function() if V8.Auto then V8.Auto.Run() end end)
+    BootStep("Cosméticos",    function() if V8.Cos then V8.Cos.Apply() end end)
     BootStep("Friends",       function() if V8.Dash then V8.Dash.Friends(true) end end)
     BootStep("SetOpen",       function() SetOpen(true) end)
     -- v8.0: em tela baixa a janela "acima do dock" pode nascer cortada

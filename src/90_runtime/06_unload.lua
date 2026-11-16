@@ -11,12 +11,16 @@ Unload = function()
         if V8.Cfg and SET.AutoSave then V8.Cfg.Save(true) end
     end)
 
+    -- v8.1: tempo de jogo da Playtime Shop (arquivo próprio, independe do autosave)
+    pcall(function() if V8.Play then V8.Play.Save(true) end end)
+
     for _, id in ipairs(ToggleOrder) do
         if IsOn(id) then pcall(Toggles[id].disable) end
     end
     pcall(StopSpectate)
     pcall(ClearEsp)
     pcall(function() Emote.Stop(true) end)
+    pcall(function() if V8.Cos then V8.Cos.Clear() end end)   -- v8.1: efeitos/nametag
 
     for name in pairs(Conn) do pcall(Drop, name) end
     for _, inst in ipairs(Bin) do pcall(function() inst:Destroy() end) end

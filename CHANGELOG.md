@@ -1,5 +1,51 @@
 # Changelog
 
+## v8.1
+
+### Dock de 8 seções
+Início · Personagem · Playtime Shop · Troll · Emotes · Jogadores ·
+Configurações · Chat. Scripts saiu do dock: o console virou a sub-aba
+**Configurações › Console** e Emotes ganhou seção própria.
+
+### Novidades
+- **Início**: card **Mapa atual** (nome do jogo, Place ID, Job ID, jogadores) com
+  **Rejoin**, **Trocar servidor** (lista pública de servidores pelo HTTP do
+  executor; sem HTTP, Teleport comum) e **Discord** (copia `CONFIG.Discord`).
+  Card **Perfil**: tempo de jogo, sessão, pontos da loja e idade da conta; o
+  rank/título/ícone equipados aparecem no cartão do avatar.
+- **Playtime Shop**: 1 ponto por minuto com o painel aberto
+  (`HYGE/playtime.json`). Categorias All, Ranks, Icons, Titles, Effects,
+  Nametags e Bundles (preço do pacote cai pelo que você já tem). Efeitos e
+  nametag são locais — a loja diz que só você vê.
+- **Personagem**: **Anti-Fall** (sem tombo/ragdoll, pouso suave, volta do void)
+  e **Anti-Gravidade** com slider de 0–100% da gravidade.
+- **Troll**: **Walk on Walls** (paredes, tetos, quinas; WASD + Space) e as ações
+  no alvo que estavam em Moderação.
+- **Emotes**: catálogo pesquisável (emotes padrão do jogo + emotes/danças da
+  Roblox), filtro Danças/Emotes/Padrão, dança aleatória, **Playback Speed** e
+  **Andar com o emote**. Animação recusada pelo Roblox (duração 0) agora é
+  detectada, avisada e marcada na lista.
+- **Jogadores**: cada linha tem ALVO, **ESP** (só daquele jogador), **TP** e
+  **SPEC**.
+- **Configurações**: **tecla do painel remapeável**, card **Automático** (funções
+  que ligam ao carregar) e **Reconectar se cair**. "Escala da interface" virou
+  "Tamanho da GUI".
+- **Chat › HYGE**: conversa entre usuários do painel, sala do servidor e global,
+  via relay próprio (`server/chat-relay`, `npm run chat`). Chat do jogo continua
+  em **Chat › Jogo**.
+- Comandos novos: `rejoin`, `hop`, `discord`, `gravity`, `playtime` (e um por
+  toggle novo: `antifall`, `antigrav`, `wallwalk`).
+
+### Interno
+- `V8.Job` (trabalho periódico no scheduler único) e `V8.TabTick` (atualização
+  1x/s da aba visível) para os módulos novos.
+- `V8.Net`/`V8.Disk`: HTTP e arquivos do executor, sempre testados antes de usar.
+- O validador aceita as globais `request`, `http_request` e `http` (APIs de
+  executor, testadas com `typeof`).
+
+### Fora desta versão
+- A "Ferramenta Jerk" da referência não foi feita.
+
 ## v8.0
 
 ### Estrutura

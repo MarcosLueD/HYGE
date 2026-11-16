@@ -28,6 +28,7 @@ local State = {
     DroneSpeed      = 70,
     DroneSens       = 4,
     DroneSmooth     = 8,
+    GravityPct      = 25,    -- v8.1: % da gravidade normal com Anti-Gravidade ligado
     SelectedPlayer  = nil,
     Spectating      = false,
     SpectateTarget  = nil,
@@ -70,6 +71,14 @@ local Emote = { Speed = 1 }  -- animacoes: .Play / .Stop / .track / .id
 local DroneHUD = {}  -- HUD do modo drone: .Create/.Show/.Hide/.Update/.Destroy
 local Icon, IconTint, SetChips  -- forward: icones vetoriais + chips da topbar
 local V8 = {}  -- v8.0: situacoes, config em disco, busca global
+
+-- v8.1: módulos que carregam ANTES do scheduler (90_runtime/04_scheduler.lua)
+-- registram trabalho periódico aqui; o scheduler roda tudo no mesmo Heartbeat
+-- e depois troca V8.Job pelo Every dele. Nada de loop próprio por módulo.
+V8.Jobs = {}
+V8.Job = function(interval, fn) table.insert(V8.Jobs, { interval, fn }) end
+-- v8.1: [aba] = fn — roda 1x/s só enquanto essa aba está visível
+V8.TabTick = {}
 
 local function Track(inst) table.insert(Bin, inst) return inst end
 local function Drop(name)

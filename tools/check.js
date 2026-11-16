@@ -28,6 +28,7 @@ const ALLOWED = new Set(`
   rawset rawequal setmetatable getmetatable math string table os coroutine utf8
   bit32 debug require _G shared
   gethui syn setclipboard writefile readfile isfile makefolder isfolder delfile
+  request http_request http
 `.split(/\s+/).filter(Boolean));
 
 function analyze(code) {

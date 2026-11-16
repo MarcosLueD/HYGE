@@ -89,6 +89,7 @@ do
         fly = "bolt", noclip = "ghost", esp = "eye", god = "shield",
         invisible = "circle", infjump = "up", wall = "box", chatspy = "clip",
         fullbright = "sun", antiafk = "clock", freecam = "cam", drone = "wifi",
+        antifall = "shield", antigrav = "up", wallwalk = "mask",   -- v8.1
     }
     local slotUI = {}
 

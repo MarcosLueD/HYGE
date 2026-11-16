@@ -75,6 +75,7 @@ Conn.PlayerRemoving = Players.PlayerRemoving:Connect(function(p)
     TrollState.Spin[id] = nil
     TrollState.Balloon[id] = nil
     pcall(RemoveEsp, id)
+    EspOpts.Pick[id] = nil   -- v8.1: ESP por jogador
     if State.SpectateTarget == p then pcall(StopSpectate) end
     if State.SelectedPlayer == p then
         State.SelectedPlayer = nil

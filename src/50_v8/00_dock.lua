@@ -1,13 +1,15 @@
 --------------------------------------------------------------------------------
 -- v8.0 — DOCK (navegação principal)
 -- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
--- abre o painel; a bolinha "H" só aparece no modo sidebar). 7 seções:
---   Início · Personagem · Shop · Scripts · Jogadores · Configurações · Chat
+-- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
+--   Início · Personagem · Playtime Shop · Troll · Emotes · Jogadores ·
+--   Configurações · Chat
 -- O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel.
 -- Navegação dentro da seção (as duas posicionadas pelo V8.Shell):
---   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores)
---   * Scripts usa uma segunda barra de ícones logo acima do dock
---     (Console, Emotes) — igual às imagens de referência
+--   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores,
+--     Configurações › Ajustes · Console, Chat › HYGE · Jogo)
+--   * uma seção com subdock = true ganha uma segunda barra de ícones logo
+--     acima do dock (nenhuma usa na v8.1; o mecanismo continua disponível)
 -- O título grande da janela (V8.Shell.SetTitle) acompanha a seção ativa.
 -- A sidebar continua existindo: SET.Dock escolhe dock OU sidebar (Ajustes).
 -- Tudo em V8.Dock: zero locais novos. Entra DEPOIS das abas (40_tabs) no build.
@@ -27,16 +29,18 @@ do
           tabs = { { "Home", "Painel" }, { "Server", "Servidor" } } },
         { id = "char",    icon = "user",     label = "Personagem",
           tabs = { { "Movement", "Movimento" }, { "Visuals", "Visual" } } },
-        { id = "shop",    icon = "bag",      label = "Shop",
+        { id = "shop",    icon = "bag",      label = "Playtime Shop",
           tabs = { { "Shop", "Shop" } } },
-        { id = "scripts", icon = "terminal", label = "Scripts", subdock = true,
-          tabs = { { "Scripts", "Console", "terminal" }, { "Emotes", "Emotes", "smile" } } },
+        { id = "troll",   icon = "mask",     label = "Troll",
+          tabs = { { "Troll", "Troll" } } },
+        { id = "emotes",  icon = "smile",    label = "Emotes",
+          tabs = { { "Emotes", "Emotes" } } },
         { id = "players", icon = "users",    label = "Jogadores",
           tabs = { { "Players", "Lista" }, { "Moderation", "Moderação" } } },
         { id = "config",  icon = "gear",     label = "Configurações",
-          tabs = { { "Settings", "Configurações" } } },
+          tabs = { { "Settings", "Ajustes" }, { "Scripts", "Console" } } },
         { id = "chat",    icon = "chat",     label = "Chat",
-          tabs = { { "Chat", "Chat" } } },
+          tabs = { { "HyChat", "HYGE" }, { "Chat", "Jogo" } } },
     }
 
     K.ById = {}        -- id -> seção
@@ -116,7 +120,7 @@ do
     K.Bar = function() return bar end
     local tip = Tip(bar)
 
-    -- os 7 botões: ícone sozinho; o ativo ganha o nome ao lado (sem fundo)
+    -- os 8 botões: ícone sozinho; o ativo ganha o nome ao lado (sem fundo)
     for i, s in ipairs(K.Sections) do
         local b = Instance.new("TextButton")
         b.Name = s.id
@@ -424,7 +428,7 @@ do
     ----------------------------------------------------------------------------
     do
         local nav = CreateCard(Tabs.Settings, "NAVEGAÇÃO", 8)
-        SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 7 ícones, sempre "
+        SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 8 ícones, sempre "
             .. "visível, e é ele que abre o painel. Desligue para voltar à sidebar "
             .. "dentro da janela larga (com a bolinha H para abrir).", 0)
 
@@ -441,7 +445,8 @@ do
             SubLabel(nav, "Cards de status da Home: escreva os três toggles "
                 .. "separados por espaço (padrão: fly noclip esp). Vale qualquer "
                 .. "id da lista: fly, noclip, infjump, god, invisible, wall, esp, "
-                .. "chatspy, fullbright, antiafk, freecam, drone.", 2)
+                .. "chatspy, fullbright, antiafk, freecam, drone, antifall, antigrav, "
+                .. "wallwalk.", 2)
 
             local box = CreateInput(nav, "fly noclip esp", 32)
             box.LayoutOrder = 3

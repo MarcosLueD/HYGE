@@ -16,7 +16,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.0",
+    Version   = "v8.1",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -27,6 +27,16 @@ local CONFIG = {
     -- Logo: suba a imagem em create.roblox.com > Development Items > Decals,
     -- copie o ID e cole aqui como "rbxassetid://SEU_ID". Vazio = logo em texto.
     LogoId    = "",
+
+    -- v8.1: convite do Discord (botão da Home e comando 'discord'). Vazio = o
+    -- botão avisa que não há link configurado, em vez de copiar qualquer coisa.
+    Discord   = "",
+
+    -- v8.1: chat entre usuários do HYGE (Chat › HYGE). Precisa de um relay
+    -- rodando (server/chat-relay — veja o README). Vazio = desligado; o
+    -- endereço também pode ser colado depois, na própria aba.
+    ChatRelay = "",
+    ChatKey   = "",   -- senha opcional: a mesma do HYGE_CHAT_KEY do relay
 
     -- Pose de voo. Por padrão o painel monta a pose de superman na mão
     -- (dobra os ombros/quadris direto nas juntas), então não depende de

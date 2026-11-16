@@ -1,7 +1,20 @@
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v8.0
+    HYGE ADMIN PANEL v8.1
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v8.1 trouxe (dock de 8 secoes):
+      * Inicio: mapa atual, perfil com tempo de jogo, Rejoin / Trocar de
+        servidor / Discord
+      * Personagem: Anti-Fall e Anti-Gravidade (com slider)
+      * Playtime Shop: loja paga com tempo de jogo (Ranks, Icons, Titles,
+        Effects, Nametags, Bundles) — tudo visual e local
+      * Troll: Walk on Walls + acoes no alvo (vindas da Moderacao)
+      * Emotes: catalogo pesquisavel, Playback Speed, andar com o emote
+      * Jogadores: ESP / TP / SPEC por linha da lista
+      * Configuracoes: tecla do painel remapeavel, funcoes automaticas,
+        reconectar se cair; Console virou sub-aba
+      * Chat HYGE entre usuarios do painel (relay em server/chat-relay)
 
     O que a v8.0 trouxe:
       * Shell novo: janela 800x500, TopBar "Welcome home" com relogio e

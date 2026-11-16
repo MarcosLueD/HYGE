@@ -17,8 +17,93 @@ do
     Keybinds.freecam = Enum.KeyCode.C
     Keybinds.drone   = Enum.KeyCode.G
 
-    for _, id in ipairs(ToggleOrder) do
-        KeybindRow(keyCard, id, Toggles[id].label)
+    for i, id in ipairs(ToggleOrder) do
+        KeybindRow(keyCard, id, Toggles[id].label).LayoutOrder = i
+    end
+
+    -- v8.1: a tecla que abre/fecha o painel também é remapeável (vai na config)
+    do
+        local function PanelKeyRow()
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, 0, 0, 44)
+            row.LayoutOrder = 0
+            row.Parent = keyCard
+            V8.Cell(row, 5)
+
+            local name = Instance.new("TextLabel")
+            name.Size = UDim2.new(1, -110, 1, 0)
+            name.BackgroundTransparency = 1
+            name.Text = "Abrir/fechar o painel"
+            name.TextColor3 = THEME.Text
+            name.Font = Enum.Font.GothamBold
+            name.TextSize = 13
+            name.TextXAlignment = Enum.TextXAlignment.Left
+            name.Parent = row
+            Paint(name, "TextColor3", "Text")
+
+            local btn = Instance.new("TextButton")
+            btn.AnchorPoint = Vector2.new(1, 0.5)
+            btn.Position = UDim2.new(1, 0, 0.5, 0)
+            btn.Size = UDim2.new(0, 96, 0, 28)
+            btn.BackgroundColor3 = THEME.Btn
+            btn.Text = KeyName(CONFIG.PanelKey)
+            btn.TextColor3 = THEME.Accent2
+            btn.Font = Enum.Font.GothamBold
+            btn.TextSize = 12
+            btn.AutoButtonColor = false
+            btn.Parent = row
+            Paint(btn, "BackgroundColor3", "Btn")
+            Paint(btn, "TextColor3", "Accent2")
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+            local st = Instance.new("UIStroke", btn)
+            st.Transparency = 0.6
+            Paint(st, "Color", "Accent")
+            V8.PanelKeyLabel = btn
+
+            btn.MouseButton1Click:Connect(function()
+                StopCapture()   -- encerra outra captura em andamento
+                Drop("PanelCapture")
+                capturing = "panel"
+                btn.Text = "aperte..."
+                Toast("Aperte a nova tecla do painel", nil, 3)
+                Conn.PanelCapture = UserInputService.InputBegan:Connect(function(input)
+                    if capturing ~= "panel" then
+                        Drop("PanelCapture")
+                        btn.Text = KeyName(CONFIG.PanelKey)
+                        return
+                    end
+                    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+                    local kc = input.KeyCode
+                    if kc == Enum.KeyCode.Unknown then return end
+                    Drop("PanelCapture")
+                    -- solta a captura só depois deste evento: senão o handler
+                    -- global vê a tecla nova e já abre/fecha o painel
+                    task.defer(function()
+                        if capturing == "panel" then capturing = nil end
+                    end)
+                    local clash
+                    if kc == Enum.KeyCode.Escape or kc == Enum.KeyCode.Backspace
+                        or kc == Enum.KeyCode.Return then
+                        clash = "uso do Roblox"
+                    elseif kc == CONFIG.ConsoleKey then
+                        clash = "barra de comandos"
+                    elseif kc == CONFIG.SearchKey and not CONFIG.SearchCtrl then
+                        clash = "busca global"
+                    end
+                    for tid, k in pairs(Keybinds) do
+                        if k == kc then clash = Toggles[tid] and Toggles[tid].label or tid end
+                    end
+                    if clash then
+                        Toast("[" .. KeyName(kc) .. "] já é de " .. clash .. " — nada mudou", "warn", 3)
+                    else
+                        CONFIG.PanelKey = kc
+                        Log("Tecla do painel = " .. KeyName(kc), "ok")
+                    end
+                    btn.Text = KeyName(CONFIG.PanelKey)
+                end)
+            end)
+        end
+        PanelKeyRow()
     end
 
     local kBtns = Grid(keyCard, 2, 30)
@@ -46,7 +131,9 @@ do
         Keybinds.freecam = Enum.KeyCode.C
         Keybinds.drone   = Enum.KeyCode.G
         for id, lbl in pairs(KeybindLabels) do lbl.Text = KeyName(Keybinds[id]) end
-        Log("Keybinds restaurados (F/N/E/C/G)", "ok")
+        CONFIG.PanelKey = Enum.KeyCode.B   -- v8.1: a tecla do painel também volta
+        if V8.PanelKeyLabel then V8.PanelKeyLabel.Text = KeyName(CONFIG.PanelKey) end
+        Log("Keybinds restaurados (painel B · F/N/E/C/G)", "ok")
     end
     resetKeys.MouseButton1Click:Connect(ResetKeys)
 
@@ -91,7 +178,7 @@ do
     end
 
     local scaleSet = SliderRow(look, {
-        label = "Escala da interface", min = 70, max = 130, def = 100, suffix = "%", order = 2,
+        label = "Tamanho da GUI", min = 70, max = 130, def = 100, suffix = "%", order = 2,
         apply = function(v)
             CONFIG.UiScale = v / 100
             WindowScale.Scale = CONFIG.UiScale
@@ -168,17 +255,20 @@ do
     local PRESETS = {
         Default  = { fly = false, noclip = false, esp = false, fullbright = false,
                      infjump = false, god = false, invisible = false, wall = false,
-                     chatspy = false, antiafk = true, freecam = false, drone = false },
+                     chatspy = false, antiafk = true, freecam = false, drone = false,
+                     antifall = false, antigrav = false, wallwalk = false },
         Admin    = { esp = true, fullbright = true, antiafk = true, chatspy = true,
                      noclip = false, fly = false, drone = false, freecam = false },
         Visual   = { esp = true, fullbright = true, wall = true, chatspy = false,
                      fly = false, noclip = false, drone = false, freecam = false },
         Movement = { fly = true, noclip = true, infjump = true, esp = false,
-                     fullbright = false, drone = false, freecam = false },
+                     fullbright = false, drone = false, freecam = false,
+                     antifall = true, wallwalk = false },
         Minimal  = { antiafk = true, fly = false, noclip = false, esp = false,
                      fullbright = false, infjump = false, god = false,
                      invisible = false, wall = false, chatspy = false,
-                     freecam = false, drone = false },
+                     freecam = false, drone = false, antifall = false,
+                     antigrav = false, wallwalk = false },
     }
 
     ApplyPreset = function(name)

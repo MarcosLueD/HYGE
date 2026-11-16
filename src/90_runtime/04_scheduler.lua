@@ -7,6 +7,11 @@ do
         table.insert(jobs, { i = interval, acc = math.huge, fn = fn })
     end
 
+    -- v8.1: jobs registrados antes do scheduler existir (V8.Job em 04_state);
+    -- daqui em diante V8.Job registra direto
+    for _, j in ipairs(V8.Jobs) do Every(j[1], j[2]) end
+    V8.Job = Every
+
     local frames, frameClock = 0, 0
     Conn.Loop = RunService.Heartbeat:Connect(function(dt)
         frames = frames + 1
@@ -68,6 +73,8 @@ do
         elseif tab == "Server" then
             if UpdateServerInfo then UpdateServerInfo() end
         end
+        -- v8.1: abas novas se atualizam sozinhas (só a visível trabalha)
+        if V8.TabTick and V8.TabTick[tab] then pcall(V8.TabTick[tab]) end
     end)
 
     -- v8.0: faxina do registry de tema. Listas que se redesenham (jogadores,

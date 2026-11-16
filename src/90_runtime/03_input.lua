@@ -12,6 +12,9 @@ V8.ModeKeys = {
                 Enum.KeyCode.LeftControl },
     fly     = { Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
                 Enum.KeyCode.Space, Enum.KeyCode.LeftControl, Enum.KeyCode.LeftShift },
+    -- v8.1
+    wallwalk = { Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+                 Enum.KeyCode.Space },
 }
 V8.KeyWarned = {}
 

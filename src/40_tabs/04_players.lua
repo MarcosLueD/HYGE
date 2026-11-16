@@ -37,10 +37,37 @@ do
             or (p.DisplayName:lower():find(filter, 1, true) ~= nil)
     end
 
+    -- v8.1: ESP de UM jogador. Marcar alguém liga o ESP (se estava desligado)
+    -- só nos marcados; desmarcar o último devolve o ESP como estava.
+    V8.EspPick = { auto = false }
+    V8.EspPick.Flip = function(p)
+        local pick = EspOpts.Pick
+        if pick[p.UserId] then pick[p.UserId] = nil else pick[p.UserId] = true end
+        local any = next(pick) ~= nil
+        if any and not IsOn("esp") then
+            SetToggle("esp", true, true)
+            V8.EspPick.auto = true
+        elseif not any and V8.EspPick.auto then
+            V8.EspPick.auto = false
+            SetToggle("esp", false, true)
+        end
+        Log((pick[p.UserId] and "ESP em " or "ESP removido de ") .. p.Name
+            .. (any and "" or " — ESP volta a mostrar todos"), "action")
+        if RefreshStatus then RefreshStatus() end
+    end
+    -- desligar o ESP por qualquer caminho limpa as marcações
+    if Toggles.esp then
+        table.insert(Toggles.esp.listeners, function(on)
+            if on then return end
+            for k in pairs(EspOpts.Pick) do EspOpts.Pick[k] = nil end
+            V8.EspPick.auto = false
+        end)
+    end
+
     local function MakeRow(p)
         local row = Instance.new("Frame")
         row.Name = "Row_" .. p.UserId
-        row.Size = UDim2.new(1, 0, 0, 56)
+        row.Size = UDim2.new(1, 0, 0, 62)
         row.BackgroundColor3 = THEME.Btn
         row.BorderSizePixel = 0
         row.Parent = list
@@ -54,82 +81,65 @@ do
         local av = Avatar(row, p.UserId, 40)
         av.Position = UDim2.new(0, 8, 0.5, -20)
 
-        local dn = Instance.new("TextLabel")
-        dn.Size = UDim2.new(1, -300, 0, 17)
-        dn.Position = UDim2.new(0, 56, 0, 9)
-        dn.BackgroundTransparency = 1
+        -- v8.1: 3 linhas à esquerda, 4 botões (2x2) à direita
+        local function Line(y, h, font, size, key)
+            local l = Instance.new("TextLabel")
+            l.Size = UDim2.new(1, -206, 0, h)
+            l.Position = UDim2.new(0, 56, 0, y)
+            l.BackgroundTransparency = 1
+            l.Text = ""
+            l.TextColor3 = THEME[key]
+            l.Font = font
+            l.TextSize = size
+            l.TextXAlignment = Enum.TextXAlignment.Left
+            l.TextTruncate = Enum.TextTruncate.AtEnd
+            l.Parent = row
+            Paint(l, "TextColor3", key)
+            return l
+        end
+        local dn = Line(7, 17, Enum.Font.GothamBold, 13, "Text")
         dn.Text = p.DisplayName .. (p == LocalPlayer and "   (você)" or "")
-        dn.TextColor3 = THEME.Text
-        dn.Font = Enum.Font.GothamBold
-        dn.TextSize = 13
-        dn.TextXAlignment = Enum.TextXAlignment.Left
-        dn.TextTruncate = Enum.TextTruncate.AtEnd
-        dn.Parent = row
-        Paint(dn, "TextColor3", "Text")
-
-        local un = Instance.new("TextLabel")
-        un.Size = UDim2.new(1, -300, 0, 14)
-        un.Position = UDim2.new(0, 56, 0, 27)
-        un.BackgroundTransparency = 1
+        local un = Line(24, 14, Enum.Font.Code, 11, "Dim")
         un.Text = "@" .. p.Name
-        un.TextColor3 = THEME.Dim
-        un.Font = Enum.Font.Code
-        un.TextSize = 11
-        un.TextXAlignment = Enum.TextXAlignment.Left
-        un.Parent = row
-        Paint(un, "TextColor3", "Dim")
+        local hp = Line(40, 14, Enum.Font.Code, 10, "Success")
+        hp.Size = UDim2.new(0, 72, 0, 14)
+        local meta = Line(40, 14, Enum.Font.Code, 10, "Dim")
+        meta.Position = UDim2.new(0, 132, 0, 40)
+        meta.Size = UDim2.new(1, -282, 0, 14)
 
-        local meta = Instance.new("TextLabel")
-        meta.AnchorPoint = Vector2.new(1, 0)
-        meta.Size = UDim2.new(0, 240, 0, 14)
-        meta.Position = UDim2.new(1, -150, 0, 41)
-        meta.BackgroundTransparency = 1
-        meta.Text = ""
-        meta.TextColor3 = THEME.Dim
-        meta.Font = Enum.Font.Code
-        meta.TextSize = 10
-        meta.TextXAlignment = Enum.TextXAlignment.Right
-        meta.Parent = row
-        Paint(meta, "TextColor3", "Dim")
-
-        local hp = Instance.new("TextLabel")
-        hp.AnchorPoint = Vector2.new(1, 0)
-        hp.Size = UDim2.new(0, 240, 0, 16)
-        hp.Position = UDim2.new(1, -150, 0, 10)
-        hp.BackgroundTransparency = 1
-        hp.Text = ""
-        hp.TextColor3 = THEME.Success
-        hp.Font = Enum.Font.Code
-        hp.TextSize = 11
-        hp.TextXAlignment = Enum.TextXAlignment.Right
-        hp.Parent = row
-        Paint(hp, "TextColor3", "Success")
-
-        local sel = CreateButton(row, "SELECIONAR", "Accent", 24)
-        sel.Size = UDim2.new(0, 88, 0, 24)
-        sel.Position = UDim2.new(1, -140, 0, 8)
+        local function Btn(text, key, x, y)
+            local b = CreateButton(row, text, key, 24)
+            b.Size = UDim2.new(0, 64, 0, 24)
+            b.Position = UDim2.new(1, x, 0, y)
+            b.TextSize = 11
+            return b
+        end
+        local sel = Btn("ALVO", "Accent", -138, 6)
         sel.MouseButton1Click:Connect(function() SelectPlayer(p) end)
 
-        local tp = CreateButton(row, "TP", "Success", 24)
-        tp.Size = UDim2.new(0, 40, 0, 24)
-        tp.Position = UDim2.new(1, -140, 0, 34)
+        local esp = Btn("ESP", "Success", -70, 6)
+        esp.MouseButton1Click:Connect(function()
+            V8.EspPick.Flip(p)
+            UpdatePlayerRows()
+        end)
+
+        local tp = Btn("TP", "Success", -138, 33)
         tp.MouseButton1Click:Connect(function() Goto(p) end)
 
-        local spec = CreateButton(row, "SPECTATE", "Accent2", 24)
-        spec.Size = UDim2.new(0, 44, 0, 24)
-        spec.Position = UDim2.new(1, -96, 0, 34)
-        spec.Text = "OLHAR"
+        local spec = Btn("SPEC", "Accent2", -70, 33)
         spec.MouseButton1Click:Connect(function()
             if State.SpectateTarget == p then StopSpectate() else StartSpectate(p) end
+            UpdatePlayerRows()
         end)
 
         if p == LocalPlayer then
             tp.Visible = false
             spec.Visible = false
+            esp.Visible = false
         end
 
         local entry = { frame = row, player = p, meta = meta, hp = hp,
-            stroke = stroke, select = sel }
+            stroke = stroke, select = sel, esp = esp, spec = spec }
         PlayerRows[p.UserId] = entry
         return entry
     end
@@ -173,7 +183,7 @@ do
 
                 if h then
                     local pct = h.MaxHealth > 0 and (h.Health / h.MaxHealth) or 0
-                    e.hp.Text = math.floor(h.Health) .. " / " .. math.floor(h.MaxHealth) .. " HP"
+                    e.hp.Text = math.floor(h.Health) .. "/" .. math.floor(h.MaxHealth) .. " HP"
                     e.hp.TextColor3 = pct > 0.5 and THEME.Success
                         or (pct > 0.25 and THEME.Warning or THEME.Danger)
                 else
@@ -197,13 +207,15 @@ do
                 end
 
                 local team = p.Team and p.Team.Name or "sem equipe"
-                e.meta.Text = "ping " .. ping .. "  ·  " .. dist .. "  ·  " .. team
-                    .. "  ·  " .. Elapsed(State.JoinTimes[p.UserId]
+                e.meta.Text = (p == LocalPlayer and ("ping " .. ping .. " · ") or "")
+                    .. dist .. " · " .. team .. " · " .. Elapsed(State.JoinTimes[p.UserId]
                         and (os.clock() - State.JoinTimes[p.UserId]) or nil)
 
                 local isSel = (State.SelectedPlayer == p)
                 e.stroke.Transparency = isSel and 0.15 or 1
-                e.select.Text = isSel and "SELECIONADO" or "SELECIONAR"
+                e.select.Text = isSel and "É O ALVO" or "ALVO"
+                e.esp.Text = EspOpts.Pick[p.UserId] and "ESP ON" or "ESP"
+                e.spec.Text = (State.SpectateTarget == p) and "PARAR" or "SPEC"
             end
         end
     end

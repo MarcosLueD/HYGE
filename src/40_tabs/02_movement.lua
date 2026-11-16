@@ -12,6 +12,8 @@ do
     SwitchRow(main, "noclip", "Noclip", Toggles.noclip.desc)
     SwitchRow(main, "infjump", "Infinite Jump", Toggles.infjump.desc)
     SwitchRow(main, "god", "God Mode", Toggles.god.desc)
+    SwitchRow(main, "antifall", "Anti-Fall", Toggles.antifall.desc)        -- v8.1
+    SwitchRow(main, "antigrav", "Anti-Gravidade", Toggles.antigrav.desc)  -- v8.1
 
     ----------------------------------------------------------------------------
     -- VELOCIDADES
@@ -43,6 +45,13 @@ do
                 h.JumpPower = v
             end
         end,
+    })
+
+    -- v8.1: força da gravidade com Anti-Gravidade ligado (0% = flutua)
+    V8.GravSlider = SliderRow(speeds, {
+        label = "Gravidade (Anti-Gravidade)", min = 0, max = 100, def = State.GravityPct,
+        suffix = "%", order = 4,
+        apply = function(v) if V8.AntiGrav then V8.AntiGrav.Set(v) end end,
     })
 
     ----------------------------------------------------------------------------

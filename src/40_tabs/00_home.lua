@@ -7,7 +7,8 @@ do
     ----------------------------------------------------------------------------
     -- VISÃO GERAL
     ----------------------------------------------------------------------------
-    local overview = CreateCard(tab, "VISÃO GERAL", 1)
+    -- v8.1: MAPA ATUAL (0) e PERFIL (1) entram antes, em 01_home_server.lua
+    local overview = CreateCard(tab, "VISÃO GERAL", 2)
     local grid = Grid(overview, 4, 48)
     Tiles = {}
 
@@ -102,7 +103,7 @@ do
     ----------------------------------------------------------------------------
     -- QUICK ACTIONS (pílulas com switch real)
     ----------------------------------------------------------------------------
-    local quick = CreateCard(tab, "AÇÕES RÁPIDAS", 2)
+    local quick = CreateCard(tab, "AÇÕES RÁPIDAS", 3)
     SubLabel(quick, "Um clique liga/desliga. O switch mostra o estado real do toggle.", -1)
 
     local qGrid = Grid(quick, 2, 40)   -- v8.0: janela estreita (era 4)
@@ -254,7 +255,7 @@ do
     ----------------------------------------------------------------------------
     -- ATALHOS (rodapé compacto)
     ----------------------------------------------------------------------------
-    local info = CreateCard(tab, nil, 3)
+    local info = CreateCard(tab, nil, 4)
     local keysLbl = SubLabel(info, "", 1)
     keysLbl.TextSize = 10
 

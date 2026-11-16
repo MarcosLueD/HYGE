@@ -21,6 +21,10 @@ local EspOpts = {
     ColorKey   = "Accent",
     AllyKey    = "Success",
     TeamColors = false,  -- pinta pela cor da equipe
+    -- v8.1: ESP por jogador (botão ESP da lista de Jogadores). Com alguém
+    -- marcado, o ESP mostra SÓ os marcados (ignorando equipe e distância);
+    -- sem ninguém marcado, vale o ESP normal com os filtros. Não vai pra config.
+    Pick       = {},     -- [userId] = true
 }
 
 local function RemoveEsp(userId)
@@ -223,6 +227,9 @@ local function UpdateEsp()
                 local show = ally and EspOpts.Allies or ((not ally) and EspOpts.Enemies)
                 if show and dist and EspOpts.MaxDist > 0 and dist > EspOpts.MaxDist then
                     show = false
+                end
+                if next(EspOpts.Pick) ~= nil then
+                    show = EspOpts.Pick[p.UserId] == true
                 end
                 if show and h and h.Health <= 0 then show = false end
                 e.show = show

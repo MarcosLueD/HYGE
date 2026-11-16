@@ -90,9 +90,12 @@ local function AddNav(name, order)
         Home = "home", Movement = "user", Visuals = "eye", Players = "users",
         Moderation = "shield", Server = "server", Emotes = "smile", Settings = "gear",
         Shop = "bag", Scripts = "terminal", Chat = "chat",   -- v8.0
+        Troll = "mask", HyChat = "chat",                      -- v8.1
     }
+    local NAV_LABEL = { Shop = "Playtime Shop", HyChat = "Chat HYGE",
+        Chat = "Chat do jogo", Scripts = "Console" }          -- v8.1
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1, 0, 0, 32)   -- v8.0: 11 abas precisam caber na sidebar
+    b.Size = UDim2.new(1, 0, 0, 29)   -- v8.1: 13 abas precisam caber na sidebar
     b.BackgroundColor3 = THEME.Sidebar
     b.Text = ""
     b.AutoButtonColor = false
@@ -111,7 +114,7 @@ local function AddNav(name, order)
     lbl.Size = UDim2.new(1, -44, 1, 0)
     lbl.Position = UDim2.new(0, 40, 0, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Text = name
+    lbl.Text = NAV_LABEL[name] or name
     lbl.TextColor3 = THEME.Dim
     lbl.Font = Enum.Font.GothamMedium
     lbl.TextSize = 13

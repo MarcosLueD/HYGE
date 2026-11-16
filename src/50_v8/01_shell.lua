@@ -347,9 +347,16 @@ do
         Content.Size = UDim2.new(1, wOff, 1, -(top + bottom))
     end
 
-    -- compatibilidade: quem pedia "abrir o console" agora abre a aba Scripts
+    -- compatibilidade: quem pedia "abrir o console" agora abre a aba do
+    -- console (v8.1: Configurações › Console); com ela aberta, fecha o painel
     H.ToggleConsole = function()
-        if V8.Dock and V8.Dock.Open then V8.Dock.Open("scripts", true) end
+        local open = V8.IsOpen and V8.IsOpen()
+        if open and State.ActiveTab == "Scripts" then
+            if V8.SetOpen then V8.SetOpen(false) end
+            return
+        end
+        ShowTab("Scripts")
+        if not open and V8.SetOpen then V8.SetOpen(true) end
     end
 
     ----------------------------------------------------------------------------
