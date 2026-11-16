@@ -1,7 +1,7 @@
 -- =============================================================================
--- HYGE v8.1.1 — ARQUIVO GERADO, NÃO EDITE AQUI.
+-- HYGE v8.1.2 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: 1ebac5ddf9ce
+-- build: 6635c552eb0f
 -- =============================================================================
 --[[
 ================================================================================
@@ -74,7 +74,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.1.1",
+    Version   = "v8.1.2",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -96,33 +96,38 @@ local CONFIG = {
     ChatRelay = "",
     ChatKey   = "",   -- senha opcional: a mesma do HYGE_CHAT_KEY do relay
 
-    -- ANIMAÇÃO DO VOO (v8.1.1). O Fly escolhe nesta ordem:
+    -- ANIMAÇÃO DO VOO. O Fly escolhe nesta ordem:
     --   1. FlyAnimR6 / FlyAnimR15: animação SUA publicada. Só carrega em jogo
     --      seu ou do seu grupo (em jogo de outros o Roblox recusa).
     --      FlyAnimIdle (opcional) = sua animação para parado no ar.
-    --   2. FlyStyle = "jogo" (padrão): as animações do PRÓPRIO personagem —
-    --      nadar enquanto voa (o corpo deita na direção do voo) e flutuar/cair
-    --      parado. Carregam em qualquer jogo e TODO MUNDO vê. Só R15 tem a de
-    --      nadar; em R6 cai na pose (4). Dá para trocar em Personagem.
-    --   3. FlyStyle = "pacote": Endless Aura (FlyPackMove/FlyPackIdle, abaixo)
+    --   2. FlyStyle = "pacote" (padrão, v8.1.2): pacote de animação do
+    --      catálogo (FlyPackMove/FlyPackIdle, abaixo). Se o executor não deixar
+    --      ler o pacote ou o Roblox recusar neste jogo, cai no 3 e avisa.
+    --   3. FlyStyle = "jogo": as animações do PRÓPRIO personagem — nadar
+    --      enquanto voa (o corpo deita na direção do voo) e flutuar/cair parado.
+    --      Carregam em qualquer jogo. Só R15 tem a de nadar; em R6 cai no 4.
     --   4. pose procedural (FlyUsePose): reserva. Escreve direto nas juntas no
     --      SEU cliente — só você vê; os outros veem o personagem parado.
+    -- O estilo também se troca em Personagem › Velocidades › Animação do voo.
     FlyAnimR6   = "",
     FlyAnimR15  = "",
     FlyAnimIdle = "",
     FlyAnimSpeed = 1,
-    FlyStyle    = "jogo",   -- "jogo" | "pose" | "pacote"
+    FlyStyle    = "pacote", -- "pacote" | "jogo" | "pose"
     FlySwimTilt = 75,       -- graus que o corpo deita voando no estilo "jogo"
 
-    -- Pacote "Endless Aura Floating Pack" (bundle 4899847411546). Os IDs
-    -- abaixo ficam guardados pra quando/se o dono do jogo (ou o grupo HYGE)
-    -- republicar os assets — hoje o Roblox RECUSA carregar animação de
-    -- terceiro (o próprio catálogo marca isPurchasable=false/isOffSale=true
-    -- pra esses dois IDs) e a track carrega com Length 0, sem animar nada.
-    -- Move = catalog 74203422263286 ("Fall Animation" do pacote)
-    -- Idle = catalog 75638427965557 ("Idle Animation" do pacote)
-    FlyPackMove = "rbxassetid://74203422263286",
-    FlyPackIdle = "rbxassetid://75638427965557",
+    -- Pacote "Endless Aura Floating Pack" ("Pacote de Aura Eterna Flutuante",
+    -- bundle 4899847411546, grupo Animations — UGC, não é da Roblox).
+    -- Estes são IDs de ITEM DO CATÁLOGO (AssetType FallAnimation/IdleAnimation),
+    -- não de animação: o item é uma "caixa" com um Animation dentro, e é o ID
+    -- desse Animation que toca. Até a v8.1.1 o painel mandava o ID do item
+    -- direto para o Animator — por isso "não carregava". Agora o painel abre a
+    -- caixa com game:GetObjects (executor) e usa o ID de dentro.
+    -- Outras animações do mesmo pacote, se quiser trocar:
+    --   Run 77610456891399 · Walk 131290152729043 · Swim 110044773049875
+    --   Jump 74451563346167 · Climb 116293937663140
+    FlyPackMove = "rbxassetid://74203422263286",   -- Fall (voando)
+    FlyPackIdle = "rbxassetid://75638427965557",   -- Idle (parado no ar)
     -- true: sem nenhuma animação que carregue, usa a pose procedural abaixo
     FlyUsePose  = true,
 
@@ -1622,6 +1627,50 @@ do
     end
 end
 
+--------------------------------------------------------------------------------
+-- v8.1.2: PACOTE DE ANIMAÇÃO DO CATÁLOGO
+-- O ID de um item de pacote (AssetType RunAnimation, FallAnimation...) não é
+-- uma animação: é uma "caixa" (Folder > StringValue > Animation) e o que toca
+-- é o AnimationId do Animation de dentro. game:GetObjects (do executor) abre a
+-- caixa; o resultado fica em cache (false = tentou e não deu).
+-- FlyPose.Known(id): já sabe a resposta (não precisa esperar a rede)
+-- FlyPose.Resolve(id): devolve o AnimationId real ou nil (pode esperar a rede)
+--------------------------------------------------------------------------------
+do
+    FlyPose.cache = {}
+    FlyPose.Key = function(id) return tostring(id or ""):match("(%d+)") end
+    FlyPose.Known = function(id)
+        local k = FlyPose.Key(id)
+        return k == nil or FlyPose.cache[k] ~= nil
+    end
+    FlyPose.Resolve = function(id)
+        local k = FlyPose.Key(id)
+        if not k then return nil end
+        if FlyPose.cache[k] ~= nil then return FlyPose.cache[k] or nil end
+        local found = false
+        local ok, objs = pcall(function() return game:GetObjects("rbxassetid://" .. k) end)
+        if ok and type(objs) == "table" then
+            for _, o in ipairs(objs) do
+                if o:IsA("KeyframeSequence") then
+                    found = "rbxassetid://" .. k   -- o ID já era de uma animação
+                else
+                    local list = o:IsA("Animation") and { o } or o:GetDescendants()
+                    for _, d in ipairs(list) do
+                        if d:IsA("Animation") and d.AnimationId ~= "" then
+                            found = d.AnimationId
+                            break
+                        end
+                    end
+                end
+                if found then break end
+            end
+            for _, o in ipairs(objs) do pcall(function() o:Destroy() end) end
+        end
+        FlyPose.cache[k] = found
+        return found or nil
+    end
+end
+
 -- Animação do voo (ordem explicada em CONFIG, "ANIMAÇÃO DO VOO"):
 --   ID seu  >  estilo "jogo" (nadar/flutuar do próprio personagem)  >
 --   estilo "pacote"  >  pose procedural (reserva, só você vê)
@@ -1649,14 +1698,42 @@ local function StartFlyAnim()
         return nil
     end
 
-    local style = SET.FlyStyle or CONFIG.FlyStyle or "jogo"
+    local style = SET.FlyStyle or CONFIG.FlyStyle or "pacote"
     local source = "sua"
     local moveId = (h.RigType == Enum.HumanoidRigType.R6)
         and CONFIG.FlyAnimR6 or CONFIG.FlyAnimR15
     local idleId = CONFIG.FlyAnimIdle
     if not moveId or moveId == "" then
         moveId, idleId = nil, nil
-        if style == "jogo" then
+
+        -- pacote do catálogo (R15). Primeira vez: lê o pacote em segundo plano
+        -- e, enquanto isso, voa com o nadar do jogo; pronto, troca sozinho.
+        if style == "pacote" and not FlyPose.packFailed
+            and h.RigType ~= Enum.HumanoidRigType.R6 then
+            if FlyPose.Known(CONFIG.FlyPackMove) and FlyPose.Known(CONFIG.FlyPackIdle) then
+                moveId = FlyPose.Resolve(CONFIG.FlyPackMove)
+                idleId = moveId and FlyPose.Resolve(CONFIG.FlyPackIdle) or nil
+                if moveId then
+                    source = "do pacote"
+                elseif not FlyPose.warnedPack then
+                    FlyPose.warnedPack = true
+                    Log("Fly: não deu para ler o pacote de animação (o executor precisa "
+                        .. "de game:GetObjects) — voando com o nadar do jogo", "warn")
+                end
+            elseif not FlyPose.resolving then
+                FlyPose.resolving = true
+                task.spawn(function()
+                    FlyPose.Resolve(CONFIG.FlyPackMove)
+                    FlyPose.Resolve(CONFIG.FlyPackIdle)
+                    FlyPose.resolving = false
+                    if IsOn("fly") and not FlyPose.muted and FlyPose.Restart then
+                        FlyPose.Restart()
+                    end
+                end)
+            end
+        end
+
+        if not moveId and (style == "jogo" or style == "pacote") then
             source = "do jogo"
             moveId = FromGame({ "swim" })
             if moveId then
@@ -1666,9 +1743,6 @@ local function StartFlyAnim()
                 Log("Fly: este personagem não tem animação de nadar (R6 ou Animate "
                     .. "próprio do jogo) — usando a pose do painel, que só você vê", "warn")
             end
-        elseif style == "pacote" then
-            source = "do pacote Endless Aura"
-            moveId, idleId = CONFIG.FlyPackMove, CONFIG.FlyPackIdle
         end
     end
 
@@ -1706,8 +1780,9 @@ local function StartFlyAnim()
 
     -- O Roblox só recusa asset de terceiro DEPOIS de carregar: track fica com
     -- Length 0 e nada anima. Se for o caso, volta pra pose procedural e avisa.
+    -- (pacote do catálogo vem pela rede na 1ª vez: espera mais antes de julgar)
     local mine = flyTrack
-    task.delay(1.2, function()
+    task.delay(source == "do pacote" and 4 or 1.2, function()
         if not flyTrack or flyTrack ~= mine then return end   -- voo já reiniciou
         -- a de "parado no ar" não carregou: fica só a de movimento
         if FlyPose.idleTrack then
@@ -1731,6 +1806,14 @@ local function StartFlyAnim()
             pcall(function() FlyPose.idleTrack:Destroy() end)
             FlyPose.idleTrack = nil
         end
+        if source == "do pacote" then
+            -- não insiste neste jogo: segue com o nadar do personagem
+            FlyPose.packFailed = true
+            Log("O Roblox recusou o pacote de animação de voo neste jogo — voando "
+                .. "com o nadar do jogo.", "error")
+            if FlyPose.Restart then FlyPose.Restart() end
+            return
+        end
         Log("O Roblox recusou a animação de voo " .. source .. " (asset que não é "
             .. "do dono do jogo nem da Roblox) — usando a pose do painel.", "error")
         if CONFIG.FlyUsePose then FlyPose.Start() end
@@ -1751,6 +1834,12 @@ local function StopFlyAnim()
         pcall(function() FlyPose.idleTrack:Destroy() end)
         FlyPose.idleTrack = nil
     end
+end
+
+-- v8.1.2: troca a animação com o Fly ligado (pacote pronto, estilo mudado)
+FlyPose.Restart = function()
+    StopFlyAnim()
+    StartFlyAnim()
 end
 
 local function StopFly()
@@ -6100,22 +6189,84 @@ do
         apply = function(v) if V8.AntiGrav then V8.AntiGrav.Set(v) end end,
     })
 
-    -- v8.1.1: animação do voo. Ligado = nadar/flutuar do próprio personagem
-    -- (todo mundo vê); desligado = pose do painel (só você vê). Com o Fly
-    -- ligado, troca na hora (menos se houver um emote tocando por cima).
-    CheckRow(speeds, "Animação de voo do jogo",
-        "Nada voando e flutua parado — todos veem (R15)",
-        function() return (SET.FlyStyle or CONFIG.FlyStyle) == "jogo" end,
-        function(v)
-            SET.FlyStyle = v and "jogo" or "pose"
-            if IsOn("fly") and not Emote.track then
-                StopFlyAnim()
-                StartFlyAnim()
+    -- v8.1.2: animação do voo — pacote Aura flutuante (catálogo), nadar do
+    -- próprio personagem, ou a pose do painel (só você vê). Com o Fly ligado,
+    -- troca na hora (menos se houver um emote tocando por cima).
+    do
+        local function FlyStyleRow()
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, 0, 0, 82)
+            row.LayoutOrder = 5
+            row.Parent = speeds
+            V8.Cell(row, 8)
+
+            local title = Instance.new("TextLabel")
+            title.Size = UDim2.new(1, 0, 0, 18)
+            title.BackgroundTransparency = 1
+            title.Text = "Animação do voo"
+            title.TextColor3 = THEME.Text
+            title.Font = Enum.Font.GothamBold
+            title.TextSize = 13
+            title.TextXAlignment = Enum.TextXAlignment.Left
+            title.Parent = row
+            Paint(title, "TextColor3", "Text")
+
+            local hint = Instance.new("TextLabel")
+            hint.Size = UDim2.new(1, 0, 0, 14)
+            hint.Position = UDim2.new(0, 0, 0, 52)
+            hint.BackgroundTransparency = 1
+            hint.Text = ""
+            hint.TextColor3 = THEME.Dim
+            hint.Font = Enum.Font.GothamMedium
+            hint.TextSize = 11
+            hint.TextXAlignment = Enum.TextXAlignment.Left
+            hint.TextTruncate = Enum.TextTruncate.AtEnd
+            hint.Parent = row
+            Paint(hint, "TextColor3", "Dim")
+
+            local OPTS = {
+                { "pacote", "Aura flutuante", "Pacote Endless Aura (R15) — todos veem" },
+                { "jogo",   "Nadar",          "Nadar do seu personagem (R15) — todos veem" },
+                { "pose",   "Pose do painel", "Pose desenhada pelo painel — só você vê" },
+            }
+            local btns = {}
+            local function Paint3()
+                local cur = SET.FlyStyle or CONFIG.FlyStyle or "pacote"
+                for i, o in ipairs(OPTS) do
+                    local on = (o[1] == cur)
+                    btns[i].BackgroundColor3 = on and THEME.Accent or THEME.Btn
+                    btns[i].TextColor3 = on and THEME.Main or THEME.Text
+                    if on then hint.Text = o[3] end
+                end
             end
-        end, 5)
+            for i, o in ipairs(OPTS) do
+                local b = Instance.new("TextButton")
+                b.Size = UDim2.new(1 / 3, -4, 0, 28)
+                b.Position = UDim2.new((i - 1) / 3, (i - 1) * 2, 0, 22)
+                b.Text = o[2]
+                b.Font = Enum.Font.GothamBold
+                b.TextSize = 11
+                b.AutoButtonColor = false
+                b.Parent = row
+                Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+                btns[i] = b
+                b.MouseButton1Click:Connect(function()
+                    SET.FlyStyle = o[1]
+                    if o[1] == "pacote" then FlyPose.packFailed = false end   -- tenta de novo
+                    Paint3()
+                    Log("Animação do voo: " .. o[2], "action")
+                    if IsOn("fly") and not Emote.track then FlyPose.Restart() end
+                end)
+            end
+            V8.Renders = V8.Renders or {}
+            table.insert(V8.Renders, Paint3)   -- tema e config carregada
+            Paint3()
+        end
+        FlyStyleRow()
+    end
 
     V8.FlyTiltSlider = SliderRow(speeds, {
-        label = "Inclinação voando", min = 0, max = 90,
+        label = "Inclinação voando (nadar)", min = 0, max = 90,
         def = CONFIG.FlySwimTilt or 75, suffix = "°", order = 6,
         apply = function(v) SET.FlyTilt = v end,
     })

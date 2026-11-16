@@ -1,5 +1,23 @@
 # Changelog
 
+## v8.1.2
+
+### Fly com o pacote Endless Aura (Aura Eterna Flutuante)
+- Descoberto por que o pacote "nunca carregava": os IDs da config eram de
+  **item do catálogo** (AssetType FallAnimation/IdleAnimation), não de animação.
+  O item é uma caixa com um Animation dentro; o Animator recebia o ID errado.
+- O Fly agora abre a caixa com `game:GetObjects` (executor), pega o ID real e
+  toca: **Fall do pacote voando, Idle parado no ar**. O padrão passou a ser esse
+  (`FlyStyle = "pacote"`).
+- Primeira vez: enquanto o pacote é lido, voa com o nadar do jogo e troca
+  sozinho quando fica pronto. O resultado fica em cache.
+- Se o executor não tiver `game:GetObjects` ou o Roblox recusar o pacote neste
+  jogo (o pacote é UGC, do grupo "Animations"), volta para o nadar e avisa.
+- Personagem › Velocidades › **Animação do voo**: Aura flutuante · Nadar · Pose
+  do painel. Escolher "Aura flutuante" de novo tenta o pacote outra vez.
+- A config lista os IDs das outras animações do pacote (Run, Walk, Swim...)
+  para quem quiser trocar a de voo.
+
 ## v8.1.1
 
 ### Animação de voo que todo mundo vê

@@ -54,22 +54,84 @@ do
         apply = function(v) if V8.AntiGrav then V8.AntiGrav.Set(v) end end,
     })
 
-    -- v8.1.1: animação do voo. Ligado = nadar/flutuar do próprio personagem
-    -- (todo mundo vê); desligado = pose do painel (só você vê). Com o Fly
-    -- ligado, troca na hora (menos se houver um emote tocando por cima).
-    CheckRow(speeds, "Animação de voo do jogo",
-        "Nada voando e flutua parado — todos veem (R15)",
-        function() return (SET.FlyStyle or CONFIG.FlyStyle) == "jogo" end,
-        function(v)
-            SET.FlyStyle = v and "jogo" or "pose"
-            if IsOn("fly") and not Emote.track then
-                StopFlyAnim()
-                StartFlyAnim()
+    -- v8.1.2: animação do voo — pacote Aura flutuante (catálogo), nadar do
+    -- próprio personagem, ou a pose do painel (só você vê). Com o Fly ligado,
+    -- troca na hora (menos se houver um emote tocando por cima).
+    do
+        local function FlyStyleRow()
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, 0, 0, 82)
+            row.LayoutOrder = 5
+            row.Parent = speeds
+            V8.Cell(row, 8)
+
+            local title = Instance.new("TextLabel")
+            title.Size = UDim2.new(1, 0, 0, 18)
+            title.BackgroundTransparency = 1
+            title.Text = "Animação do voo"
+            title.TextColor3 = THEME.Text
+            title.Font = Enum.Font.GothamBold
+            title.TextSize = 13
+            title.TextXAlignment = Enum.TextXAlignment.Left
+            title.Parent = row
+            Paint(title, "TextColor3", "Text")
+
+            local hint = Instance.new("TextLabel")
+            hint.Size = UDim2.new(1, 0, 0, 14)
+            hint.Position = UDim2.new(0, 0, 0, 52)
+            hint.BackgroundTransparency = 1
+            hint.Text = ""
+            hint.TextColor3 = THEME.Dim
+            hint.Font = Enum.Font.GothamMedium
+            hint.TextSize = 11
+            hint.TextXAlignment = Enum.TextXAlignment.Left
+            hint.TextTruncate = Enum.TextTruncate.AtEnd
+            hint.Parent = row
+            Paint(hint, "TextColor3", "Dim")
+
+            local OPTS = {
+                { "pacote", "Aura flutuante", "Pacote Endless Aura (R15) — todos veem" },
+                { "jogo",   "Nadar",          "Nadar do seu personagem (R15) — todos veem" },
+                { "pose",   "Pose do painel", "Pose desenhada pelo painel — só você vê" },
+            }
+            local btns = {}
+            local function Paint3()
+                local cur = SET.FlyStyle or CONFIG.FlyStyle or "pacote"
+                for i, o in ipairs(OPTS) do
+                    local on = (o[1] == cur)
+                    btns[i].BackgroundColor3 = on and THEME.Accent or THEME.Btn
+                    btns[i].TextColor3 = on and THEME.Main or THEME.Text
+                    if on then hint.Text = o[3] end
+                end
             end
-        end, 5)
+            for i, o in ipairs(OPTS) do
+                local b = Instance.new("TextButton")
+                b.Size = UDim2.new(1 / 3, -4, 0, 28)
+                b.Position = UDim2.new((i - 1) / 3, (i - 1) * 2, 0, 22)
+                b.Text = o[2]
+                b.Font = Enum.Font.GothamBold
+                b.TextSize = 11
+                b.AutoButtonColor = false
+                b.Parent = row
+                Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
+                btns[i] = b
+                b.MouseButton1Click:Connect(function()
+                    SET.FlyStyle = o[1]
+                    if o[1] == "pacote" then FlyPose.packFailed = false end   -- tenta de novo
+                    Paint3()
+                    Log("Animação do voo: " .. o[2], "action")
+                    if IsOn("fly") and not Emote.track then FlyPose.Restart() end
+                end)
+            end
+            V8.Renders = V8.Renders or {}
+            table.insert(V8.Renders, Paint3)   -- tema e config carregada
+            Paint3()
+        end
+        FlyStyleRow()
+    end
 
     V8.FlyTiltSlider = SliderRow(speeds, {
-        label = "Inclinação voando", min = 0, max = 90,
+        label = "Inclinação voando (nadar)", min = 0, max = 90,
         def = CONFIG.FlySwimTilt or 75, suffix = "°", order = 6,
         apply = function(v) SET.FlyTilt = v end,
     })

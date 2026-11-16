@@ -16,7 +16,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.1.1",
+    Version   = "v8.1.2",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -38,33 +38,38 @@ local CONFIG = {
     ChatRelay = "",
     ChatKey   = "",   -- senha opcional: a mesma do HYGE_CHAT_KEY do relay
 
-    -- ANIMAÇÃO DO VOO (v8.1.1). O Fly escolhe nesta ordem:
+    -- ANIMAÇÃO DO VOO. O Fly escolhe nesta ordem:
     --   1. FlyAnimR6 / FlyAnimR15: animação SUA publicada. Só carrega em jogo
     --      seu ou do seu grupo (em jogo de outros o Roblox recusa).
     --      FlyAnimIdle (opcional) = sua animação para parado no ar.
-    --   2. FlyStyle = "jogo" (padrão): as animações do PRÓPRIO personagem —
-    --      nadar enquanto voa (o corpo deita na direção do voo) e flutuar/cair
-    --      parado. Carregam em qualquer jogo e TODO MUNDO vê. Só R15 tem a de
-    --      nadar; em R6 cai na pose (4). Dá para trocar em Personagem.
-    --   3. FlyStyle = "pacote": Endless Aura (FlyPackMove/FlyPackIdle, abaixo)
+    --   2. FlyStyle = "pacote" (padrão, v8.1.2): pacote de animação do
+    --      catálogo (FlyPackMove/FlyPackIdle, abaixo). Se o executor não deixar
+    --      ler o pacote ou o Roblox recusar neste jogo, cai no 3 e avisa.
+    --   3. FlyStyle = "jogo": as animações do PRÓPRIO personagem — nadar
+    --      enquanto voa (o corpo deita na direção do voo) e flutuar/cair parado.
+    --      Carregam em qualquer jogo. Só R15 tem a de nadar; em R6 cai no 4.
     --   4. pose procedural (FlyUsePose): reserva. Escreve direto nas juntas no
     --      SEU cliente — só você vê; os outros veem o personagem parado.
+    -- O estilo também se troca em Personagem › Velocidades › Animação do voo.
     FlyAnimR6   = "",
     FlyAnimR15  = "",
     FlyAnimIdle = "",
     FlyAnimSpeed = 1,
-    FlyStyle    = "jogo",   -- "jogo" | "pose" | "pacote"
+    FlyStyle    = "pacote", -- "pacote" | "jogo" | "pose"
     FlySwimTilt = 75,       -- graus que o corpo deita voando no estilo "jogo"
 
-    -- Pacote "Endless Aura Floating Pack" (bundle 4899847411546). Os IDs
-    -- abaixo ficam guardados pra quando/se o dono do jogo (ou o grupo HYGE)
-    -- republicar os assets — hoje o Roblox RECUSA carregar animação de
-    -- terceiro (o próprio catálogo marca isPurchasable=false/isOffSale=true
-    -- pra esses dois IDs) e a track carrega com Length 0, sem animar nada.
-    -- Move = catalog 74203422263286 ("Fall Animation" do pacote)
-    -- Idle = catalog 75638427965557 ("Idle Animation" do pacote)
-    FlyPackMove = "rbxassetid://74203422263286",
-    FlyPackIdle = "rbxassetid://75638427965557",
+    -- Pacote "Endless Aura Floating Pack" ("Pacote de Aura Eterna Flutuante",
+    -- bundle 4899847411546, grupo Animations — UGC, não é da Roblox).
+    -- Estes são IDs de ITEM DO CATÁLOGO (AssetType FallAnimation/IdleAnimation),
+    -- não de animação: o item é uma "caixa" com um Animation dentro, e é o ID
+    -- desse Animation que toca. Até a v8.1.1 o painel mandava o ID do item
+    -- direto para o Animator — por isso "não carregava". Agora o painel abre a
+    -- caixa com game:GetObjects (executor) e usa o ID de dentro.
+    -- Outras animações do mesmo pacote, se quiser trocar:
+    --   Run 77610456891399 · Walk 131290152729043 · Swim 110044773049875
+    --   Jump 74451563346167 · Climb 116293937663140
+    FlyPackMove = "rbxassetid://74203422263286",   -- Fall (voando)
+    FlyPackIdle = "rbxassetid://75638427965557",   -- Idle (parado no ar)
     -- true: sem nenhuma animação que carregue, usa a pose procedural abaixo
     FlyUsePose  = true,
 
