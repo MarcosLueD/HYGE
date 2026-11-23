@@ -64,7 +64,22 @@ do
                        "Auto", "AutoRejoin", "EmoteWalk", "ChatRelay", "ChatOn",
                        "ChatToasts",
                        -- v8.1.1: animação do voo
-                       "FlyStyle", "FlyTilt" }
+                       "FlyStyle", "FlyTilt",
+                       -- v8.2: pacotes de animação, botões na tela, atualização
+                       "Packs", "PackOn", "FlyPack", "TouchHud", "UpdateCheck" }
+
+    -- v8.2: waypoints POR JOGO. State.Waypoints é sempre a lista do jogo
+    -- atual; os dos outros jogos ficam aqui (como vieram do arquivo) e voltam
+    -- intactos no próximo Save.
+    C.WpOther = {}
+    local PLACE = tostring(game.PlaceId)
+    local function WpEncode(list)
+        local out = {}
+        for i, w in ipairs(list) do
+            out[i] = { name = w.name, cf = { w.cframe:GetComponents() } }
+        end
+        return out
+    end
 
     C.Snapshot = function()
         local d = {
@@ -98,10 +113,13 @@ do
         if V8.Sit then
             for n, kc in pairs(V8.Sit.Keys) do d.sitkeys[n] = kc.Name end
         end
-        for i, w in ipairs(State.Waypoints) do
-            local c = { w.cframe:GetComponents() }
-            d.waypoints[i] = { name = w.name, cf = c }
-        end
+        -- v8.2: "waypoints" continua (só os deste jogo) para versões antigas
+        -- lerem; "wpplaces" = { [PlaceId] = lista } com todos os jogos
+        d.waypoints = WpEncode(State.Waypoints)
+        d.wpplaces = {}
+        for place, list in pairs(C.WpOther) do d.wpplaces[place] = list end
+        if #d.waypoints > 0 then d.wpplaces[PLACE] = d.waypoints end
+        if next(d.wpplaces) == nil then d.wpplaces = nil end
         for i, e in ipairs(State.Emotes) do
             d.emotes[i] = { id = e.id, name = e.name }
         end
@@ -197,10 +215,26 @@ do
             pcall(V8.Sit.Render)
         end
 
-        -- waypoints
-        if type(d.waypoints) == "table" then
+        -- waypoints (v8.2: por jogo; arquivo antigo sem "wpplaces" = a lista
+        -- única de antes, que fica com o jogo em que ele foi carregado)
+        local wpList = nil
+        if type(d.wpplaces) == "table" then
+            C.WpOther = {}
+            for place, list in pairs(d.wpplaces) do
+                if type(list) == "table" then C.WpOther[tostring(place)] = list end
+            end
+            wpList = C.WpOther[PLACE] or {}
+            C.WpOther[PLACE] = nil
+        elseif type(d.waypoints) == "table" then
+            wpList = d.waypoints
+            if #wpList > 0 then
+                Log(#wpList .. " waypoint(s) da config antiga ficaram com este jogo "
+                    .. "(agora cada jogo tem a sua lista)", "warn")
+            end
+        end
+        if wpList then
             for i = #State.Waypoints, 1, -1 do State.Waypoints[i] = nil end
-            for _, w in ipairs(d.waypoints) do
+            for _, w in ipairs(wpList) do
                 local c = w.cf
                 if type(c) == "table" and #c >= 12 then
                     local ok, cf = pcall(function() return CFrame.new(table.unpack(c)) end)
@@ -210,6 +244,8 @@ do
                 end
             end
             if RenderWaypoints then pcall(RenderWaypoints) end
+            -- v8.2: lista trocada inteira não conta como "salvou waypoint" nas missões
+            if V8.Quest and V8.Quest.ResyncWp then pcall(V8.Quest.ResyncWp) end
         end
 
         -- favoritos de emote

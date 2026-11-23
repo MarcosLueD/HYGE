@@ -21,6 +21,8 @@ Unload = function()
     pcall(ClearEsp)
     pcall(function() Emote.Stop(true) end)
     pcall(function() if V8.Cos then V8.Cos.Clear() end end)   -- v8.1: efeitos/nametag
+    -- v8.2: animações originais de volta (SET.PackOn já foi salvo acima)
+    pcall(function() if V8.Pack then V8.Pack.Restore() end end)
 
     for name in pairs(Conn) do pcall(Drop, name) end
     for _, inst in ipairs(Bin) do pcall(function() inst:Destroy() end) end

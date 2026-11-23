@@ -16,7 +16,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.1.2",
+    Version   = "v8.2",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -38,13 +38,20 @@ local CONFIG = {
     ChatRelay = "",
     ChatKey   = "",   -- senha opcional: a mesma do HYGE_CHAT_KEY do relay
 
+    -- v8.2: de onde o painel confere (e baixa) a versão nova. É o main.lua
+    -- "raw" do GitHub. Vazio = não confere. Quem usa o loader.lua já passa a
+    -- URL dele; esta só vale para quem cola o main.lua direto.
+    UpdateUrl = "https://raw.githubusercontent.com/MarcosLueD/HYGE/main/main.lua",
+
     -- ANIMAÇÃO DO VOO. O Fly escolhe nesta ordem:
     --   1. FlyAnimR6 / FlyAnimR15: animação SUA publicada. Só carrega em jogo
     --      seu ou do seu grupo (em jogo de outros o Roblox recusa).
     --      FlyAnimIdle (opcional) = sua animação para parado no ar.
     --   2. FlyStyle = "pacote" (padrão, v8.1.2): pacote de animação do
-    --      catálogo (FlyPackMove/FlyPackIdle, abaixo). Se o executor não deixar
-    --      ler o pacote ou o Roblox recusar neste jogo, cai no 3 e avisa.
+    --      catálogo. v8.2: o pacote escolhido em Personagem › Pacote de
+    --      animação (botão VOO); sem escolha, FlyPackBundle; vazio, os itens
+    --      FlyPackMove/FlyPackIdle. Se o executor não deixar ler o pacote ou o
+    --      Roblox recusar neste jogo, cai no 3 e avisa.
     --   3. FlyStyle = "jogo": as animações do PRÓPRIO personagem — nadar
     --      enquanto voa (o corpo deita na direção do voo) e flutuar/cair parado.
     --      Carregam em qualquer jogo. Só R15 tem a de nadar; em R6 cai no 4.
@@ -58,18 +65,26 @@ local CONFIG = {
     FlyStyle    = "pacote", -- "pacote" | "jogo" | "pose"
     FlySwimTilt = 75,       -- graus que o corpo deita voando no estilo "jogo"
 
-    -- Pacote "Endless Aura Floating Pack" ("Pacote de Aura Eterna Flutuante",
-    -- bundle 4899847411546, grupo Animations — UGC, não é da Roblox).
+    -- v8.2: ID do PACOTE (bundle) — o número do link
+    -- roblox.com/bundles/<ID>/... O painel lê a lista de animações dele
+    -- sozinho. Vazio = usa os dois itens abaixo.
+    FlyPackBundle    = "60179708829279",   -- Super Gogeta DBZ
+    FlyPackMoveSlot  = "fall",   -- animação do pacote voando: fall | swim | run | idle...
+    FlyPackIdleSlot  = "idle",   -- e parado no ar
+
+    -- Pacote "Super Gogeta DBZ" (bundle 60179708829279, grupo
+    -- "Benere & Chenere's UGC" — UGC, não é da Roblox).
     -- Estes são IDs de ITEM DO CATÁLOGO (AssetType FallAnimation/IdleAnimation),
     -- não de animação: o item é uma "caixa" com um Animation dentro, e é o ID
-    -- desse Animation que toca. Até a v8.1.1 o painel mandava o ID do item
-    -- direto para o Animator — por isso "não carregava". Agora o painel abre a
-    -- caixa com game:GetObjects (executor) e usa o ID de dentro.
+    -- desse Animation que toca. O painel abre a caixa com game:GetObjects
+    -- (executor) e usa o ID de dentro.
     -- Outras animações do mesmo pacote, se quiser trocar:
-    --   Run 77610456891399 · Walk 131290152729043 · Swim 110044773049875
-    --   Jump 74451563346167 · Climb 116293937663140
-    FlyPackMove = "rbxassetid://74203422263286",   -- Fall (voando)
-    FlyPackIdle = "rbxassetid://75638427965557",   -- Idle (parado no ar)
+    --   Run 95473441710999 · Walk 71567557250866 · Swim 97745837467465
+    --   Jump 111658291175493 · Climb 137524336110065
+    -- Pacote anterior (Endless Aura, bundle 4899847411546):
+    --   Fall 74203422263286 · Idle 75638427965557
+    FlyPackMove = "rbxassetid://124330094243355",  -- Fall (voando)
+    FlyPackIdle = "rbxassetid://110189334321552",  -- Idle (parado no ar)
     -- true: sem nenhuma animação que carregue, usa a pose procedural abaixo
     FlyUsePose  = true,
 

@@ -163,7 +163,29 @@ local function StartFlyAnim()
 
         -- pacote do catálogo (R15). Primeira vez: lê o pacote em segundo plano
         -- e, enquanto isso, voa com o nadar do jogo; pronto, troca sozinho.
+        -- v8.2: o pacote vem por ID de bundle (V8.Pack — o marcado como VOO
+        -- em Personagem › Pacote de animação, ou CONFIG.FlyPackBundle). Só sem
+        -- bundle nenhum é que valem os itens FlyPackMove/FlyPackIdle.
+        local pm, pi, pk
+        if style == "pacote" and V8.Pack then pm, pi, pk = V8.Pack.FlyIds() end
         if style == "pacote" and not FlyPose.packFailed
+            and h.RigType ~= Enum.HumanoidRigType.R6 and pk then
+            if pm then
+                moveId, idleId, source = pm, pi, "do pacote"
+            elseif V8.Pack.fail[pk.id] then
+                if not FlyPose.warnedPack then
+                    FlyPose.warnedPack = true
+                    Log("Fly: não deu para ler o pacote " .. pk.name .. " ("
+                        .. tostring(V8.Pack.fail[pk.id]) .. ") — voando com o nadar do jogo", "warn")
+                end
+            else
+                V8.Pack.Resolve(pk, function(n)
+                    if n and IsOn("fly") and not FlyPose.muted and FlyPose.Restart then
+                        FlyPose.Restart()
+                    end
+                end)
+            end
+        elseif style == "pacote" and not FlyPose.packFailed
             and h.RigType ~= Enum.HumanoidRigType.R6 then
             if FlyPose.Known(CONFIG.FlyPackMove) and FlyPose.Known(CONFIG.FlyPackIdle) then
                 moveId = FlyPose.Resolve(CONFIG.FlyPackMove)
@@ -340,10 +362,17 @@ local function StartFly()
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.yAxis end
             if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.yAxis end
+            -- v8.2: sem tecla nenhuma, vale o analógico (celular/controle) e os
+            -- botões SUBIR/DESCER da tela (50_v8/07_mobile.lua)
+            if dir.Magnitude == 0 and V8.Mobile then
+                local ok, md = pcall(V8.Mobile.FlyDir, cam)
+                if ok and typeof(md) == "Vector3" then dir = md end
+            end
         end
 
         local speed = State.FlySpeed
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then speed = speed * 2 end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+            or (V8.Mobile and V8.Mobile.boost) then speed = speed * 2 end
 
         local target = dir.Magnitude > 0 and dir.Unit * speed or Vector3.zero
         vel = vel:Lerp(target, target.Magnitude > 0 and 0.18 or 0.1)

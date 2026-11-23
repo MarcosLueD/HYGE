@@ -21,6 +21,13 @@ do
     -- v8.1: funções marcadas em Configurações › Automático (depois da config)
     BootStep("Automático",    function() if V8.Auto then V8.Auto.Run() end end)
     BootStep("Cosméticos",    function() if V8.Cos then V8.Cos.Apply() end end)
+    -- v8.2: pacote salvo no personagem, missões/bônus diário, tela do celular
+    -- e conferência de versão nova (todos depois da config carregada)
+    BootStep("Pacote",        function() if V8.Pack then V8.Pack.Boot() end end)
+    BootStep("Missões",       function() if V8.Quest then V8.Quest.Boot() end end)
+    BootStep("Celular",       function() if V8.Mobile then V8.Mobile.Fit() V8.Mobile.Render() end end)
+    BootStep("Atualização",   function() if V8.Update then V8.Update.Boot() end end)
+    BootStep("Voo",           function() if V8.FlyStyleRender then V8.FlyStyleRender() end end)
     BootStep("Friends",       function() if V8.Dash then V8.Dash.Friends(true) end end)
     BootStep("SetOpen",       function() SetOpen(true) end)
     -- v8.0: em tela baixa a janela "acima do dock" pode nascer cortada

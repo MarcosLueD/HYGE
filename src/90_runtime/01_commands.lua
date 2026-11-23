@@ -433,6 +433,102 @@ do
             .. (P.Line() ~= "" and ("  ·  " .. P.Line()) or ""), "ok")
     end, "pt")
 
+    DefCmd("givepoints", "givepoints [n|max]", "dá pontos da Playtime Shop (sem n: o que falta pra comprar tudo)",
+        function(args)
+            local P = V8.Play
+            if not P then return end
+            local a = (args[1] or ""):lower()
+            local n
+            if a == "" then
+                n = math.max(0, P.MissingCost() - P.Points())
+                if n == 0 then Log("Você já tem pontos para comprar tudo (" .. P.Points() .. ")", "ok") return end
+            elseif a == "max" then
+                n = 999999 - P.Points()
+            else
+                n = tonumber(a)
+            end
+            if not n or n <= 0 then Log("uso: givepoints [numero|max]", "warn") return end
+            P.Grant(n)
+            Log("+" .. math.floor(n) .. " ponto(s)  ·  agora: " .. P.Points(), "ok")
+            Toast("+" .. math.floor(n) .. " pontos", "ok", 2)
+        end, "gp")
+
+    DefCmd("unlockall", "unlockall", "libera todos os itens da Playtime Shop", function()
+        local P = V8.Play
+        if not P then return end
+        local n = P.UnlockAll()
+        Log(n > 0 and (n .. " item(ns) liberado(s) na Playtime Shop") or "Você já tem todos os itens", "ok")
+        if n > 0 then Toast(n .. " itens liberados", "ok", 2) end
+    end)
+
+    ----------------------------------------------------------------------------
+    -- v8.2: pacotes de animação, missões e atualização
+    ----------------------------------------------------------------------------
+    DefCmd("pack", "pack list|add <id>|use <nome>|fly <nome>|off",
+        "pacotes de animação (personagem e voo)", function(args)
+            local K = V8.Pack
+            if not K then Log("Pacotes indisponíveis", "error") return end
+            local sub = (args[1] or "list"):lower()
+            local rest = table.concat(args, " ", 2)
+            if sub == "list" or sub == "ls" then
+                local fp = K.FlyPack()
+                for i, p in ipairs(K.List()) do
+                    Log(i .. ") " .. p.name .. "  ·  ID " .. p.id .. "  ·  "
+                        .. K.Count(p) .. " animações"
+                        .. (SET.PackOn == p.id and "  ·  NO PERSONAGEM" or "")
+                        .. ((fp and fp.id == p.id) and "  ·  NO VOO" or ""))
+                end
+                if #K.List() == 0 then Log("Nenhum pacote. Use: pack add <id ou link>", "warn") end
+            elseif sub == "add" then
+                local p, why = K.Add(rest, function(pk, n, err)
+                    if n then Log("Pacote lido: " .. pk.name .. " (" .. n .. " animações)", "ok")
+                    else Log("Pacote " .. pk.id .. " não foi lido: " .. tostring(err), "error") end
+                end)
+                if not p then Log(tostring(why), "warn") end
+            elseif sub == "use" or sub == "fly" then
+                local p = K.Find(rest)
+                if not p and K.Parse(rest) then p = K.Add(rest) end
+                if not p then Log("Pacote não encontrado: " .. rest .. " (veja 'pack list')", "warn") return end
+                if sub == "use" then K.Use(p) else
+                    K.SetFly(p)
+                    if K.Count(p) == 0 then K.Resolve(p) end
+                    Log("Voo agora usa o pacote " .. p.name, "ok")
+                end
+            elseif sub == "off" then
+                K.Off()
+            else
+                Log("uso: pack list | pack add <id ou link> | pack use <nome> | pack fly <nome> | pack off", "warn")
+            end
+        end)
+
+    DefCmd("missoes", "missoes [resgatar]", "missões do dia da Playtime Shop", function(args)
+        local Q = V8.Quest
+        if not Q then Log("Missões indisponíveis", "error") return end
+        local d = Q.Data()
+        if (args[1] or ""):lower():find("^resg") then
+            local got = 0
+            for _, m in ipairs(Q.Defs) do
+                local ok, pts = Q.Claim(m.id)
+                if ok then got = got + pts end
+            end
+            Log(got > 0 and ("Resgatado: +" .. got .. " pontos") or "Nada para resgatar agora", got > 0 and "ok" or "warn")
+            return
+        end
+        for _, m in ipairs(Q.Defs) do
+            local v = d.prog[m.id]
+            local txt = m.min and (math.floor(v / 60) .. "/" .. math.floor(m.goal / 60) .. " min")
+                or (v .. "/" .. m.goal)
+            Log(m.name .. ": " .. txt .. "  ·  +" .. m.reward
+                .. (d.claimed[m.id] and "  ·  resgatada" or (v >= m.goal and "  ·  PRONTA" or "")))
+        end
+        Log("Bônus diário: " .. d.streak .. " dia(s) seguido(s)", "ok")
+    end, "quests")
+
+    DefCmd("update", "update [now]", "confere (ou instala) a versão nova do painel", function(args)
+        if not V8.Update then Log("Atualização indisponível", "error") return end
+        if (args[1] or ""):lower() == "now" then V8.Update.Apply() else V8.Update.Check(true) end
+    end)
+
     DefCmd("center", "center", "traz a janela de volta para o centro da tela", function()
         if V8.Win then V8.Win.Center() end
     end)

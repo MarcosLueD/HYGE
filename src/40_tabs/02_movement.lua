@@ -54,9 +54,10 @@ do
         apply = function(v) if V8.AntiGrav then V8.AntiGrav.Set(v) end end,
     })
 
-    -- v8.1.2: animação do voo — pacote Aura flutuante (catálogo), nadar do
-    -- próprio personagem, ou a pose do painel (só você vê). Com o Fly ligado,
-    -- troca na hora (menos se houver um emote tocando por cima).
+    -- v8.1.2: animação do voo — pacote do catálogo (v8.2: o marcado como VOO
+    -- no cartão "Pacote de animação"), nadar do próprio personagem, ou a pose do
+    -- painel (só você vê). Com o Fly ligado, troca na hora (menos se houver um
+    -- emote tocando por cima).
     do
         local function FlyStyleRow()
             local row = Instance.new("Frame")
@@ -90,7 +91,7 @@ do
             Paint(hint, "TextColor3", "Dim")
 
             local OPTS = {
-                { "pacote", "Aura flutuante", "Pacote Endless Aura (R15) — todos veem" },
+                { "pacote", "Pacote",         "Pacote do catálogo (R15) — todos veem" },
                 { "jogo",   "Nadar",          "Nadar do seu personagem (R15) — todos veem" },
                 { "pose",   "Pose do painel", "Pose desenhada pelo painel — só você vê" },
             }
@@ -103,7 +104,13 @@ do
                     btns[i].TextColor3 = on and THEME.Main or THEME.Text
                     if on then hint.Text = o[3] end
                 end
+                -- v8.2: o nome do pacote que o voo está usando
+                if cur == "pacote" and V8.Pack then
+                    local fp = V8.Pack.FlyPack()
+                    if fp then hint.Text = "Pacote " .. fp.name .. " (R15) — todos veem" end
+                end
             end
+            V8.FlyStyleRender = Paint3
             for i, o in ipairs(OPTS) do
                 local b = Instance.new("TextButton")
                 b.Size = UDim2.new(1 / 3, -4, 0, 28)
@@ -139,7 +146,8 @@ do
     ----------------------------------------------------------------------------
     -- CÂMERA / DRONE
     ----------------------------------------------------------------------------
-    local drone = CreateCard(tab, "CÂMERA E DRONE", 3)
+    -- v8.2: a ordem 3 é do cartão "Pacote de animação" (02_movement_pack.lua)
+    local drone = CreateCard(tab, "CÂMERA E DRONE", 4)
     SwitchRow(drone, "freecam", "Freecam", Toggles.freecam.desc)
     SwitchRow(drone, "drone", "Modo Drone", Toggles.drone.desc)
 
@@ -164,8 +172,11 @@ do
     ----------------------------------------------------------------------------
     -- TELEPORTE RÁPIDO
     ----------------------------------------------------------------------------
-    local tp = CreateCard(tab, "TELEPORTE", 4)
+    local tp = CreateCard(tab, "TELEPORTE", 5)
     local tpGrid = Grid(tp, 3, 34)
+    tpGrid.LayoutOrder = 1
+    -- v8.2: Ctrl + clique teleporta (toggle "clicktp", 20_features/11_clicktp.lua)
+    SwitchRow(tp, "clicktp", "Ctrl + clique TP", Toggles.clicktp.desc).LayoutOrder = 2
 
     local up = CreateButton(tpGrid, "SUBIR 50", "Accent", 34)
     up.LayoutOrder = 1
@@ -191,9 +202,10 @@ do
     ----------------------------------------------------------------------------
     -- WAYPOINTS
     ----------------------------------------------------------------------------
-    local wp = CreateCard(tab, "WAYPOINTS", 5)
-    SubLabel(wp, "Salva a posição atual do personagem. Os waypoints vão junto na "
-        .. "config em disco (Ajustes › Configuração em disco).", -1)
+    local wp = CreateCard(tab, "WAYPOINTS", 6)
+    SubLabel(wp, "Salva a posição atual do personagem. Cada jogo tem a sua lista "
+        .. "(v8.2): aqui só aparecem os waypoints deste jogo. Vão junto na config "
+        .. "em disco (Ajustes › Configuração em disco).", -1)
 
     local wpInput = CreateInput(wp, "Nome do waypoint", 32)
     wpInput.LayoutOrder = 1

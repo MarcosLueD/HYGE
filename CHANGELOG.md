@@ -1,5 +1,57 @@
 # Changelog
 
+## v8.2
+
+### Pacote de animação no personagem todo
+- Novo cartão **Personagem › Pacote de animação**: cole o ID ou o link de um
+  pacote do catálogo; o painel lê a lista de itens (AssetService ou catálogo
+  público) e abre cada item com `game:GetObjects`. O resultado fica na config.
+- **USAR** troca os IDs do script `Animate` do seu personagem e reinicia ele —
+  andar, correr, pular, parado, cair, escalar e nadar com o pacote, e os outros
+  jogadores veem. **VOLTAR AO NORMAL** devolve os IDs originais (o unload também).
+  Reaplica sozinho no respawn e ao carregar o painel.
+- **VOO** escolhe o pacote do Fly. `CONFIG.FlyPackBundle` aceita o ID do pacote
+  direto (padrão: Super Gogeta DBZ); `FlyPackMoveSlot`/`FlyPackIdleSlot` dizem
+  qual animação do pacote vai voando e parado.
+- Super Gogeta DBZ e Endless Aura já vêm na lista (itens conferidos no catálogo).
+- Comando `pack list | add <id> | use <nome> | fly <nome> | off`.
+
+### Celular
+- Botões na tela (Configurações › Celular e toque): FLY, e com o voo ligado
+  SUBIR, DESCER e 2x. Ligado por padrão em aparelho com toque.
+- O Fly usa o analógico (ControlModule) quando nenhuma tecla está apertada,
+  seguindo a câmera. Controle no PC também funciona.
+- Tela baixa: a janela do dock fica mais curta (300–520) para caber acima do
+  dock; o dock encolhe (até 60%) se for mais largo que a tela.
+
+### Playtime Shop: missões e bônus diário
+- **Missões de hoje**: 30 min com o painel aberto (+20), voar 10 min (+30),
+  5 emotes (+15), salvar 1 waypoint (+10), usar um pacote de animação (+10).
+  Zeram à meia-noite; completa, aparece RESGATAR.
+- **Bônus diário** na primeira abertura do dia: 10, 15, 20... até 40 com 7 dias
+  seguidos; pulou um dia, volta a 10.
+- Os pontos de missão/bônus entram no `bonus` do `playtime.json` (o tempo de
+  jogo mostrado continua sendo o real). Comando `missoes [resgatar]`.
+
+### Teleporte e waypoints
+- Toggle **Ctrl + clique TP** (`clicktp`): leva até o ponto embaixo do mouse,
+  em pé na superfície. Clique em cima de GUI não conta.
+- Waypoints **por jogo** (`wpplaces` na config). A lista única da config antiga
+  fica com o primeiro jogo em que a v8.2 abrir (o log avisa).
+
+### Atualização
+- `loader.lua` (raiz do repositório): cole no executor. Baixa o `main.lua` do
+  GitHub, guarda cópia em `HYGE/main.lua`, abre a cópia se estiver offline.
+- **Configurações › Atualização**: confere ao abrir e a cada 15 min (pelo build
+  exato quando aberto pelo loader; pela versão quando colado direto). ATUALIZAR
+  AGORA baixa, confere se compila, descarrega e abre a versão nova. Comando
+  `update [now]`.
+- `CONFIG.UpdateUrl` (padrão: o `main.lua` do repositório no GitHub).
+
+### Outros
+- Comandos `givepoints [n|max]` e `unlockall` (Playtime Shop).
+- `tools/check.js` conhece `loadstring` e `getgenv`.
+
 ## v8.1.2
 
 ### Fly com o pacote Endless Aura (Aura Eterna Flutuante)

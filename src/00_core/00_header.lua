@@ -1,7 +1,17 @@
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v8.1
+    HYGE ADMIN PANEL v8.2
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v8.2 trouxe:
+      * Pacote de animacao no personagem todo (andar, correr, pular, parado...)
+        por ID ou link do pacote; lista salva; o mesmo pacote no Fly
+      * Celular: botoes na tela (FLY, SUBIR, DESCER, 2x), voo pelo analogico,
+        janela e dock que cabem em tela pequena
+      * Playtime Shop: missoes do dia e bonus diario por dias seguidos
+      * Ctrl + clique teleporta; waypoints salvos por jogo
+      * Atualizacao: confere a versao nova e atualiza sem sair do jogo
+        (loader.lua sempre abre a mais nova)
 
     O que a v8.1 trouxe (dock de 8 secoes):
       * Inicio: mapa atual, perfil com tempo de jogo, Rejoin / Trocar de

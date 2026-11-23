@@ -1,12 +1,22 @@
 -- =============================================================================
--- HYGE v8.1.2 — ARQUIVO GERADO, NÃO EDITE AQUI.
+-- HYGE v8.2 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: 6635c552eb0f
+-- build: 28ec56781721
 -- =============================================================================
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v8.1
+    HYGE ADMIN PANEL v8.2
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v8.2 trouxe:
+      * Pacote de animacao no personagem todo (andar, correr, pular, parado...)
+        por ID ou link do pacote; lista salva; o mesmo pacote no Fly
+      * Celular: botoes na tela (FLY, SUBIR, DESCER, 2x), voo pelo analogico,
+        janela e dock que cabem em tela pequena
+      * Playtime Shop: missoes do dia e bonus diario por dias seguidos
+      * Ctrl + clique teleporta; waypoints salvos por jogo
+      * Atualizacao: confere a versao nova e atualiza sem sair do jogo
+        (loader.lua sempre abre a mais nova)
 
     O que a v8.1 trouxe (dock de 8 secoes):
       * Inicio: mapa atual, perfil com tempo de jogo, Rejoin / Trocar de
@@ -74,7 +84,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.1.2",
+    Version   = "v8.2",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -96,13 +106,20 @@ local CONFIG = {
     ChatRelay = "",
     ChatKey   = "",   -- senha opcional: a mesma do HYGE_CHAT_KEY do relay
 
+    -- v8.2: de onde o painel confere (e baixa) a versão nova. É o main.lua
+    -- "raw" do GitHub. Vazio = não confere. Quem usa o loader.lua já passa a
+    -- URL dele; esta só vale para quem cola o main.lua direto.
+    UpdateUrl = "https://raw.githubusercontent.com/MarcosLueD/HYGE/main/main.lua",
+
     -- ANIMAÇÃO DO VOO. O Fly escolhe nesta ordem:
     --   1. FlyAnimR6 / FlyAnimR15: animação SUA publicada. Só carrega em jogo
     --      seu ou do seu grupo (em jogo de outros o Roblox recusa).
     --      FlyAnimIdle (opcional) = sua animação para parado no ar.
     --   2. FlyStyle = "pacote" (padrão, v8.1.2): pacote de animação do
-    --      catálogo (FlyPackMove/FlyPackIdle, abaixo). Se o executor não deixar
-    --      ler o pacote ou o Roblox recusar neste jogo, cai no 3 e avisa.
+    --      catálogo. v8.2: o pacote escolhido em Personagem › Pacote de
+    --      animação (botão VOO); sem escolha, FlyPackBundle; vazio, os itens
+    --      FlyPackMove/FlyPackIdle. Se o executor não deixar ler o pacote ou o
+    --      Roblox recusar neste jogo, cai no 3 e avisa.
     --   3. FlyStyle = "jogo": as animações do PRÓPRIO personagem — nadar
     --      enquanto voa (o corpo deita na direção do voo) e flutuar/cair parado.
     --      Carregam em qualquer jogo. Só R15 tem a de nadar; em R6 cai no 4.
@@ -116,18 +133,26 @@ local CONFIG = {
     FlyStyle    = "pacote", -- "pacote" | "jogo" | "pose"
     FlySwimTilt = 75,       -- graus que o corpo deita voando no estilo "jogo"
 
-    -- Pacote "Endless Aura Floating Pack" ("Pacote de Aura Eterna Flutuante",
-    -- bundle 4899847411546, grupo Animations — UGC, não é da Roblox).
+    -- v8.2: ID do PACOTE (bundle) — o número do link
+    -- roblox.com/bundles/<ID>/... O painel lê a lista de animações dele
+    -- sozinho. Vazio = usa os dois itens abaixo.
+    FlyPackBundle    = "60179708829279",   -- Super Gogeta DBZ
+    FlyPackMoveSlot  = "fall",   -- animação do pacote voando: fall | swim | run | idle...
+    FlyPackIdleSlot  = "idle",   -- e parado no ar
+
+    -- Pacote "Super Gogeta DBZ" (bundle 60179708829279, grupo
+    -- "Benere & Chenere's UGC" — UGC, não é da Roblox).
     -- Estes são IDs de ITEM DO CATÁLOGO (AssetType FallAnimation/IdleAnimation),
     -- não de animação: o item é uma "caixa" com um Animation dentro, e é o ID
-    -- desse Animation que toca. Até a v8.1.1 o painel mandava o ID do item
-    -- direto para o Animator — por isso "não carregava". Agora o painel abre a
-    -- caixa com game:GetObjects (executor) e usa o ID de dentro.
+    -- desse Animation que toca. O painel abre a caixa com game:GetObjects
+    -- (executor) e usa o ID de dentro.
     -- Outras animações do mesmo pacote, se quiser trocar:
-    --   Run 77610456891399 · Walk 131290152729043 · Swim 110044773049875
-    --   Jump 74451563346167 · Climb 116293937663140
-    FlyPackMove = "rbxassetid://74203422263286",   -- Fall (voando)
-    FlyPackIdle = "rbxassetid://75638427965557",   -- Idle (parado no ar)
+    --   Run 95473441710999 · Walk 71567557250866 · Swim 97745837467465
+    --   Jump 111658291175493 · Climb 137524336110065
+    -- Pacote anterior (Endless Aura, bundle 4899847411546):
+    --   Fall 74203422263286 · Idle 75638427965557
+    FlyPackMove = "rbxassetid://124330094243355",  -- Fall (voando)
+    FlyPackIdle = "rbxassetid://110189334321552",  -- Idle (parado no ar)
     -- true: sem nenhuma animação que carregue, usa a pose procedural abaixo
     FlyUsePose  = true,
 
@@ -1708,7 +1733,29 @@ local function StartFlyAnim()
 
         -- pacote do catálogo (R15). Primeira vez: lê o pacote em segundo plano
         -- e, enquanto isso, voa com o nadar do jogo; pronto, troca sozinho.
+        -- v8.2: o pacote vem por ID de bundle (V8.Pack — o marcado como VOO
+        -- em Personagem › Pacote de animação, ou CONFIG.FlyPackBundle). Só sem
+        -- bundle nenhum é que valem os itens FlyPackMove/FlyPackIdle.
+        local pm, pi, pk
+        if style == "pacote" and V8.Pack then pm, pi, pk = V8.Pack.FlyIds() end
         if style == "pacote" and not FlyPose.packFailed
+            and h.RigType ~= Enum.HumanoidRigType.R6 and pk then
+            if pm then
+                moveId, idleId, source = pm, pi, "do pacote"
+            elseif V8.Pack.fail[pk.id] then
+                if not FlyPose.warnedPack then
+                    FlyPose.warnedPack = true
+                    Log("Fly: não deu para ler o pacote " .. pk.name .. " ("
+                        .. tostring(V8.Pack.fail[pk.id]) .. ") — voando com o nadar do jogo", "warn")
+                end
+            else
+                V8.Pack.Resolve(pk, function(n)
+                    if n and IsOn("fly") and not FlyPose.muted and FlyPose.Restart then
+                        FlyPose.Restart()
+                    end
+                end)
+            end
+        elseif style == "pacote" and not FlyPose.packFailed
             and h.RigType ~= Enum.HumanoidRigType.R6 then
             if FlyPose.Known(CONFIG.FlyPackMove) and FlyPose.Known(CONFIG.FlyPackIdle) then
                 moveId = FlyPose.Resolve(CONFIG.FlyPackMove)
@@ -1885,10 +1932,17 @@ local function StartFly()
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.yAxis end
             if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.yAxis end
+            -- v8.2: sem tecla nenhuma, vale o analógico (celular/controle) e os
+            -- botões SUBIR/DESCER da tela (50_v8/07_mobile.lua)
+            if dir.Magnitude == 0 and V8.Mobile then
+                local ok, md = pcall(V8.Mobile.FlyDir, cam)
+                if ok and typeof(md) == "Vector3" then dir = md end
+            end
         end
 
         local speed = State.FlySpeed
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then speed = speed * 2 end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+            or (V8.Mobile and V8.Mobile.boost) then speed = speed * 2 end
 
         local target = dir.Magnitude > 0 and dir.Unit * speed or Vector3.zero
         vel = vel:Lerp(target, target.Magnitude > 0 and 0.18 or 0.1)
@@ -3407,6 +3461,60 @@ do
     Build()
 end
 --------------------------------------------------------------------------------
+-- v8.2 — CTRL + CLIQUE TELEPORTA (Personagem › Movimento › Teleporte)
+-- Com a função ligada, Ctrl + clique esquerdo leva o personagem até o ponto do
+-- mapa embaixo do mouse. Clique em cima de GUI (painel, chat) não conta: o
+-- Roblox marca esse clique como "processado" (gpe).
+-- O raio sai da câmera e ignora o próprio personagem. O personagem chega em pé
+-- na superfície (altura do quadril do rig) e continua olhando para o mesmo lado.
+-- Tudo dentro do do..end: zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Pick()
+        local cam = workspace.CurrentCamera
+        if not cam then return nil end
+        local pos = UserInputService:GetMouseLocation()
+        local ray = cam:ViewportPointToRay(pos.X, pos.Y)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = Char() and { Char() } or {}
+        return workspace:Raycast(ray.Origin, ray.Direction * 3000, params)
+    end
+
+    local function Enable()
+        Drop("ClickTp")
+        Conn.ClickTp = UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe or input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+            if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+                or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then return end
+            local r, h = Root(), Hum()
+            if not r or not h then return end
+            local hit = Pick()
+            if not hit then
+                Toast("Nada embaixo do mouse", "warn", 1.4)
+                return
+            end
+            -- R15: centro do HumanoidRootPart fica HipHeight + meia altura acima
+            -- do chão; R6 tem HipHeight 0 e pernas de 2 studs
+            local stand = (h.RigType == Enum.HumanoidRigType.R15)
+                and (h.HipHeight + r.Size.Y * 0.5) or 3
+            local at = hit.Position + hit.Normal * 0.5 + Vector3.new(0, stand + 0.25, 0)
+            local rot = r.CFrame - r.CFrame.Position
+            TeleportTo(CFrame.new(at) * rot)
+            pcall(function() r.AssemblyLinearVelocity = Vector3.zero end)
+            V8.ClickTps = (V8.ClickTps or 0) + 1
+            Log(string.format("TP clique -> %d, %d, %d", at.X, at.Y, at.Z), "action")
+        end)
+    end
+
+    DefineToggle({
+        id = "clicktp", label = "Ctrl + clique TP",
+        desc = "Ctrl + clique esquerdo leva você até onde o mouse aponta",
+        enable = Enable,
+        disable = function() Drop("ClickTp") end,
+    })
+end
+--------------------------------------------------------------------------------
 -- FÁBRICA DE UI v7
 -- Tiles de estatística, sliders com campo numérico + reset, switches genéricos
 -- (não ligados ao registry), avatar, chips, confirmação e botões com gate de
@@ -4581,6 +4689,8 @@ do
         V8.Play = {
             Total = 0,            -- segundos acumulados (todas as sessões)
             Spent = 0,            -- pontos gastos
+            Bonus = 0,            -- pontos dados à mão (givepoints) e por missões
+            Quests = nil,         -- v8.2: progresso das missões (50_v8/08_quests.lua)
             Owned = {},           -- [itemId] = true
             Equip = {},           -- [slot] = itemId
             Path = "HYGE/playtime.json",
@@ -4660,7 +4770,9 @@ do
         ----------------------------------------------------------------------------
         -- consultas
         ----------------------------------------------------------------------------
-        P.Points = function() return math.max(0, math.floor(P.Total / 60) - P.Spent) end
+        P.Points = function()
+            return math.max(0, math.floor(P.Total / 60) + P.Bonus - P.Spent)
+        end
         P.Session = function() return os.clock() - P.Start end
 
         P.Fmt = function(sec)
@@ -4720,7 +4832,8 @@ do
             table.sort(owned)
             local ok, json = pcall(function()
                 return Http:JSONEncode({ v = 1, total = math.floor(P.Total),
-                    spent = P.Spent, owned = owned, equip = P.Equip })
+                    spent = P.Spent, bonus = P.Bonus, owned = owned, equip = P.Equip,
+                    quests = P.Quests })
             end)
             if not ok then return false end
             local wrote, err = V8.Disk.Write(P.Path, json)
@@ -4746,6 +4859,9 @@ do
             if total and total >= 0 and total < 1e9 then P.Total = total end
             local spent = tonumber(d.spent)
             if spent and spent >= 0 and spent < 1e9 then P.Spent = math.floor(spent) end
+            local bonus = tonumber(d.bonus)
+            if bonus and bonus >= 0 and bonus < 1e9 then P.Bonus = math.floor(bonus) end
+            if type(d.quests) == "table" then P.Quests = d.quests end   -- validado em 08_quests
             if type(d.owned) == "table" then
                 for _, id in ipairs(d.owned) do
                     if type(id) == "string" and P.ById[id] then P.Owned[id] = true end
@@ -4784,6 +4900,36 @@ do
             P.Save(true)
             P.Changed()
             return true, price
+        end
+
+        -- pontos que faltam para comprar tudo o que ainda não é seu
+        P.MissingCost = function()
+            local sum = 0
+            for _, it in ipairs(P.Items) do
+                if it.cat ~= "Bundles" and not P.Owned[it.id] then sum = sum + it.price end
+            end
+            return sum
+        end
+
+        -- soma pontos sem mexer no tempo de jogo (Total continua honesto)
+        P.Grant = function(n)
+            n = math.floor(tonumber(n) or 0)
+            if n <= 0 then return false end
+            P.Bonus = math.min(P.Bonus + n, 1e9 - 1)
+            P.Save(true)
+            P.Changed()
+            return true, n
+        end
+
+        -- libera todos os itens de graça (não gasta pontos)
+        P.UnlockAll = function()
+            local n = 0
+            for _, it in ipairs(P.Items) do
+                if not P.Owned[it.id] then P.Owned[it.id] = true n = n + 1 end
+            end
+            P.Save(true)
+            P.Changed()
+            return n
         end
 
         P.EquipItem = function(id)
@@ -4999,6 +5145,531 @@ do
         -- troca de tema: efeitos na cor nova (V8.Renders roda no ApplyTheme)
         V8.Renders = V8.Renders or {}
         table.insert(V8.Renders, function() pcall(C.Apply) end)
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
+-- v8.2 — PACOTES DE ANIMAÇÃO (motor; a UI fica em 40_tabs/02_movement_pack.lua)
+--
+-- Um pacote (bundle) do catálogo é uma lista de itens: Idle, Walk, Run, Jump,
+-- Fall, Climb, Swim. Cada item é uma "caixa" (Folder > StringValue "run" >
+-- Animation) e o que toca é o AnimationId de dentro. Para ler um pacote:
+--   1. a lista de itens: AssetService:GetBundleDetailsAsync (API do Roblox)
+--      ou, se o jogo não deixar, o catálogo público pelo HTTP do executor
+--   2. cada item: game:GetObjects (executor) abre a caixa
+-- O resultado (AnimationId por animação) vai na config (SET.Packs): da segunda
+-- vez em diante não precisa de rede. Os dois pacotes que já vêm na lista têm os
+-- itens conferidos no catálogo, então só o passo 2 roda.
+--
+-- USAR no personagem = trocar os AnimationId do script Animate do SEU
+-- personagem e reiniciar o Animate. As animações tocam pelo seu Animator,
+-- então os outros jogadores veem (igual a um pacote equipado no avatar). Só
+-- R15 e só em jogo com o Animate padrão — quando não dá, o painel diz por quê.
+-- Os IDs originais ficam guardados: "voltar ao normal" devolve tudo.
+--
+-- VOO: o Fly (estilo "pacote") pede K.FlyIds() — fall voando e idle parado, do
+-- pacote marcado como VOO (SET.FlyPack) ou do CONFIG.FlyPackBundle.
+-- Tudo em V8.Pack: zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Pack = { busy = {}, fail = {}, waiters = {}, temp = {},
+                    orig = {}, origChar = nil, Listeners = {} }
+        local K = V8.Pack
+
+        K.Slots = { "idle", "walk", "run", "jump", "fall", "climb", "swim" }
+        K.SlotName = { idle = "parado", walk = "andar", run = "correr", jump = "pular",
+            fall = "cair", climb = "escalar", swim = "nadar" }
+        local IS_SLOT = {}
+        for _, s in ipairs(K.Slots) do IS_SLOT[s] = true end
+
+        K.OnChange = function(fn) table.insert(K.Listeners, fn) end
+        K.Changed = function()
+            for _, fn in ipairs(K.Listeners) do pcall(fn) end
+        end
+
+        -- ID grande (14-15 dígitos) sempre como texto: nem o JSON da config nem
+        -- o tostring viram notação científica
+        local function IdStr(v)
+            if type(v) == "number" then
+                if v ~= v or v < 1 or v >= 2 ^ 53 then return nil end
+                return string.format("%d", v)
+            end
+            if v == nil then return nil end
+            return tostring(v):match("(%d%d%d%d+)")
+        end
+        K.IdStr = IdStr
+
+        -- aceita "60179708829279", "rbxassetid://..." e o link do catálogo
+        -- (roblox.com/pt/bundles/60179708829279/Nome?pid=share...)
+        K.Parse = function(raw)
+            local s = tostring(raw or "")
+            return s:match("bundles/(%d+)") or s:match("(%d%d%d%d%d+)")
+        end
+
+        -- pacotes que já vêm na lista (itens conferidos no catálogo)
+        local SEED = {
+            { id = "60179708829279", name = "Super Gogeta DBZ", items = {
+                idle = "110189334321552", walk = "71567557250866", run = "95473441710999",
+                jump = "111658291175493", fall = "124330094243355", climb = "137524336110065",
+                swim = "97745837467465" } },
+            { id = "4899847411546", name = "Endless Aura Floating", items = {
+                idle = "75638427965557", walk = "131290152729043", run = "77610456891399",
+                jump = "74451563346167", fall = "74203422263286", climb = "116293937663140",
+                swim = "110044773049875" } },
+        }
+
+        -- SET.Packs = { { id, name, items = {slot = itemId}, anims = {slot = AnimationId} } }
+        -- Valida o que veio da config (ou cria a lista na primeira vez).
+        K.List = function()
+            if type(SET.Packs) ~= "table" then
+                SET.Packs = {}
+                for _, s in ipairs(SEED) do
+                    local items = {}
+                    for k, v in pairs(s.items) do items[k] = v end
+                    table.insert(SET.Packs, { id = s.id, name = s.name, items = items, anims = {} })
+                end
+            end
+            -- já conferida (a config carregada troca a tabela inteira)
+            if K.checked == SET.Packs then return SET.Packs end
+            local clean, dirty = {}, false
+            for _, p in ipairs(SET.Packs) do
+                local id = type(p) == "table" and IdStr(p.id)
+                if id then
+                    p.id = id
+                    if type(p.name) ~= "string" or p.name == "" then p.name = "Pacote " .. id end
+                    local items, anims = {}, {}
+                    for _, s in ipairs(K.Slots) do
+                        local iid = type(p.items) == "table" and IdStr(p.items[s])
+                        if iid then items[s] = iid end
+                        local a = type(p.anims) == "table" and p.anims[s]
+                        if type(a) == "string" and a:match("^rbxassetid://%d+$") then anims[s] = a end
+                    end
+                    p.items, p.anims = items, anims
+                    table.insert(clean, p)
+                else
+                    dirty = true
+                end
+            end
+            if dirty then SET.Packs = clean end
+            K.checked = SET.Packs
+            return SET.Packs
+        end
+
+        K.Get = function(id)
+            id = IdStr(id)
+            if not id then return nil end
+            for _, p in ipairs(K.List()) do
+                if p.id == id then return p end
+            end
+            return nil
+        end
+
+        -- por ID / link ou por pedaço do nome ("gogeta")
+        K.Find = function(q)
+            q = tostring(q or "")
+            local p = K.Get(K.Parse(q))
+            if p then return p end
+            q = q:lower()
+            if q == "" then return nil end
+            for _, it in ipairs(K.List()) do
+                if it.name:lower():find(q, 1, true) then return it end
+            end
+            return nil
+        end
+
+        K.Count = function(p)
+            local n = 0
+            for _, s in ipairs(K.Slots) do
+                if p and p.anims and p.anims[s] then n = n + 1 end
+            end
+            return n
+        end
+
+        -- grava a config (a lista e as animações lidas) se o executor deixar
+        K.Persist = function()
+            if V8.Cfg and V8.Cfg.Supported and V8.Cfg.Supported() then
+                pcall(V8.Cfg.Save, true)
+            end
+        end
+
+        ----------------------------------------------------------------------------
+        -- leitura do pacote
+        ----------------------------------------------------------------------------
+        local function SlotFromName(name)
+            local n = tostring(name or ""):lower()
+            for _, s in ipairs(K.Slots) do
+                if n:find(s, 1, true) then return s end
+            end
+            return nil
+        end
+
+        -- itens do pacote: { {id=, name=}, ... }, nome do pacote  (ou nil, nil, motivo)
+        local function FetchBundle(bid)
+            local okA, info = pcall(function()
+                return game:GetService("AssetService"):GetBundleDetailsAsync(tonumber(bid))
+            end)
+            if okA and type(info) == "table" and type(info.Items) == "table" then
+                local bt = tostring(info.BundleType or "")
+                if bt ~= "" and not bt:find("Animation") then
+                    return nil, nil, "este pacote é de " .. bt .. ", não de animação"
+                end
+                local list = {}
+                for _, it in ipairs(info.Items) do
+                    local iid = IdStr(it.Id)
+                    if it.Type == "Asset" and iid then
+                        table.insert(list, { id = iid, name = tostring(it.Name or "") })
+                    end
+                end
+                if #list > 0 then return list, info.Name end
+            end
+            if not (V8.Net and V8.Net.Json) then
+                return nil, nil, "o jogo não deixou ler o pacote e o executor não tem HTTP"
+            end
+            local d, why = V8.Net.Json("GET",
+                "https://catalog.roblox.com/v1/bundles/" .. bid .. "/details")
+            if not d then return nil, nil, "catálogo: " .. tostring(why) end
+            local bt = tostring(d.bundleType or "")
+            if bt ~= "" and not bt:find("Animation") then
+                return nil, nil, "este pacote é de " .. bt .. ", não de animação"
+            end
+            local list = {}
+            for _, it in ipairs(type(d.items) == "table" and d.items or {}) do
+                local iid = IdStr(it.id)
+                if it.type == "Asset" and iid then
+                    table.insert(list, { id = iid, name = tostring(it.name or "") })
+                end
+            end
+            if #list == 0 then return nil, nil, "o pacote não tem itens (ID errado?)" end
+            return list, d.name
+        end
+
+        -- abre a caixa do item: slot ("run"...) e o AnimationId de dentro
+        local function ReadItem(itemId, hint)
+            local ok, objs = pcall(function() return game:GetObjects("rbxassetid://" .. itemId) end)
+            if not ok or type(objs) ~= "table" then
+                return nil, nil, "o executor não tem game:GetObjects (ou o Roblox recusou o item)"
+            end
+            local slot, anim
+            for _, o in ipairs(objs) do
+                local all = o:GetDescendants()
+                table.insert(all, 1, o)
+                for _, d in ipairs(all) do
+                    if not anim and d:IsA("StringValue") and IS_SLOT[d.Name:lower()] then
+                        local a = d:FindFirstChildOfClass("Animation")
+                        if a and a.AnimationId ~= "" then slot, anim = d.Name:lower(), a.AnimationId end
+                    end
+                end
+                if not anim then
+                    for _, d in ipairs(all) do
+                        if d:IsA("Animation") and d.AnimationId ~= "" then
+                            anim = d.AnimationId
+                            break
+                        end
+                    end
+                end
+            end
+            for _, o in ipairs(objs) do pcall(function() o:Destroy() end) end
+            local key = anim and tostring(anim):match("(%d%d%d%d+)")
+            if not key then return nil, nil, "o item não tem animação dentro" end
+            return slot or SlotFromName(hint), "rbxassetid://" .. key
+        end
+
+        -- lê o que falta (BLOQUEIA: rode em task.spawn). Devolve quantas
+        -- animações ficaram prontas, ou nil + motivo
+        K.ResolveNow = function(p)
+            if K.Count(p) >= #K.Slots then return K.Count(p) end
+            local lastWhy
+            if next(p.items) == nil then
+                local list, name, why = FetchBundle(p.id)
+                if not list then return nil, why end
+                if type(name) == "string" and name ~= "" then p.name = name end
+                for _, it in ipairs(list) do
+                    local slot, anim, why2 = ReadItem(it.id, it.name)
+                    if slot and anim then
+                        p.items[slot] = it.id
+                        p.anims[slot] = anim
+                    elseif why2 then
+                        lastWhy = why2
+                    end
+                end
+            else
+                for _, s in ipairs(K.Slots) do
+                    local iid = p.items[s]
+                    if iid and not p.anims[s] then
+                        local slot, anim, why2 = ReadItem(iid, s)
+                        if anim then
+                            p.anims[(slot and IS_SLOT[slot]) and slot or s] = anim
+                        else
+                            lastWhy = why2
+                        end
+                    end
+                end
+            end
+            local n = K.Count(p)
+            if n == 0 then return nil, lastWhy or "nenhuma animação encontrada no pacote" end
+            return n
+        end
+
+        -- assíncrono; done(n, motivo) roda quando terminar (vários podem esperar)
+        K.Resolve = function(p, done)
+            if not p then return end
+            local w = K.waiters[p.id]
+            if w then
+                if done then table.insert(w, done) end
+                return
+            end
+            w = {}
+            if done then table.insert(w, done) end
+            K.waiters[p.id] = w
+            K.busy[p.id] = true
+            K.fail[p.id] = nil
+            K.Changed()
+            task.spawn(function()
+                local ok, n, why = pcall(K.ResolveNow, p)
+                if not ok then n, why = nil, tostring(n) end
+                K.busy[p.id] = nil
+                K.waiters[p.id] = nil
+                K.fail[p.id] = (not n) and (why or "não deu para ler") or nil
+                if n and K.Get(p.id) == p then K.Persist() end
+                K.Changed()
+                for _, fn in ipairs(w) do pcall(fn, n, why) end
+            end)
+        end
+
+        -- adiciona pelo ID/link e já lê. done(pacote, n, motivo)
+        K.Add = function(raw, done)
+            local id = IdStr(K.Parse(raw))
+            if not id then return nil, "não achei o ID do pacote (cole o número ou o link)" end
+            local p = K.Get(id)
+            if not p then
+                p = K.temp[id] or { id = id, name = "Pacote " .. id, items = {}, anims = {} }
+                K.temp[id] = nil
+                table.insert(K.List(), p)
+            end
+            K.Changed()
+            if K.Count(p) > 0 and not done then return p end
+            K.Resolve(p, function(n, why)
+                if done then pcall(done, p, n, why) end
+            end)
+            return p
+        end
+
+        ----------------------------------------------------------------------------
+        -- no personagem
+        ----------------------------------------------------------------------------
+        local function Animate()
+            local c = Char()
+            return c and c:FindFirstChild("Animate")
+        end
+
+        -- reinicia o Animate: ele relê os IDs e volta a tocar com os novos.
+        -- Antes, para as tracks dele (Core/Idle/Movement) — emote e voo ficam.
+        local function Restart(h, animate)
+            local animator = h:FindFirstChildOfClass("Animator")
+            if animator then
+                for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
+                    local mine = (t == Emote.track) or (t == flyTrack) or (t == FlyPose.idleTrack)
+                    local pr = t.Priority
+                    if not mine and (pr == Enum.AnimationPriority.Core
+                        or pr == Enum.AnimationPriority.Idle
+                        or pr == Enum.AnimationPriority.Movement) then
+                        pcall(function() t:Stop(0.1) end)
+                    end
+                end
+            end
+            pcall(function() animate.Disabled = true end)
+            task.wait()
+            pcall(function() animate.Disabled = false end)
+        end
+
+        -- o Roblox recusa asset em alguns jogos: a track "toca" com Length 0
+        local function Verify(p, h)
+            task.delay(4, function()
+                local animator = h and h.Parent and h:FindFirstChildOfClass("Animator")
+                if not animator or SET.PackOn ~= p.id then return end
+                local mineIds = {}
+                for _, a in pairs(p.anims) do mineIds[a] = true end
+                local seen, good = 0, 0
+                for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
+                    local aid = t.Animation and t.Animation.AnimationId
+                    if aid and mineIds[aid] then
+                        seen = seen + 1
+                        if t.Length > 0 then good = good + 1 end
+                    end
+                end
+                if seen > 0 and good == 0 then
+                    Log("O Roblox não carregou as animações de " .. p.name .. " neste jogo "
+                        .. "(asset recusado). Em outros jogos pode funcionar.", "error")
+                    Toast("Este jogo recusou o pacote", "error", 3)
+                end
+            end)
+        end
+
+        -- devolve ok, quantas trocou (ou o motivo), animações sem lugar no Animate
+        K.Apply = function(p)
+            local h, animate = Hum(), Animate()
+            if not h then return false, "sem personagem" end
+            if h.RigType == Enum.HumanoidRigType.R6 then
+                return false, "pacotes de animação são R15 e este jogo usa R6"
+            end
+            if not animate then
+                return false, "seu personagem não tem o script Animate (o jogo anima do jeito dele)"
+            end
+            if K.Count(p) == 0 then return false, "o pacote ainda não foi lido" end
+            local char = Char()
+            if K.origChar ~= char then K.origChar, K.orig = char, {} end
+            local changed, missing = 0, {}
+            for _, s in ipairs(K.Slots) do
+                local id = p.anims[s]
+                if id then
+                    local f = animate:FindFirstChild(s)
+                    local any = false
+                    if f then
+                        for _, a in ipairs(f:GetChildren()) do
+                            if a:IsA("Animation") then
+                                if K.orig[a] == nil then K.orig[a] = a.AnimationId end
+                                a.AnimationId = id
+                                changed = changed + 1
+                                any = true
+                            end
+                        end
+                    end
+                    if not any then table.insert(missing, K.SlotName[s]) end
+                end
+            end
+            if changed == 0 then
+                return false, "o Animate deste jogo não tem as pastas padrão (idle, walk, run...)"
+            end
+            task.spawn(Restart, h, animate)
+            Verify(p, h)
+            return true, changed, missing
+        end
+
+        -- devolve os IDs originais do Animate deste personagem
+        K.Restore = function()
+            local n = 0
+            for a, id in pairs(K.orig) do
+                if a.Parent then
+                    pcall(function() a.AnimationId = id end)
+                    n = n + 1
+                end
+            end
+            K.orig = {}
+            local h, animate = Hum(), Animate()
+            if n > 0 and h and animate then task.spawn(Restart, h, animate) end
+            return n
+        end
+
+        -- põe o pacote no personagem (lê antes, se precisar). quiet = boot/respawn
+        K.Use = function(p, quiet)
+            if not p then return end
+            local function Go()
+                local ok, a, b = K.Apply(p)
+                if ok then
+                    SET.PackOn = p.id
+                    if not quiet then
+                        Log("Pacote " .. p.name .. " no personagem (" .. K.Count(p) .. " animações)"
+                            .. ((b and #b > 0) and ("  ·  sem lugar no Animate: "
+                                .. table.concat(b, ", ")) or ""), "ok")
+                        Toast(p.name .. " no personagem", "ok", 2)
+                    end
+                else
+                    Log("Pacote " .. p.name .. ": " .. tostring(a), quiet and "warn" or "error")
+                    if not quiet then Toast("Não deu: " .. tostring(a), "error", 3) end
+                end
+                K.Changed()
+            end
+            if K.Count(p) > 0 then Go() return end
+            if not quiet then Toast("Lendo " .. p.name .. "...", nil, 2) end
+            K.Resolve(p, function(n, why)
+                if n then
+                    Go()
+                else
+                    Log("Pacote " .. p.name .. " não foi lido: " .. tostring(why), "error")
+                    if not quiet then Toast("Pacote não foi lido", "error", 3) end
+                end
+            end)
+        end
+
+        K.Off = function(quiet)
+            SET.PackOn = nil
+            local n = K.Restore()
+            if not quiet then
+                Log(n > 0 and "Animações do personagem de volta ao normal"
+                    or "Nenhum pacote estava no personagem", "action")
+            end
+            K.Changed()
+        end
+
+        K.Remove = function(p)
+            if not p then return end
+            if SET.PackOn == p.id then K.Off(true) end
+            if SET.FlyPack == p.id then SET.FlyPack = nil end
+            local list = K.List()
+            for i = #list, 1, -1 do
+                if list[i] == p then table.remove(list, i) end
+            end
+            K.Persist()
+            K.Changed()
+        end
+
+        ----------------------------------------------------------------------------
+        -- voo
+        ----------------------------------------------------------------------------
+        -- o pacote do Fly: o marcado como VOO; sem marca, o CONFIG.FlyPackBundle
+        -- (que não precisa estar na lista: fica só na memória desta sessão)
+        K.FlyPack = function()
+            local p = SET.FlyPack and K.Get(SET.FlyPack)
+            if p then return p end
+            local id = IdStr(CONFIG.FlyPackBundle)
+            if not id then return nil end
+            p = K.Get(id)
+            if p then return p end
+            if not K.temp[id] then
+                K.temp[id] = { id = id, name = "Pacote " .. id, items = {}, anims = {} }
+            end
+            return K.temp[id]
+        end
+
+        -- moveId, idleId, pacote (moveId nil = ainda não lido)
+        K.FlyIds = function()
+            local p = K.FlyPack()
+            if not p then return nil, nil, nil end
+            local a = p.anims
+            local move = a[CONFIG.FlyPackMoveSlot or "fall"] or a.fall or a.swim
+            local idle = a[CONFIG.FlyPackIdleSlot or "idle"]
+            return move, idle, p
+        end
+
+        K.SetFly = function(p)
+            SET.FlyPack = p and p.id or nil
+            FlyPose.packFailed = false
+            FlyPose.warnedPack = false
+            if IsOn("fly") and not Emote.track and FlyPose.Restart then FlyPose.Restart() end
+            if V8.FlyStyleRender then pcall(V8.FlyStyleRender) end
+            K.Changed()
+        end
+
+        ----------------------------------------------------------------------------
+        -- boot e respawn
+        ----------------------------------------------------------------------------
+        K.Boot = function()
+            K.List()
+            local p = SET.PackOn and K.Get(SET.PackOn)
+            if p then K.Use(p, true) end
+        end
+
+        Conn.PackChar = LocalPlayer.CharacterAdded:Connect(function(char)
+            K.origChar, K.orig = nil, {}
+            if not SET.PackOn then return end
+            task.spawn(function()
+                pcall(function() char:WaitForChild("Animate", 6) end)
+                task.wait(0.3)
+                local p = K.Get(SET.PackOn)
+                if p and Char() == char then K.Use(p, true) end
+            end)
+        end)
     end
     Build()
 end
@@ -6189,9 +6860,10 @@ do
         apply = function(v) if V8.AntiGrav then V8.AntiGrav.Set(v) end end,
     })
 
-    -- v8.1.2: animação do voo — pacote Aura flutuante (catálogo), nadar do
-    -- próprio personagem, ou a pose do painel (só você vê). Com o Fly ligado,
-    -- troca na hora (menos se houver um emote tocando por cima).
+    -- v8.1.2: animação do voo — pacote do catálogo (v8.2: o marcado como VOO
+    -- no cartão "Pacote de animação"), nadar do próprio personagem, ou a pose do
+    -- painel (só você vê). Com o Fly ligado, troca na hora (menos se houver um
+    -- emote tocando por cima).
     do
         local function FlyStyleRow()
             local row = Instance.new("Frame")
@@ -6225,7 +6897,7 @@ do
             Paint(hint, "TextColor3", "Dim")
 
             local OPTS = {
-                { "pacote", "Aura flutuante", "Pacote Endless Aura (R15) — todos veem" },
+                { "pacote", "Pacote",         "Pacote do catálogo (R15) — todos veem" },
                 { "jogo",   "Nadar",          "Nadar do seu personagem (R15) — todos veem" },
                 { "pose",   "Pose do painel", "Pose desenhada pelo painel — só você vê" },
             }
@@ -6238,7 +6910,13 @@ do
                     btns[i].TextColor3 = on and THEME.Main or THEME.Text
                     if on then hint.Text = o[3] end
                 end
+                -- v8.2: o nome do pacote que o voo está usando
+                if cur == "pacote" and V8.Pack then
+                    local fp = V8.Pack.FlyPack()
+                    if fp then hint.Text = "Pacote " .. fp.name .. " (R15) — todos veem" end
+                end
             end
+            V8.FlyStyleRender = Paint3
             for i, o in ipairs(OPTS) do
                 local b = Instance.new("TextButton")
                 b.Size = UDim2.new(1 / 3, -4, 0, 28)
@@ -6274,7 +6952,8 @@ do
     ----------------------------------------------------------------------------
     -- CÂMERA / DRONE
     ----------------------------------------------------------------------------
-    local drone = CreateCard(tab, "CÂMERA E DRONE", 3)
+    -- v8.2: a ordem 3 é do cartão "Pacote de animação" (02_movement_pack.lua)
+    local drone = CreateCard(tab, "CÂMERA E DRONE", 4)
     SwitchRow(drone, "freecam", "Freecam", Toggles.freecam.desc)
     SwitchRow(drone, "drone", "Modo Drone", Toggles.drone.desc)
 
@@ -6299,8 +6978,11 @@ do
     ----------------------------------------------------------------------------
     -- TELEPORTE RÁPIDO
     ----------------------------------------------------------------------------
-    local tp = CreateCard(tab, "TELEPORTE", 4)
+    local tp = CreateCard(tab, "TELEPORTE", 5)
     local tpGrid = Grid(tp, 3, 34)
+    tpGrid.LayoutOrder = 1
+    -- v8.2: Ctrl + clique teleporta (toggle "clicktp", 20_features/11_clicktp.lua)
+    SwitchRow(tp, "clicktp", "Ctrl + clique TP", Toggles.clicktp.desc).LayoutOrder = 2
 
     local up = CreateButton(tpGrid, "SUBIR 50", "Accent", 34)
     up.LayoutOrder = 1
@@ -6326,9 +7008,10 @@ do
     ----------------------------------------------------------------------------
     -- WAYPOINTS
     ----------------------------------------------------------------------------
-    local wp = CreateCard(tab, "WAYPOINTS", 5)
-    SubLabel(wp, "Salva a posição atual do personagem. Os waypoints vão junto na "
-        .. "config em disco (Ajustes › Configuração em disco).", -1)
+    local wp = CreateCard(tab, "WAYPOINTS", 6)
+    SubLabel(wp, "Salva a posição atual do personagem. Cada jogo tem a sua lista "
+        .. "(v8.2): aqui só aparecem os waypoints deste jogo. Vão junto na config "
+        .. "em disco (Ajustes › Configuração em disco).", -1)
 
     local wpInput = CreateInput(wp, "Nome do waypoint", 32)
     wpInput.LayoutOrder = 1
@@ -6453,6 +7136,192 @@ do
     end)
 
     RenderWaypoints()
+end
+--------------------------------------------------------------------------------
+-- v8.2 — CARTÃO "PACOTE DE ANIMAÇÃO" (Personagem › Movimento)
+-- Cole o ID ou o link de um pacote do catálogo; o painel lê as animações dele
+-- (V8.Pack, 30_kit/06_animpack.lua) e guarda na lista. Em cada pacote:
+--   USAR  -> troca as animações do seu personagem (andar, correr, pular,
+--            parado...) — os outros jogadores veem
+--   VOO   -> o Fly (estilo "Pacote") usa a animação de cair/parado dele
+--   X     -> tira da lista
+-- VOLTAR AO NORMAL devolve as animações originais do jogo.
+-- Entra logo depois de 02_movement.lua no build (ordem alfabética).
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local K = V8.Pack
+        if not K then return end
+        local card = CreateCard(Tabs.Movement, "PACOTE DE ANIMAÇÃO", 3)
+        SubLabel(card, "Pacotes de animação do catálogo (só R15). USAR troca as "
+            .. "animações do seu personagem e todo mundo vê. VOO põe o pacote no Fly.", -1)
+
+        local status = SubLabel(card, "", 0)
+
+        local box = CreateInput(card, "ID ou link do pacote (roblox.com/bundles/...)", 32)
+        box.LayoutOrder = 1
+
+        local g = Grid(card, 2, 32)
+        g.LayoutOrder = 2
+        local add = CreateButton(g, "ADICIONAR", "Success", 32)
+        add.LayoutOrder = 1
+        local normal = CreateButton(g, "VOLTAR AO NORMAL", "Warning", 32)
+        normal.LayoutOrder = 2
+
+        local list = Instance.new("Frame")
+        list.Size = UDim2.new(1, 0, 0, 0)
+        list.AutomaticSize = Enum.AutomaticSize.Y
+        list.BackgroundTransparency = 1
+        list.LayoutOrder = 3
+        list.Parent = card
+        do
+            local l = Instance.new("UIListLayout", list)
+            l.Padding = UDim.new(0, 6)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+
+        local function Describe(p)
+            if K.busy[p.id] then return "lendo o pacote...", "Warning" end
+            local n = K.Count(p)
+            if K.fail[p.id] and n == 0 then return "não deu: " .. tostring(K.fail[p.id]), "Danger" end
+            if n == 0 then return "ainda não lido (lê ao usar)  ·  ID " .. p.id, "Dim" end
+            local names = {}
+            for _, s in ipairs(K.Slots) do
+                if p.anims[s] then table.insert(names, K.SlotName[s]) end
+            end
+            return n .. " animações: " .. table.concat(names, ", "), "Dim"
+        end
+
+        local function SmallBtn(parent, text, key, w, x)
+            local b = CreateButton(parent, text, key, 26)
+            b.AnchorPoint = Vector2.new(1, 0.5)
+            b.Size = UDim2.new(0, w, 0, 26)
+            b.Position = UDim2.new(1, x, 0.5, 0)
+            b.TextSize = 10
+            b.Font = Enum.Font.GothamBold
+            return b
+        end
+
+        local function Row(p, order)
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, 0, 0, 50)
+            row.BackgroundColor3 = THEME.Btn
+            row.BorderSizePixel = 0
+            row.LayoutOrder = order
+            row.Parent = list
+            Paint(row, "BackgroundColor3", "Btn")
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+            local nm = Instance.new("TextLabel")
+            nm.Size = UDim2.new(1, -196, 0, 18)
+            nm.Position = UDim2.new(0, 12, 0, 7)
+            nm.BackgroundTransparency = 1
+            nm.Text = p.name
+            nm.TextColor3 = THEME.Text
+            nm.Font = Enum.Font.GothamBold
+            nm.TextSize = 13
+            nm.TextXAlignment = Enum.TextXAlignment.Left
+            nm.TextTruncate = Enum.TextTruncate.AtEnd
+            nm.Parent = row
+            Paint(nm, "TextColor3", "Text")
+
+            local text, key = Describe(p)
+            local ds = Instance.new("TextLabel")
+            ds.Size = UDim2.new(1, -196, 0, 14)
+            ds.Position = UDim2.new(0, 12, 0, 27)
+            ds.BackgroundTransparency = 1
+            ds.Text = text
+            ds.TextColor3 = THEME[key] or THEME.Dim
+            ds.Font = Enum.Font.GothamMedium
+            ds.TextSize = 10
+            ds.TextXAlignment = Enum.TextXAlignment.Left
+            ds.TextTruncate = Enum.TextTruncate.AtEnd
+            ds.Parent = row
+            Paint(ds, "TextColor3", key)
+
+            local onChar = (SET.PackOn == p.id)
+            local fp = K.FlyPack()
+            local onFly = (fp ~= nil and fp.id == p.id)
+
+            -- da direita para a esquerda: X, VOO, USAR
+            local del = SmallBtn(row, "X", "Danger", 30, -10)
+            local fly = SmallBtn(row, onFly and "NO VOO" or "VOO",
+                onFly and "Success" or "Accent2", 62, -46)
+            local use = SmallBtn(row, onChar and "EM USO" or "USAR",
+                onChar and "Success" or "Accent", 70, -114)
+            if onChar then use.TextColor3 = THEME.Success end
+            if onFly then fly.TextColor3 = THEME.Success end
+
+            use.MouseButton1Click:Connect(function()
+                if SET.PackOn == p.id then K.Off() else K.Use(p) end
+            end)
+            fly.MouseButton1Click:Connect(function()
+                local cur = K.FlyPack()
+                if cur and cur.id == p.id then
+                    Toast(p.name .. " já é o pacote do voo", nil, 2)
+                    return
+                end
+                K.SetFly(p)
+                Log("Voo agora usa o pacote " .. p.name
+                    .. ((SET.FlyStyle or CONFIG.FlyStyle) ~= "pacote"
+                        and "  (escolha 'Pacote' em Animação do voo)" or ""), "ok")
+                if K.Count(p) == 0 then K.Resolve(p) end
+            end)
+            del.MouseButton1Click:Connect(function()
+                Confirm("Tirar " .. p.name .. " da lista?", function()
+                    K.Remove(p)
+                    Log("Pacote removido: " .. p.name, "action")
+                end)
+            end)
+        end
+
+        local function Render()
+            for _, c in ipairs(list:GetChildren()) do
+                if c:IsA("GuiObject") then c:Destroy() end
+            end
+            local packs = K.List()
+            for i, p in ipairs(packs) do Row(p, i) end
+            local on = SET.PackOn and K.Get(SET.PackOn)
+            local fp = K.FlyPack()
+            status.Text = "No personagem: " .. (on and on.name or "animações do jogo")
+                .. "   ·   No voo: " .. (fp and fp.name or "itens da config")
+                .. ((#packs == 0) and "\nLista vazia — cole o ID de um pacote acima." or "")
+        end
+        K.Render = Render
+
+        local function DoAdd()
+            local raw = box.Text
+            if raw:match("^%s*$") then
+                Toast("Cole o ID ou o link do pacote", "warn", 2)
+                return
+            end
+            local p, why = K.Add(raw, function(pk, n, err)
+                if n then
+                    Log("Pacote lido: " .. pk.name .. " (" .. n .. " animações)", "ok")
+                    Toast(pk.name .. " adicionado", "ok", 2)
+                else
+                    Log("Pacote " .. pk.id .. " não foi lido: " .. tostring(err), "error")
+                    Toast("Não deu para ler o pacote", "error", 3)
+                end
+            end)
+            if not p then
+                Toast(tostring(why), "warn", 3)
+                return
+            end
+            box.Text = ""
+        end
+        add.MouseButton1Click:Connect(DoAdd)
+        box.FocusLost:Connect(function(enter) if enter then DoAdd() end end)
+        normal.MouseButton1Click:Connect(function() K.Off() end)
+
+        K.OnChange(function() pcall(Render) end)
+        OnTabOpen("Movement", function() pcall(Render) end)
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(Render) end)
+        Render()
+    end
+    Build()
 end
 --------------------------------------------------------------------------------
 -- ABA VISUALS
@@ -8023,7 +8892,8 @@ do
     ----------------------------------------------------------------------------
     -- SISTEMA
     ----------------------------------------------------------------------------
-    local sys = CreateCard(tab, "SISTEMA", 10)
+    -- v8.2: 12 = Celular e toque, 13 = Atualização (50_v8); Sistema e Sobre no fim
+    local sys = CreateCard(tab, "SISTEMA", 20)
     local sysGrid = Grid(sys, 2, 32)   -- v8.0: janela estreita (era 4)
 
     local reload = CreateButton(sysGrid, "RECARREGAR DADOS", "Accent", 32)
@@ -8098,7 +8968,7 @@ do
         end,
     }
 
-    local about = CreateCard(tab, "SOBRE", 11)
+    local about = CreateCard(tab, "SOBRE", 21)
     local _, _, missing = V8.RemoteStatus()
 
     local txt = Instance.new("TextLabel")
@@ -8152,7 +9022,8 @@ do
         ----------------------------------------------------------------------------
         -- EQUIPADO
         ----------------------------------------------------------------------------
-        local eq = CreateCard(tab, "EQUIPADO", 2)
+        -- v8.2: a ordem 2 é das Missões (50_v8/08_quests.lua)
+        local eq = CreateCard(tab, "EQUIPADO", 3)
         local eqLbl = SubLabel(eq, "", 1)
         eqLbl.TextColor3 = THEME.Text
         eqLbl.Font = Enum.Font.GothamMedium
@@ -8171,7 +9042,7 @@ do
         ----------------------------------------------------------------------------
         -- ITENS (categorias + lista)
         ----------------------------------------------------------------------------
-        local shop = CreateCard(tab, "ITENS", 3)
+        local shop = CreateCard(tab, "ITENS", 4)
         local pills = Grid(shop, 4, 28)
         pills.LayoutOrder = 1
         local pillBtns = {}
@@ -8380,7 +9251,7 @@ do
             tItems.Text = owned .. "/" .. total
             local nextMin = 60 - math.floor(P.Total % 60)
             status.Text = "1 ponto por minuto com o HYGE aberto — próximo em " .. nextMin
-                .. "s.  " .. tostring(P.Status or "")
+                .. "s. Missões e bônus diário dão mais.  " .. tostring(P.Status or "")
         end
 
         local SLOT_NAME = { rank = "Rank", icon = "Ícone", title = "Título",
@@ -10480,7 +11351,22 @@ do
                        "Auto", "AutoRejoin", "EmoteWalk", "ChatRelay", "ChatOn",
                        "ChatToasts",
                        -- v8.1.1: animação do voo
-                       "FlyStyle", "FlyTilt" }
+                       "FlyStyle", "FlyTilt",
+                       -- v8.2: pacotes de animação, botões na tela, atualização
+                       "Packs", "PackOn", "FlyPack", "TouchHud", "UpdateCheck" }
+
+    -- v8.2: waypoints POR JOGO. State.Waypoints é sempre a lista do jogo
+    -- atual; os dos outros jogos ficam aqui (como vieram do arquivo) e voltam
+    -- intactos no próximo Save.
+    C.WpOther = {}
+    local PLACE = tostring(game.PlaceId)
+    local function WpEncode(list)
+        local out = {}
+        for i, w in ipairs(list) do
+            out[i] = { name = w.name, cf = { w.cframe:GetComponents() } }
+        end
+        return out
+    end
 
     C.Snapshot = function()
         local d = {
@@ -10514,10 +11400,13 @@ do
         if V8.Sit then
             for n, kc in pairs(V8.Sit.Keys) do d.sitkeys[n] = kc.Name end
         end
-        for i, w in ipairs(State.Waypoints) do
-            local c = { w.cframe:GetComponents() }
-            d.waypoints[i] = { name = w.name, cf = c }
-        end
+        -- v8.2: "waypoints" continua (só os deste jogo) para versões antigas
+        -- lerem; "wpplaces" = { [PlaceId] = lista } com todos os jogos
+        d.waypoints = WpEncode(State.Waypoints)
+        d.wpplaces = {}
+        for place, list in pairs(C.WpOther) do d.wpplaces[place] = list end
+        if #d.waypoints > 0 then d.wpplaces[PLACE] = d.waypoints end
+        if next(d.wpplaces) == nil then d.wpplaces = nil end
         for i, e in ipairs(State.Emotes) do
             d.emotes[i] = { id = e.id, name = e.name }
         end
@@ -10613,10 +11502,26 @@ do
             pcall(V8.Sit.Render)
         end
 
-        -- waypoints
-        if type(d.waypoints) == "table" then
+        -- waypoints (v8.2: por jogo; arquivo antigo sem "wpplaces" = a lista
+        -- única de antes, que fica com o jogo em que ele foi carregado)
+        local wpList = nil
+        if type(d.wpplaces) == "table" then
+            C.WpOther = {}
+            for place, list in pairs(d.wpplaces) do
+                if type(list) == "table" then C.WpOther[tostring(place)] = list end
+            end
+            wpList = C.WpOther[PLACE] or {}
+            C.WpOther[PLACE] = nil
+        elseif type(d.waypoints) == "table" then
+            wpList = d.waypoints
+            if #wpList > 0 then
+                Log(#wpList .. " waypoint(s) da config antiga ficaram com este jogo "
+                    .. "(agora cada jogo tem a sua lista)", "warn")
+            end
+        end
+        if wpList then
             for i = #State.Waypoints, 1, -1 do State.Waypoints[i] = nil end
-            for _, w in ipairs(d.waypoints) do
+            for _, w in ipairs(wpList) do
                 local c = w.cf
                 if type(c) == "table" and #c >= 12 then
                     local ok, cf = pcall(function() return CFrame.new(table.unpack(c)) end)
@@ -10626,6 +11531,8 @@ do
                 end
             end
             if RenderWaypoints then pcall(RenderWaypoints) end
+            -- v8.2: lista trocada inteira não conta como "salvou waypoint" nas missões
+            if V8.Quest and V8.Quest.ResyncWp then pcall(V8.Quest.ResyncWp) end
         end
 
         -- favoritos de emote
@@ -11463,6 +12370,7 @@ do
             { "infjump",    "Infinite Jump", nil },
             { "chatspy",    "Chat Spy",      "Chat do servidor no console" },
             { "noclip",     "Noclip",        nil },
+            { "clicktp",    "Ctrl + clique TP", "Ctrl + clique esquerdo teleporta (v8.2)" },
         }
 
         A.Run = function()
@@ -11513,6 +12421,712 @@ do
                 A.rejoining = false
             end)
         end)
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
+-- v8.2 — CELULAR (botões na tela + janela que cabe)
+-- * Botões na tela (SET.TouchHud; padrão: ligado em aparelho com toque):
+--   FLY liga/desliga o voo; com ele ligado aparecem SUBIR, DESCER e 2x.
+--   A direção do voo vem do analógico do Roblox (o ControlModule, o mesmo que
+--   anda com o personagem) e segue a câmera: olhando para cima, sobe. Vale
+--   também para controle (gamepad) no PC. O Fly chama M.FlyDir só quando
+--   nenhuma tecla de movimento está apertada.
+-- * Tela pequena (celular deitado): a janela do dock fica mais baixa para
+--   caber acima do dock (o conteúdo rola) e o dock encolhe se não couber na
+--   largura. Recalcula quando a tela muda (girar o aparelho).
+-- Entra depois do dock e do shell no build. Tudo em V8.Mobile: zero locais
+-- novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Mobile = { up = false, down = false, boost = false }
+        local M = V8.Mobile
+        M.Touch = UserInputService.TouchEnabled
+        if SET.TouchHud == nil then SET.TouchHud = M.Touch end
+
+        ----------------------------------------------------------------------------
+        -- direção do voo
+        ----------------------------------------------------------------------------
+        local controls   -- nil = ainda não tentou; false = não deu
+        local function Controls()
+            if controls == nil then
+                controls = false
+                pcall(function()
+                    local ps = LocalPlayer:FindFirstChildOfClass("PlayerScripts")
+                    local pm = ps and ps:FindFirstChild("PlayerModule")
+                    if pm then controls = require(pm):GetControls() or false end
+                end)
+            end
+            return controls or nil
+        end
+
+        M.FlyDir = function(cam)
+            local dir = Vector3.zero
+            local mv
+            local c = Controls()
+            if c then pcall(function() mv = c:GetMoveVector() end) end
+            if typeof(mv) == "Vector3" and mv.Magnitude > 0.05 then
+                -- relativo à câmera: x = direita, -z = frente
+                dir = cam.LookVector * (-mv.Z) + cam.RightVector * mv.X
+            else
+                -- sem ControlModule: a direção que o Roblox calcula (sem subir/descer)
+                local h = Hum()
+                local md = h and h.MoveDirection
+                if md and md.Magnitude > 0.05 then dir = md end
+            end
+            if M.up then dir = dir + Vector3.yAxis end
+            if M.down then dir = dir - Vector3.yAxis end
+            return dir
+        end
+
+        ----------------------------------------------------------------------------
+        -- botões na tela (coluna no lado direito, acima do pulo do Roblox)
+        ----------------------------------------------------------------------------
+        local hud = Instance.new("Frame")
+        hud.Name = "TouchHud"
+        hud.AnchorPoint = Vector2.new(1, 0.5)
+        hud.Position = UDim2.new(1, -18, 0.4, 0)
+        hud.Size = UDim2.new(0, 62, 0, 0)
+        hud.AutomaticSize = Enum.AutomaticSize.Y
+        hud.BackgroundTransparency = 1
+        hud.Visible = false
+        hud.ZIndex = 30
+        hud.Parent = Gui
+        do
+            local l = Instance.new("UIListLayout", hud)
+            l.Padding = UDim.new(0, 8)
+            l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+        M.Hud = hud
+
+        local function Btn(text, order, size)
+            local b = Instance.new("TextButton")
+            b.Size = UDim2.new(0, size, 0, size)
+            b.BackgroundColor3 = THEME.Card
+            b.BackgroundTransparency = 0.12
+            b.Text = text
+            b.TextColor3 = THEME.Text
+            b.Font = Enum.Font.GothamBlack
+            b.TextSize = 12
+            b.AutoButtonColor = false
+            b.LayoutOrder = order
+            b.ZIndex = 30
+            b.Parent = hud
+            Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+            local st = Instance.new("UIStroke", b)
+            st.Transparency = 0.25
+            st.Thickness = 1.5
+            Paint(st, "Color", "Line")
+            return b
+        end
+        local bFly = Btn("FLY", 1, 62)
+        local bUp = Btn("SUBIR", 2, 56)
+        local bDown = Btn("DESCER", 3, 56)
+        local bBoost = Btn("2x", 4, 46)
+
+        -- segurar: guarda o InputObject do dedo (o analógico é outro dedo e não
+        -- solta o botão); soltar fora do botão também solta
+        local held = {}
+        local function Paint4()
+            local fly = IsOn("fly")
+            bFly.BackgroundColor3 = fly and THEME.Accent or THEME.Card
+            bFly.TextColor3 = fly and THEME.Main or THEME.Text
+            bUp.Visible, bDown.Visible, bBoost.Visible = fly, fly, fly
+            bUp.BackgroundColor3 = M.up and THEME.Accent or THEME.Card
+            bUp.TextColor3 = M.up and THEME.Main or THEME.Text
+            bDown.BackgroundColor3 = M.down and THEME.Accent or THEME.Card
+            bDown.TextColor3 = M.down and THEME.Main or THEME.Text
+            bBoost.BackgroundColor3 = M.boost and THEME.Accent or THEME.Card
+            bBoost.TextColor3 = M.boost and THEME.Main or THEME.Text
+        end
+        local function Press(input)
+            local t = input.UserInputType
+            return t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1
+        end
+        local function Hold(b, key)
+            b.InputBegan:Connect(function(input)
+                if not Press(input) then return end
+                held[key] = input
+                M[key] = true
+                Paint4()
+            end)
+        end
+        Hold(bUp, "up")
+        Hold(bDown, "down")
+        Conn.TouchHudEnd = UserInputService.InputEnded:Connect(function(input)
+            if not Press(input) then return end
+            for key, obj in pairs(held) do
+                if obj == input or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    held[key] = nil
+                    M[key] = false
+                end
+            end
+            Paint4()
+        end)
+
+        bFly.MouseButton1Click:Connect(function() Flip("fly") end)
+        bBoost.MouseButton1Click:Connect(function()
+            M.boost = not M.boost
+            Paint4()
+        end)
+
+        table.insert(Toggles.fly.listeners, function(on)
+            if not on then
+                M.up, M.down = false, false
+                for k in pairs(held) do held[k] = nil end
+            end
+            Paint4()
+        end)
+
+        M.Render = function()
+            hud.Visible = SET.TouchHud == true
+            Paint4()
+        end
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, M.Render)
+
+        ----------------------------------------------------------------------------
+        -- janela e dock que cabem na tela
+        ----------------------------------------------------------------------------
+        local dockScale
+        if V8.Dock and V8.Dock.Bar then
+            dockScale = Instance.new("UIScale")
+            dockScale.Parent = V8.Dock.Bar()
+        end
+
+        M.Fit = function()
+            local vp = Gui.AbsoluteSize
+            if vp.X < 100 or vp.Y < 100 then vp = Camera.ViewportSize end
+            if vp.X < 100 or vp.Y < 100 then return end
+            -- dock: encolhe (até 60%) se for mais largo que a tela
+            if dockScale then
+                local bar = V8.Dock.Bar()
+                local w = bar.AbsoluteSize.X / math.max(dockScale.Scale, 0.01)
+                local s = 1
+                if w > 0 and w > vp.X - 24 then s = math.max(0.6, (vp.X - 24) / w) end
+                dockScale.Scale = s
+            end
+            -- janela do dock: a altura que cabe acima dele (300 a 520)
+            local H = V8.Shell
+            if not H then return end
+            local sc = CONFIG.UiScale or 1
+            local room = vp.Y - 82 - 12   -- dock + respiro (igual ao HomePos) + margem
+            local newH = math.clamp(math.floor(room / sc), 300, 520)
+            if newH ~= H.DockH then
+                H.DockH = newH
+                pcall(H.Layout)
+                if SET.WinPos == nil then pcall(function() Window.Position = H.HomePos() end) end
+            end
+        end
+
+        Conn.MobileFit = Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+            task.defer(function() pcall(M.Fit) end)
+        end)
+
+        ----------------------------------------------------------------------------
+        -- Ajustes › Celular e toque
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Settings, "CELULAR E TOQUE", 12)
+        SubLabel(card, "Este aparelho " .. (M.Touch and "tem" or "não tem") .. " tela de toque. "
+            .. "No celular, o analógico dirige o voo seguindo a câmera; SUBIR e DESCER "
+            .. "aparecem com o Fly ligado. A janela encolhe sozinha em tela pequena.", -1)
+        CheckRow(card, "Botões na tela",
+            "FLY, SUBIR, DESCER e 2x no lado direito da tela",
+            function() return SET.TouchHud == true end,
+            function(v)
+                SET.TouchHud = v and true or false
+                M.Render()
+            end, 1)
+
+        M.Render()
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
+-- v8.2 — MISSÕES E BÔNUS DIÁRIO (Playtime Shop › Missões de hoje)
+-- Mais um jeito de ganhar pontos além do 1/minuto:
+--   * bônus diário: na primeira vez que o painel abre no dia. Dias seguidos
+--     aumentam o bônus (10, 15, 20... até 40 no 7º dia); pulou um dia, a
+--     sequência volta para 1
+--   * missões do dia: zeram à meia-noite (hora do seu computador). Completa,
+--     aparece RESGATAR; os pontos entram no saldo na hora
+-- O progresso mora em V8.Play.Quests e vai no HYGE/playtime.json junto com os
+-- pontos (salvo a cada minuto e no unload).
+-- Contadores: tempo e voo pelo scheduler (1/s); emotes embrulhando Emote.Play;
+-- waypoints pelo tamanho da lista; pacote pelo SET.PackOn.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local P = V8.Play
+        if not P then return end
+        V8.Quest = {}
+        local Q = V8.Quest
+
+        Q.Defs = {
+            { id = "online", name = "Fique 30 min com o HYGE aberto", goal = 1800, min = true, reward = 20 },
+            { id = "fly",    name = "Voe por 10 minutos",             goal = 600,  min = true, reward = 30 },
+            { id = "emotes", name = "Toque 5 emotes",                 goal = 5,    reward = 15 },
+            { id = "wp",     name = "Salve 1 waypoint",               goal = 1,    reward = 10 },
+            { id = "pack",   name = "Use um pacote de animação",      goal = 1,    reward = 10 },
+        }
+
+        local function Today() return os.date("%Y-%m-%d") end
+        local function Yesterday() return os.date("%Y-%m-%d", os.time() - 86400) end
+
+        Q.Bonus = function(streak)
+            return 10 + 5 * (math.clamp(streak or 1, 1, 7) - 1)
+        end
+
+        -- dados validados (o que veio do arquivo pode estar faltando campo)
+        Q.Data = function()
+            local d = P.Quests
+            if type(d) ~= "table" then
+                d = {}
+                P.Quests = d
+            end
+            if type(d.prog) ~= "table" then d.prog = {} end
+            if type(d.claimed) ~= "table" then d.claimed = {} end
+            d.streak = math.max(0, math.floor(tonumber(d.streak) or 0))
+            if d.day ~= Today() then
+                d.day = Today()
+                d.prog, d.claimed = {}, {}
+            end
+            for _, m in ipairs(Q.Defs) do
+                local v = tonumber(d.prog[m.id]) or 0
+                d.prog[m.id] = math.clamp(v, 0, m.goal)
+                if d.claimed[m.id] ~= true then d.claimed[m.id] = nil end
+            end
+            return d
+        end
+
+        Q.Add = function(id, n)
+            local d = Q.Data()
+            for _, m in ipairs(Q.Defs) do
+                if m.id == id then
+                    local before = d.prog[id]
+                    d.prog[id] = math.min(m.goal, before + (n or 1))
+                    if before < m.goal and d.prog[id] >= m.goal then
+                        Log("Missão completa: " .. m.name .. " — resgate +" .. m.reward
+                            .. " na Playtime Shop", "ok")
+                        Toast("Missão completa: " .. m.name, "ok", 3)
+                        if Q.Render then pcall(Q.Render) end
+                    end
+                    return
+                end
+            end
+        end
+
+        Q.Claim = function(id)
+            local d = Q.Data()
+            for _, m in ipairs(Q.Defs) do
+                if m.id == id then
+                    if d.claimed[id] then return false, "já resgatada" end
+                    if d.prog[id] < m.goal then return false, "ainda não completou" end
+                    d.claimed[id] = true
+                    P.Grant(m.reward)   -- salva e avisa a loja
+                    Log("Missão resgatada: " .. m.name .. " (+" .. m.reward .. " pontos)", "ok")
+                    Toast("+" .. m.reward .. " pontos", "ok", 2)
+                    return true, m.reward
+                end
+            end
+            return false, "missão desconhecida"
+        end
+
+        -- bônus diário: 1x por dia, na primeira checagem do dia
+        Q.Daily = function()
+            local d = Q.Data()
+            local today = Today()
+            if d.last == today then return false end
+            d.streak = (d.last == Yesterday()) and (d.streak + 1) or 1
+            d.last = today
+            local pts = Q.Bonus(d.streak)
+            P.Grant(pts)
+            Log("Bônus diário: +" .. pts .. " pontos (" .. d.streak .. " dia(s) seguido(s))", "ok")
+            Toast("Bônus diário: +" .. pts .. " pontos", "ok", 3)
+            return true, pts
+        end
+
+        -- contadores (o scheduler roda 1x/s; o dia vira sozinho)
+        do
+            local lastWp = #State.Waypoints
+            local lastDay = Today()
+            V8.Job(1, function()
+                Q.Add("online", 1)
+                if IsOn("fly") then Q.Add("fly", 1) end
+                local n = #State.Waypoints
+                if n > lastWp then Q.Add("wp", n - lastWp) end
+                lastWp = n
+                if SET.PackOn then Q.Add("pack", 1) end
+                if Today() ~= lastDay then
+                    lastDay = Today()
+                    Q.Daily()
+                    if Q.Render then pcall(Q.Render) end
+                end
+            end)
+            -- a lista de waypoints é trocada inteira ao carregar a config: não conta
+            Q.ResyncWp = function() lastWp = #State.Waypoints end
+        end
+
+        -- emotes tocados com sucesso (o catálogo, os favoritos e o comando
+        -- chamam Emote.Play pela tabela, então o embrulho pega todos)
+        if Emote.Play then
+            local base = Emote.Play
+            Emote.Play = function(...)
+                local ok = base(...)
+                if ok then Q.Add("emotes", 1) end
+                return ok
+            end
+        end
+
+        ----------------------------------------------------------------------------
+        -- UI: Playtime Shop › Missões de hoje
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Shop, "MISSÕES DE HOJE", 2)
+        local streakLbl = SubLabel(card, "", 0)
+
+        local rows = {}
+        for i, m in ipairs(Q.Defs) do
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, 0, 0, 50)
+            row.BackgroundColor3 = THEME.Btn
+            row.BorderSizePixel = 0
+            row.LayoutOrder = i
+            row.Parent = card
+            Paint(row, "BackgroundColor3", "Btn")
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+            local nm = Instance.new("TextLabel")
+            nm.Size = UDim2.new(1, -130, 0, 18)
+            nm.Position = UDim2.new(0, 12, 0, 6)
+            nm.BackgroundTransparency = 1
+            nm.Text = m.name
+            nm.TextColor3 = THEME.Text
+            nm.Font = Enum.Font.GothamBold
+            nm.TextSize = 12
+            nm.TextXAlignment = Enum.TextXAlignment.Left
+            nm.TextTruncate = Enum.TextTruncate.AtEnd
+            nm.Parent = row
+            Paint(nm, "TextColor3", "Text")
+
+            local bar = Instance.new("Frame")
+            bar.Size = UDim2.new(1, -190, 0, 6)
+            bar.Position = UDim2.new(0, 12, 0, 32)
+            bar.BackgroundColor3 = THEME.Track
+            bar.BorderSizePixel = 0
+            bar.Parent = row
+            Paint(bar, "BackgroundColor3", "Track")
+            Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+            local fill = Instance.new("Frame")
+            fill.Size = UDim2.new(0, 0, 1, 0)
+            fill.BackgroundColor3 = THEME.Accent
+            fill.BorderSizePixel = 0
+            fill.Parent = bar
+            Paint(fill, "BackgroundColor3", "Accent")
+            Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+            local prog = Instance.new("TextLabel")
+            prog.AnchorPoint = Vector2.new(1, 0)
+            prog.Size = UDim2.new(0, 64, 0, 14)
+            prog.Position = UDim2.new(1, -112, 0, 28)
+            prog.BackgroundTransparency = 1
+            prog.Text = ""
+            prog.TextColor3 = THEME.Dim
+            prog.Font = Enum.Font.GothamMedium
+            prog.TextSize = 10
+            prog.TextXAlignment = Enum.TextXAlignment.Right
+            prog.Parent = row
+            Paint(prog, "TextColor3", "Dim")
+
+            local b = CreateButton(row, "", "Success", 30)
+            b.AnchorPoint = Vector2.new(1, 0.5)
+            b.Position = UDim2.new(1, -10, 0.5, 0)
+            b.Size = UDim2.new(0, 92, 0, 30)
+            b.TextSize = 11
+            b.Font = Enum.Font.GothamBold
+            b.MouseButton1Click:Connect(function()
+                local ok, why = Q.Claim(m.id)
+                if not ok then Toast(tostring(why), nil, 2) end
+                pcall(Q.Render)
+            end)
+
+            rows[m.id] = { fill = fill, prog = prog, btn = b }
+        end
+
+        local function Fmt(m, v)
+            if m.min then
+                return math.floor(v / 60) .. "/" .. math.floor(m.goal / 60) .. " min"
+            end
+            return v .. "/" .. m.goal
+        end
+
+        Q.Render = function()
+            local d = Q.Data()
+            for _, m in ipairs(Q.Defs) do
+                local r = rows[m.id]
+                local v = d.prog[m.id]
+                r.fill.Size = UDim2.new(math.clamp(v / m.goal, 0, 1), 0, 1, 0)
+                r.prog.Text = Fmt(m, v)
+                if d.claimed[m.id] then
+                    r.btn.Text = "FEITO"
+                    r.btn.TextColor3 = THEME.Dim
+                elseif v >= m.goal then
+                    r.btn.Text = "RESGATAR +" .. m.reward
+                    r.btn.TextColor3 = THEME.Success
+                else
+                    r.btn.Text = "+" .. m.reward .. " PTS"
+                    r.btn.TextColor3 = THEME.Dim
+                end
+            end
+            local s = math.max(d.streak, 1)
+            streakLbl.Text = "Bônus diário: " .. d.streak .. " dia(s) seguido(s) — hoje +"
+                .. Q.Bonus(s) .. (d.last == Today() and " (recebido)" or "")
+                .. ", amanhã +" .. Q.Bonus(s + 1) .. ". As missões zeram à meia-noite."
+        end
+
+        -- a loja já tem um TabTick (saldo): roda os dois
+        do
+            local base = V8.TabTick.Shop
+            V8.TabTick.Shop = function()
+                if base then base() end
+                Q.Render()
+            end
+        end
+        P.OnChange(function() pcall(Q.Render) end)
+        OnTabOpen("Shop", function() pcall(Q.Render) end)
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(Q.Render) end)
+
+        Q.Boot = function()
+            Q.ResyncWp()
+            Q.Daily()
+            Q.Render()
+        end
+        Q.Render()
+    end
+    Build()
+end
+--------------------------------------------------------------------------------
+-- v8.2 — ATUALIZAÇÃO (Configurações › Ajustes › Atualização)
+-- Confere se existe um main.lua mais novo no endereço de atualização:
+--   * aberto pelo loader.lua: o loader conta qual build ele rodou
+--     (getgenv().HYGE_LOADER = { url, build }) e a comparação é pelo build
+--     exato — qualquer mudança publicada conta
+--   * colado direto: compara CONFIG.Version com o Version do arquivo novo
+--     (só avisa se o de lá for MAIOR)
+-- Achou: avisa (toast + log + este cartão). ATUALIZAR AGORA baixa, confere se
+-- compila, descarrega este painel e roda o novo — sem sair do jogo.
+-- Precisa de HTTP no executor (request ou game:HttpGet) e, para atualizar sem
+-- sair, de loadstring. Nada é baixado sem a opção ligada ou o botão.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Update = { state = "idle", msg = "", notified = {} }
+        local U = V8.Update
+        if SET.UpdateCheck == nil then SET.UpdateCheck = true end
+
+        -- tabela global do executor (compartilhada entre scripts)
+        local function Env()
+            if typeof(getgenv) == "function" then
+                local ok, g = pcall(getgenv)
+                if ok and type(g) == "table" then return g end
+            end
+            return _G
+        end
+        -- lido e apagado: se depois alguém colar o main.lua direto no mesmo
+        -- jogo, essa instância não herda o build de um loader antigo
+        pcall(function()
+            local env = Env()
+            local L = env.HYGE_LOADER
+            U.Loader = (type(L) == "table") and L or nil
+            env.HYGE_LOADER = nil
+        end)
+        U.MyBuild = U.Loader and tostring(U.Loader.build or "") or ""
+
+        U.Url = function()
+            local L = U.Loader
+            if L and type(L.url) == "string" and L.url ~= "" then return L.url end
+            return tostring(CONFIG.UpdateUrl or "")
+        end
+
+        -- "v8.1.2" -> { 8, 1, 2 }
+        local function Ver(s)
+            local t = {}
+            for n in tostring(s or ""):gmatch("%d+") do table.insert(t, tonumber(n)) end
+            return t
+        end
+        local function Greater(a, b)
+            local x, y = Ver(a), Ver(b)
+            for i = 1, math.max(#x, #y) do
+                local p, q = x[i] or 0, y[i] or 0
+                if p ~= q then return p > q end
+            end
+            return false
+        end
+
+        -- baixa o main.lua de lá: { src, version, build } ou nil + motivo
+        U.Fetch = function()
+            local url = U.Url()
+            if url == "" then return nil, "sem endereço de atualização (CONFIG.UpdateUrl)" end
+            if not (V8.Net and V8.Net.Request) then return nil, "sem HTTP" end
+            local sep = url:find("?", 1, true) and "&" or "?"
+            local ok, body, code = V8.Net.Request("GET", url .. sep .. "t=" .. os.time())
+            if not ok then
+                return nil, (code and code > 0) and ("HTTP " .. code) or tostring(body)
+            end
+            if type(body) ~= "string" or #body < 1000 or not body:find("-- build:", 1, true) then
+                return nil, "o arquivo baixado não é o main.lua do painel"
+            end
+            return {
+                src = body,
+                version = body:match('Version%s*=%s*"([^"]+)"'),
+                build = body:match("%-%- build: (%x+)"),
+            }
+        end
+
+        U.IsNewer = function(info)
+            if U.MyBuild ~= "" and info.build then return info.build ~= U.MyBuild end
+            return info.version ~= nil and Greater(info.version, CONFIG.Version)
+        end
+
+        U.Check = function(manual)
+            if U.state == "checking" then return end
+            U.state, U.msg = "checking", "Conferindo..."
+            if U.Render then pcall(U.Render) end
+            task.spawn(function()
+                local info, why = U.Fetch()
+                if not info then
+                    U.state, U.msg = "error", "Não deu para conferir: " .. tostring(why)
+                    if manual then
+                        Log("Atualização: " .. tostring(why), "error")
+                        Toast("Não deu para conferir a atualização", "error", 3)
+                    end
+                elseif U.IsNewer(info) then
+                    U.state, U.info = "new", info
+                    U.msg = "Versão nova disponível: " .. tostring(info.version or "?")
+                        .. (info.build and ("  (build " .. info.build .. ")") or "")
+                    local key = tostring(info.build or info.version)
+                    if manual or not U.notified[key] then
+                        U.notified[key] = true
+                        Log("Atualização disponível: HYGE " .. tostring(info.version or "?")
+                            .. " — Configurações › Ajustes › Atualização", "ok")
+                        Toast("HYGE " .. tostring(info.version or "novo")
+                            .. " disponível (Ajustes › Atualização)", "ok", 5)
+                    end
+                else
+                    U.state, U.info = "ok", info
+                    U.msg = "Você está na versão mais nova."
+                    if manual then
+                        Log("Atualização: você já está na versão mais nova", "ok")
+                        Toast("Já está na versão mais nova", "ok", 2)
+                    end
+                end
+                U.checked = os.date("%H:%M")
+                if U.Render then pcall(U.Render) end
+            end)
+        end
+
+        U.Apply = function()
+            if typeof(loadstring) ~= "function" then
+                Log("Este executor não tem loadstring: baixe o main.lua novo e rode no executor "
+                    .. "(ou use o loader.lua, que sempre abre a versão nova)", "error")
+                Toast("Executor sem loadstring", "error", 3)
+                return
+            end
+            if U.state == "applying" then return end
+            U.state, U.msg = "applying", "Baixando a versão nova..."
+            if U.Render then pcall(U.Render) end
+            task.spawn(function()
+                local info, why = U.Fetch()
+                if not info then
+                    U.state, U.msg = "error", "Não deu para baixar: " .. tostring(why)
+                    Log("Atualização: " .. tostring(why), "error")
+                    if U.Render then pcall(U.Render) end
+                    return
+                end
+                local fn, err = loadstring(info.src, "=HYGE")
+                if not fn then
+                    U.state, U.msg = "error", "O arquivo novo não compila"
+                    Log("O main.lua baixado não compila (nada foi trocado): " .. tostring(err), "error")
+                    if U.Render then pcall(U.Render) end
+                    return
+                end
+                -- o painel novo fica sabendo de onde veio e qual build é
+                pcall(function()
+                    local env = Env()
+                    env.HYGE_LOADER = { url = U.Url(), build = info.build, from = "atualização" }
+                end)
+                Log("Atualizando para HYGE " .. tostring(info.version or "?") .. "...", "action")
+                Toast("Atualizando o HYGE...", "ok", 2)
+                task.wait(0.4)
+                pcall(Unload)
+                task.defer(function()
+                    local ok, e = pcall(fn)
+                    if not ok then warn("[HYGE] a versão nova falhou ao iniciar: " .. tostring(e)) end
+                end)
+            end)
+        end
+
+        -- a cada 15 min (o primeiro disparo do scheduler é ignorado: quem
+        -- confere ao abrir é o U.Boot, depois da config carregada)
+        V8.Job(900, function()
+            if U.booted and SET.UpdateCheck then U.Check(false) end
+        end)
+
+        U.Boot = function()
+            U.booted = true
+            if SET.UpdateCheck and U.Url() ~= "" then
+                task.delay(6, function() U.Check(false) end)
+            end
+        end
+
+        ----------------------------------------------------------------------------
+        -- Ajustes › Atualização
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Settings, "ATUALIZAÇÃO", 13)
+        local infoLbl = SubLabel(card, "", 0)
+        local status = SubLabel(card, "", 1)
+
+        local g = Grid(card, 2, 32)
+        g.LayoutOrder = 2
+        local bCheck = CreateButton(g, "VERIFICAR AGORA", "Accent", 32)
+        bCheck.LayoutOrder = 1
+        bCheck.MouseButton1Click:Connect(function() U.Check(true) end)
+        local bApply = CreateButton(g, "ATUALIZAR AGORA", "Success", 32)
+        bApply.LayoutOrder = 2
+        bApply.MouseButton1Click:Connect(function()
+            Confirm("Baixar a versão nova e reabrir o painel agora? (o que estiver "
+                .. "ligado é desligado; a config é salva antes)", U.Apply)
+        end)
+
+        CheckRow(card, "Conferir sozinho",
+            "Ao abrir o painel e a cada 15 minutos (só avisa, não troca nada)",
+            function() return SET.UpdateCheck == true end,
+            function(v) SET.UpdateCheck = v and true or false end, 3)
+
+        SubLabel(card, "Para abrir sempre a versão mais nova: rode o loader.lua do "
+            .. "repositório no executor em vez do main.lua. Ele baixa do GitHub, guarda uma "
+            .. "cópia em HYGE/main.lua e usa a cópia se estiver sem internet.", 4)
+
+        U.Render = function()
+            local how = U.Loader and ("aberto pelo loader" .. (U.MyBuild ~= ""
+                and (", build " .. U.MyBuild) or "")) or "colado direto (sem loader)"
+            infoLbl.Text = "Versão atual: " .. CONFIG.Version .. "  ·  " .. how
+                .. "\nEndereço: " .. (U.Url() ~= "" and U.Url() or "nenhum")
+            status.Text = (U.msg ~= "" and U.msg or "Ainda não conferido.")
+                .. (U.checked and ("  (às " .. U.checked .. ")") or "")
+            local key = (U.state == "new") and "Success"
+                or (U.state == "error") and "Danger" or "Dim"
+            status.TextColor3 = THEME[key]
+            bApply.Text = (U.state == "new") and "ATUALIZAR AGORA" or "REINSTALAR AGORA"
+        end
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(U.Render) end)
+        U.Render()
     end
     Build()
 end
@@ -11985,6 +13599,102 @@ do
             .. "  ·  " .. P.Points() .. " ponto(s)"
             .. (P.Line() ~= "" and ("  ·  " .. P.Line()) or ""), "ok")
     end, "pt")
+
+    DefCmd("givepoints", "givepoints [n|max]", "dá pontos da Playtime Shop (sem n: o que falta pra comprar tudo)",
+        function(args)
+            local P = V8.Play
+            if not P then return end
+            local a = (args[1] or ""):lower()
+            local n
+            if a == "" then
+                n = math.max(0, P.MissingCost() - P.Points())
+                if n == 0 then Log("Você já tem pontos para comprar tudo (" .. P.Points() .. ")", "ok") return end
+            elseif a == "max" then
+                n = 999999 - P.Points()
+            else
+                n = tonumber(a)
+            end
+            if not n or n <= 0 then Log("uso: givepoints [numero|max]", "warn") return end
+            P.Grant(n)
+            Log("+" .. math.floor(n) .. " ponto(s)  ·  agora: " .. P.Points(), "ok")
+            Toast("+" .. math.floor(n) .. " pontos", "ok", 2)
+        end, "gp")
+
+    DefCmd("unlockall", "unlockall", "libera todos os itens da Playtime Shop", function()
+        local P = V8.Play
+        if not P then return end
+        local n = P.UnlockAll()
+        Log(n > 0 and (n .. " item(ns) liberado(s) na Playtime Shop") or "Você já tem todos os itens", "ok")
+        if n > 0 then Toast(n .. " itens liberados", "ok", 2) end
+    end)
+
+    ----------------------------------------------------------------------------
+    -- v8.2: pacotes de animação, missões e atualização
+    ----------------------------------------------------------------------------
+    DefCmd("pack", "pack list|add <id>|use <nome>|fly <nome>|off",
+        "pacotes de animação (personagem e voo)", function(args)
+            local K = V8.Pack
+            if not K then Log("Pacotes indisponíveis", "error") return end
+            local sub = (args[1] or "list"):lower()
+            local rest = table.concat(args, " ", 2)
+            if sub == "list" or sub == "ls" then
+                local fp = K.FlyPack()
+                for i, p in ipairs(K.List()) do
+                    Log(i .. ") " .. p.name .. "  ·  ID " .. p.id .. "  ·  "
+                        .. K.Count(p) .. " animações"
+                        .. (SET.PackOn == p.id and "  ·  NO PERSONAGEM" or "")
+                        .. ((fp and fp.id == p.id) and "  ·  NO VOO" or ""))
+                end
+                if #K.List() == 0 then Log("Nenhum pacote. Use: pack add <id ou link>", "warn") end
+            elseif sub == "add" then
+                local p, why = K.Add(rest, function(pk, n, err)
+                    if n then Log("Pacote lido: " .. pk.name .. " (" .. n .. " animações)", "ok")
+                    else Log("Pacote " .. pk.id .. " não foi lido: " .. tostring(err), "error") end
+                end)
+                if not p then Log(tostring(why), "warn") end
+            elseif sub == "use" or sub == "fly" then
+                local p = K.Find(rest)
+                if not p and K.Parse(rest) then p = K.Add(rest) end
+                if not p then Log("Pacote não encontrado: " .. rest .. " (veja 'pack list')", "warn") return end
+                if sub == "use" then K.Use(p) else
+                    K.SetFly(p)
+                    if K.Count(p) == 0 then K.Resolve(p) end
+                    Log("Voo agora usa o pacote " .. p.name, "ok")
+                end
+            elseif sub == "off" then
+                K.Off()
+            else
+                Log("uso: pack list | pack add <id ou link> | pack use <nome> | pack fly <nome> | pack off", "warn")
+            end
+        end)
+
+    DefCmd("missoes", "missoes [resgatar]", "missões do dia da Playtime Shop", function(args)
+        local Q = V8.Quest
+        if not Q then Log("Missões indisponíveis", "error") return end
+        local d = Q.Data()
+        if (args[1] or ""):lower():find("^resg") then
+            local got = 0
+            for _, m in ipairs(Q.Defs) do
+                local ok, pts = Q.Claim(m.id)
+                if ok then got = got + pts end
+            end
+            Log(got > 0 and ("Resgatado: +" .. got .. " pontos") or "Nada para resgatar agora", got > 0 and "ok" or "warn")
+            return
+        end
+        for _, m in ipairs(Q.Defs) do
+            local v = d.prog[m.id]
+            local txt = m.min and (math.floor(v / 60) .. "/" .. math.floor(m.goal / 60) .. " min")
+                or (v .. "/" .. m.goal)
+            Log(m.name .. ": " .. txt .. "  ·  +" .. m.reward
+                .. (d.claimed[m.id] and "  ·  resgatada" or (v >= m.goal and "  ·  PRONTA" or "")))
+        end
+        Log("Bônus diário: " .. d.streak .. " dia(s) seguido(s)", "ok")
+    end, "quests")
+
+    DefCmd("update", "update [now]", "confere (ou instala) a versão nova do painel", function(args)
+        if not V8.Update then Log("Atualização indisponível", "error") return end
+        if (args[1] or ""):lower() == "now" then V8.Update.Apply() else V8.Update.Check(true) end
+    end)
 
     DefCmd("center", "center", "traz a janela de volta para o centro da tela", function()
         if V8.Win then V8.Win.Center() end
@@ -12634,6 +14344,8 @@ Unload = function()
     pcall(ClearEsp)
     pcall(function() Emote.Stop(true) end)
     pcall(function() if V8.Cos then V8.Cos.Clear() end end)   -- v8.1: efeitos/nametag
+    -- v8.2: animações originais de volta (SET.PackOn já foi salvo acima)
+    pcall(function() if V8.Pack then V8.Pack.Restore() end end)
 
     for name in pairs(Conn) do pcall(Drop, name) end
     for _, inst in ipairs(Bin) do pcall(function() inst:Destroy() end) end
@@ -12685,6 +14397,13 @@ do
     -- v8.1: funções marcadas em Configurações › Automático (depois da config)
     BootStep("Automático",    function() if V8.Auto then V8.Auto.Run() end end)
     BootStep("Cosméticos",    function() if V8.Cos then V8.Cos.Apply() end end)
+    -- v8.2: pacote salvo no personagem, missões/bônus diário, tela do celular
+    -- e conferência de versão nova (todos depois da config carregada)
+    BootStep("Pacote",        function() if V8.Pack then V8.Pack.Boot() end end)
+    BootStep("Missões",       function() if V8.Quest then V8.Quest.Boot() end end)
+    BootStep("Celular",       function() if V8.Mobile then V8.Mobile.Fit() V8.Mobile.Render() end end)
+    BootStep("Atualização",   function() if V8.Update then V8.Update.Boot() end end)
+    BootStep("Voo",           function() if V8.FlyStyleRender then V8.FlyStyleRender() end end)
     BootStep("Friends",       function() if V8.Dash then V8.Dash.Friends(true) end end)
     BootStep("SetOpen",       function() SetOpen(true) end)
     -- v8.0: em tela baixa a janela "acima do dock" pode nascer cortada

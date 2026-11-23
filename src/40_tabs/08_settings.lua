@@ -309,7 +309,8 @@ do
     ----------------------------------------------------------------------------
     -- SISTEMA
     ----------------------------------------------------------------------------
-    local sys = CreateCard(tab, "SISTEMA", 10)
+    -- v8.2: 12 = Celular e toque, 13 = Atualização (50_v8); Sistema e Sobre no fim
+    local sys = CreateCard(tab, "SISTEMA", 20)
     local sysGrid = Grid(sys, 2, 32)   -- v8.0: janela estreita (era 4)
 
     local reload = CreateButton(sysGrid, "RECARREGAR DADOS", "Accent", 32)
@@ -384,7 +385,7 @@ do
         end,
     }
 
-    local about = CreateCard(tab, "SOBRE", 11)
+    local about = CreateCard(tab, "SOBRE", 21)
     local _, _, missing = V8.RemoteStatus()
 
     local txt = Instance.new("TextLabel")

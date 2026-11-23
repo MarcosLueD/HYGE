@@ -1,26 +1,41 @@
-# HYGE Admin Panel v8.1
+# HYGE Admin Panel v8.2
 
 Painel admin client-side para Roblox (executor ou LocalScript) + script de
 servidor opcional para as ações que afetam outros jogadores.
+
+## Rodar sempre a versão mais nova (loader)
+
+Cole o **`loader.lua`** no executor em vez do `main.lua`. Toda vez que roda, ele
+baixa o `main.lua` do GitHub (`raw.githubusercontent.com/MarcosLueD/HYGE/main/main.lua`),
+guarda uma cópia em `HYGE/main.lua` na pasta do executor e abre o painel. Sem
+internet, abre a cópia guardada. Precisa de `game:HttpGet` (ou `request`) e
+`loadstring`.
+
+Isso só funciona com o `main.lua` **publicado**: depois de `npm run build`,
+faça commit e push do `main.lua`. O painel aberto confere a cada 15 minutos
+(Configurações › Ajustes › Atualização) e avisa quando sai um build novo;
+**ATUALIZAR AGORA** troca sem sair do jogo.
 
 ## Estrutura
 
 ```
 HYGE/
-├── main.lua            ← GERADO pelo build. É o arquivo que vai pro executor.
+├── loader.lua          ← v8.2: cole ESTE no executor (baixa o main.lua mais novo)
+├── main.lua            ← GERADO pelo build. É o arquivo que o loader baixa.
 ├── src/                ← código-fonte, dividido por assunto (edite aqui)
 │   ├── 00_core/        config, temas, checagem de admin, estado, helpers
 │   ├── 10_ui/          janela, toasts, console, topbar/sidebar, fábrica de UI, toggles/keybinds
 │   ├── 20_features/    fly, noclip/god/invisível/paredes, ESP, chat spy/fullbright/anti-afk,
 │   │                   freecam, drone, ações de moderação/troll, spectate,
-│   │                   anti-fall/anti-gravidade, walk on walls
+│   │                   anti-fall/anti-gravidade, walk on walls, Ctrl + clique TP
 │   ├── 30_kit/         widgets v7 (sliders, switches, confirmação), ícones, chips, HUD do drone,
-│   │                   rede/disco do executor, tempo de jogo + cosméticos (Playtime Shop)
+│   │                   rede/disco do executor, tempo de jogo + cosméticos (Playtime Shop),
+│   │                   pacotes de animação
 │   ├── 40_tabs/        uma aba por arquivo: home (+ mapa/perfil), dashboard, movement, visuals,
 │   │                   players, moderation, server, emotes, settings, shop, scripts, chat,
 │   │                   troll, chat HYGE
 │   ├── 50_v8/          dock, shell, situações, persistência (config.json), busca global,
-│   │                   ilha, automático
+│   │                   ilha, automático, celular, missões, atualização
 │   └── 90_runtime/     comandos, abrir/fechar/arrastar, teclas, scheduler, eventos, unload, boot
 ├── server/             ← opcional
 │   ├── HYGE_AdminServer.server.lua   (no SEU jogo: ServerScriptService)
@@ -109,6 +124,37 @@ No alto da tela fica a **ilha** (hora, FPS e ping; clique abre/fecha o painel)
 Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
 desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
 
+### O que a v8.2 trouxe
+
+- **Personagem › Pacote de animação**: cole o ID ou o link de um pacote do
+  catálogo (`roblox.com/bundles/<ID>/...`). O painel lê as animações dele
+  (lista de itens pelo `AssetService` do Roblox ou pelo catálogo público via
+  HTTP; cada item aberto pelo `game:GetObjects`) e guarda na config. **USAR**
+  troca as animações do seu personagem (andar, correr, pular, parado, cair,
+  escalar, nadar) mexendo no script `Animate` — os outros jogadores veem.
+  **VOO** põe o pacote no Fly. **VOLTAR AO NORMAL** devolve as animações do
+  jogo. Já vêm na lista: Super Gogeta DBZ e Endless Aura. Só R15, só em jogo
+  com o `Animate` padrão; o pacote no personagem volta sozinho no respawn.
+  Comando: `pack list | add <id> | use <nome> | fly <nome> | off`.
+- **Fly por ID de pacote**: `CONFIG.FlyPackBundle` (padrão: Super Gogeta DBZ).
+  `FlyPackMoveSlot`/`FlyPackIdleSlot` escolhem qual animação do pacote toca
+  voando e parado (padrão: fall e idle).
+- **Celular**: em **Configurações › Celular e toque**, botões na tela — FLY
+  liga/desliga; com o voo ligado aparecem SUBIR, DESCER e 2x. O analógico
+  dirige o voo seguindo a câmera (controle no PC também). Em tela baixa a
+  janela fica mais curta para caber acima do dock, e o dock encolhe se não
+  couber na largura.
+- **Playtime Shop › Missões de hoje**: 5 missões que zeram à meia-noite (30 min
+  com o painel aberto, voar 10 min, 5 emotes, salvar 1 waypoint, usar um pacote
+  de animação) e **bônus diário** que cresce com dias seguidos (10 → 40 no 7º
+  dia). Completa, aparece RESGATAR. Comando: `missoes [resgatar]`.
+- **Ctrl + clique TP** (Personagem › Teleporte): leva até o ponto embaixo do
+  mouse. Pode ligar sozinho em Configurações › Automático.
+- **Waypoints por jogo**: cada jogo (PlaceId) tem a sua lista. A config antiga
+  (lista única) fica com o primeiro jogo em que a v8.2 for aberta.
+- **Atualização**: veja "Rodar sempre a versão mais nova" no topo. Comando:
+  `update` (confere) e `update now` (instala).
+
 ### O que cada seção nova faz (v8.1)
 
 - **Início › Trocar servidor** lê a lista pública de servidores do jogo
@@ -123,7 +169,8 @@ desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
 - **Personagem**: Anti-Fall desliga tombo/ragdoll, corta a velocidade de queda
   antes do impacto e devolve você ao último chão se cair no void. Anti-Gravidade
   baixa `workspace.Gravity` no seu cliente (só a sua física muda).
-- **Fly (v8.1.2)**: voa com o pacote **Endless Aura** (Fall voando, Idle parado),
+- **Fly (v8.1.2)**: voa com um pacote do catálogo (v8.2: o marcado como VOO;
+  padrão Super Gogeta DBZ — Fall voando, Idle parado),
   lido do catálogo pelo `game:GetObjects` do executor. Se não der (executor sem
   essa função, Roblox recusando o pacote no jogo, personagem R6), usa o nadar do
   próprio personagem; em R6, a pose do painel (só você vê). Troca em Personagem ›
@@ -184,10 +231,11 @@ Centralizar janela**.
 ## Config em disco
 
 `HYGE/config.json` (pasta do executor) guarda keybinds (inclusive a tecla do
-painel), tema, escala, velocidades e gravidade, opções de ESP, waypoints, emotes
-favoritos, funções automáticas, endereço do Chat HYGE, a última situação e a
-posição da janela. O tempo de jogo e os itens da Playtime Shop ficam à parte, em
-`HYGE/playtime.json`. Executor sem `writefile`/`readfile`: use
+painel), tema, escala, velocidades e gravidade, opções de ESP, waypoints (v8.2:
+por jogo, em `wpplaces`), emotes favoritos, funções automáticas, endereço do
+Chat HYGE, a última situação, a posição da janela e (v8.2) os pacotes de
+animação já lidos. O tempo de jogo, os itens da Playtime Shop e o progresso das
+missões ficam à parte, em `HYGE/playtime.json`. Executor sem `writefile`/`readfile`: use
 **Exportar/Importar** pelo clipboard em Ajustes.
 
 ## Versão anterior

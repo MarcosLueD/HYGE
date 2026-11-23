@@ -22,6 +22,8 @@ do
         V8.Play = {
             Total = 0,            -- segundos acumulados (todas as sessões)
             Spent = 0,            -- pontos gastos
+            Bonus = 0,            -- pontos dados à mão (givepoints) e por missões
+            Quests = nil,         -- v8.2: progresso das missões (50_v8/08_quests.lua)
             Owned = {},           -- [itemId] = true
             Equip = {},           -- [slot] = itemId
             Path = "HYGE/playtime.json",
@@ -101,7 +103,9 @@ do
         ----------------------------------------------------------------------------
         -- consultas
         ----------------------------------------------------------------------------
-        P.Points = function() return math.max(0, math.floor(P.Total / 60) - P.Spent) end
+        P.Points = function()
+            return math.max(0, math.floor(P.Total / 60) + P.Bonus - P.Spent)
+        end
         P.Session = function() return os.clock() - P.Start end
 
         P.Fmt = function(sec)
@@ -161,7 +165,8 @@ do
             table.sort(owned)
             local ok, json = pcall(function()
                 return Http:JSONEncode({ v = 1, total = math.floor(P.Total),
-                    spent = P.Spent, owned = owned, equip = P.Equip })
+                    spent = P.Spent, bonus = P.Bonus, owned = owned, equip = P.Equip,
+                    quests = P.Quests })
             end)
             if not ok then return false end
             local wrote, err = V8.Disk.Write(P.Path, json)
@@ -187,6 +192,9 @@ do
             if total and total >= 0 and total < 1e9 then P.Total = total end
             local spent = tonumber(d.spent)
             if spent and spent >= 0 and spent < 1e9 then P.Spent = math.floor(spent) end
+            local bonus = tonumber(d.bonus)
+            if bonus and bonus >= 0 and bonus < 1e9 then P.Bonus = math.floor(bonus) end
+            if type(d.quests) == "table" then P.Quests = d.quests end   -- validado em 08_quests
             if type(d.owned) == "table" then
                 for _, id in ipairs(d.owned) do
                     if type(id) == "string" and P.ById[id] then P.Owned[id] = true end
@@ -225,6 +233,36 @@ do
             P.Save(true)
             P.Changed()
             return true, price
+        end
+
+        -- pontos que faltam para comprar tudo o que ainda não é seu
+        P.MissingCost = function()
+            local sum = 0
+            for _, it in ipairs(P.Items) do
+                if it.cat ~= "Bundles" and not P.Owned[it.id] then sum = sum + it.price end
+            end
+            return sum
+        end
+
+        -- soma pontos sem mexer no tempo de jogo (Total continua honesto)
+        P.Grant = function(n)
+            n = math.floor(tonumber(n) or 0)
+            if n <= 0 then return false end
+            P.Bonus = math.min(P.Bonus + n, 1e9 - 1)
+            P.Save(true)
+            P.Changed()
+            return true, n
+        end
+
+        -- libera todos os itens de graça (não gasta pontos)
+        P.UnlockAll = function()
+            local n = 0
+            for _, it in ipairs(P.Items) do
+                if not P.Owned[it.id] then P.Owned[it.id] = true n = n + 1 end
+            end
+            P.Save(true)
+            P.Changed()
+            return n
         end
 
         P.EquipItem = function(id)

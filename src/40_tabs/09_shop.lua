@@ -28,7 +28,8 @@ do
         ----------------------------------------------------------------------------
         -- EQUIPADO
         ----------------------------------------------------------------------------
-        local eq = CreateCard(tab, "EQUIPADO", 2)
+        -- v8.2: a ordem 2 é das Missões (50_v8/08_quests.lua)
+        local eq = CreateCard(tab, "EQUIPADO", 3)
         local eqLbl = SubLabel(eq, "", 1)
         eqLbl.TextColor3 = THEME.Text
         eqLbl.Font = Enum.Font.GothamMedium
@@ -47,7 +48,7 @@ do
         ----------------------------------------------------------------------------
         -- ITENS (categorias + lista)
         ----------------------------------------------------------------------------
-        local shop = CreateCard(tab, "ITENS", 3)
+        local shop = CreateCard(tab, "ITENS", 4)
         local pills = Grid(shop, 4, 28)
         pills.LayoutOrder = 1
         local pillBtns = {}
@@ -256,7 +257,7 @@ do
             tItems.Text = owned .. "/" .. total
             local nextMin = 60 - math.floor(P.Total % 60)
             status.Text = "1 ponto por minuto com o HYGE aberto — próximo em " .. nextMin
-                .. "s.  " .. tostring(P.Status or "")
+                .. "s. Missões e bônus diário dão mais.  " .. tostring(P.Status or "")
         end
 
         local SLOT_NAME = { rank = "Rank", icon = "Ícone", title = "Título",

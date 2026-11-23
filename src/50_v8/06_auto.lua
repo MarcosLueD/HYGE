@@ -27,6 +27,7 @@ do
             { "infjump",    "Infinite Jump", nil },
             { "chatspy",    "Chat Spy",      "Chat do servidor no console" },
             { "noclip",     "Noclip",        nil },
+            { "clicktp",    "Ctrl + clique TP", "Ctrl + clique esquerdo teleporta (v8.2)" },
         }
 
         A.Run = function()
