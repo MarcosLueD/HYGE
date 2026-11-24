@@ -356,12 +356,21 @@ do
         end
     end)
 
-    DefCmd("theme", "theme <Grafite|Azul|Roxo|Ciano|Verde|Vermelho>", "troca a paleta", function(args)
-        local n = args[1]
-        if not n then Log("uso: theme Grafite|Azul|Roxo|Ciano|Verde|Vermelho", "warn") return end
-        n = n:sub(1, 1):upper() .. n:sub(2):lower()
-        if not PALETTES[n] then Log("Tema inexistente: " .. n, "warn") return end
-        if ApplyTheme then ApplyTheme(n) end
+    DefCmd("theme", "theme <nome>", "troca a paleta (sem nome: lista)", function(args)
+        -- v9.0: lista vem de THEME_ORDER (+ Personalizado); aceita sem acento
+        local names = {}
+        for _, n in ipairs(THEME_ORDER) do table.insert(names, n) end
+        if PALETTES.Personalizado then table.insert(names, "Personalizado") end
+        local q = table.concat(args, " ")
+        if q == "" then Log("Temas: " .. table.concat(names, ", ")) return end
+        local want = V8.Fold(q)
+        for _, n in ipairs(names) do
+            if V8.Fold(n) == want or V8.Fold(n):sub(1, #want) == want then
+                if ApplyTheme then ApplyTheme(n) end
+                return
+            end
+        end
+        Log("Tema inexistente: " .. q .. " (temas: " .. table.concat(names, ", ") .. ")", "warn")
     end)
 
     DefCmd("preset", "preset <Default|Admin|Visual|Movement|Minimal>", "aplica um preset",
@@ -528,6 +537,81 @@ do
         if not V8.Update then Log("Atualização indisponível", "error") return end
         if (args[1] or ""):lower() == "now" then V8.Update.Apply() else V8.Update.Check(true) end
     end)
+
+    ----------------------------------------------------------------------------
+    -- v9.0: favoritos, perfis, notificações, diagnóstico, novidades
+    ----------------------------------------------------------------------------
+    DefCmd("fav", "fav [função]", "fixa/tira uma função das ações rápidas (sem nome: lista)",
+        function(args)
+            if not V8.Fav then return end
+            local id = (args[1] or ""):lower()
+            if id == "" then
+                local names = {}
+                for _, x in ipairs(V8.Fav.List()) do
+                    table.insert(names, Toggles[x] and Toggles[x].label or x)
+                end
+                Log("Ações rápidas (" .. #names .. "): " .. (#names > 0 and table.concat(names, ", ") or "nenhuma"))
+                return
+            end
+            if not Toggles[id] then
+                Log("Função desconhecida: " .. id .. " (ids: " .. table.concat(ToggleOrder, ", ") .. ")", "warn")
+                return
+            end
+            V8.Fav.Toggle(id)
+        end)
+
+    DefCmd("perfil", "perfil list|save <nome>|use <nome>|del <nome>|jogo <nome|off>",
+        "perfis do painel (v9.0)", function(args)
+            local P = V8.Prof
+            if not P then Log("Perfis indisponíveis", "error") return end
+            local sub = (args[1] or "list"):lower()
+            local name = table.concat(args, " ", 2)
+            if sub == "list" or sub == "ls" then
+                if #P.Data.list == 0 then Log("Nenhum perfil. Use: perfil save <nome>", "warn") return end
+                for i, r in ipairs(P.Data.list) do
+                    Log(i .. ") " .. r.name .. ((P.Current == r.name) and "  ·  ativo" or "")
+                        .. ((P.HereName() == r.name) and "  ·  abre neste jogo" or ""))
+                end
+            elseif sub == "save" then
+                local ok, err = P.SaveAs(name ~= "" and name or (P.Current or ""))
+                if not ok then Log(tostring(err), "warn") end
+            elseif sub == "use" then
+                local ok, err = P.Use(name)
+                if not ok then Log(tostring(err), "warn") end
+            elseif sub == "del" or sub == "rm" then
+                local ok, err = P.Delete(name)
+                if not ok then Log(tostring(err), "warn") end
+            elseif sub == "jogo" or sub == "here" then
+                if name == "" or name:lower() == "off" then P.BindHere(nil)
+                else
+                    local ok, err = P.BindHere((P.Find(name) or {}).name or name)
+                    if not ok then Log(tostring(err), "warn") end
+                end
+            else
+                Log("uso: perfil list | save <nome> | use <nome> | del <nome> | jogo <nome|off>", "warn")
+            end
+        end, "profile")
+
+    DefCmd("notif", "notif [limpar|dnd]", "abre as notificações (ou limpa / não perturbe)", function(args)
+        local N = V8.Notif
+        if not N then return end
+        local a = (args[1] or ""):lower()
+        if a == "limpar" or a == "clear" then N.Clear() Log("Notificações limpas", "action")
+        elseif a == "dnd" then
+            N.SetDnd(not SET.Dnd)
+            Log("Não perturbe: " .. (SET.Dnd and "ligado" or "desligado"), "action")
+        else N.Open() end
+    end)
+
+    DefCmd("diag", "diag [copiar]", "diagnóstico: executor, boot, erros", function(args)
+        if not V8.Diag then return end
+        if (args[1] or ""):lower():find("^cop") then V8.Diag.Copy() return end
+        for _, l in ipairs(V8.Diag.Lines()) do Log(l) end
+    end)
+
+    DefCmd("novidades", "novidades", "mostra o que mudou nesta versão", function()
+        if V8.News then V8.News.Show(false) end
+    end, "news")
 
     DefCmd("center", "center", "traz a janela de volta para o centro da tela", function()
         if V8.Win then V8.Win.Center() end

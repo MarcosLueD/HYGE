@@ -1,7 +1,20 @@
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v8.2
+    HYGE ADMIN PANEL v9.0
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v9.0 trouxe (a maior atualizacao ate agora):
+      * Ajustes organizados: categorias + busca dentro de Configuracoes
+      * Favoritos: estrela em qualquer funcao vira acao rapida da Home
+      * Perfis: o painel inteiro salvo com um nome; um perfil por jogo
+      * Central de notificacoes no sino da ilha + modo Nao perturbe
+      * Macros de teclado (tecla -> qualquer comando)
+      * Temas Rosa, Laranja, Meia-noite e cor personalizada
+      * Diagnostico (executor, boot, erros) com relatorio para copiar
+      * Config salva sozinha a cada 30 s (antes: so ao descarregar)
+      * Modulos isolados: um modulo com erro nao derruba o painel; erros do
+        log apontam para src/arquivo.lua:linha
+      * Busca global sem acento, achando ajustes e perfis
 
     O que a v8.2 trouxe:
       * Pacote de animacao no personagem todo (andar, correr, pular, parado...)

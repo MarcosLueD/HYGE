@@ -43,6 +43,61 @@ end
 
 local function Flip(id) SetToggle(id, not IsOn(id)) end
 
+--------------------------------------------------------------------------------
+-- v9.0 — FAVORITOS
+-- Toda linha de função (SwitchRow) ganha uma estrela. As funções com estrela
+-- são as "Ações rápidas" da Home (padrão: as 8 de sempre). Vai na config
+-- (SET.Favs) e em cada perfil.
+--------------------------------------------------------------------------------
+V8.Fav = { Max = 12, Stars = {} }   -- Stars[id] = { ícone, ... }
+V8.Fav.Default = { "fly", "noclip", "esp", "freecam", "infjump", "god", "invisible", "fullbright" }
+V8.Fav.List = function()
+    if type(SET.Favs) ~= "table" then return V8.Fav.Default end
+    return SET.Favs
+end
+V8.Fav.Has = function(id)
+    for _, x in ipairs(V8.Fav.List()) do
+        if x == id then return true end
+    end
+    return false
+end
+V8.Fav.Paint = function()
+    for id, list in pairs(V8.Fav.Stars) do
+        local on = V8.Fav.Has(id)
+        for _, ic in ipairs(list) do
+            if ic.Parent then IconTint(ic, on and THEME.Warning or THEME.Track) end
+        end
+    end
+end
+-- liga/desliga a estrela. Devolve true se a função ficou nos favoritos
+V8.Fav.Toggle = function(id, silent)
+    if not Toggles[id] then return false end
+    local list, had = {}, false
+    for _, x in ipairs(V8.Fav.List()) do
+        if x == id then had = true elseif Toggles[x] then table.insert(list, x) end
+    end
+    if not had then
+        if #list >= V8.Fav.Max then
+            if not silent then
+                Toast("Limite de " .. V8.Fav.Max .. " favoritos — tire uma estrela antes", "warn", 3)
+            end
+            return false
+        end
+        table.insert(list, id)
+    end
+    SET.Favs = list
+    pcall(V8.Fav.Paint)
+    if V8.Fav.OnChange then pcall(V8.Fav.OnChange) end
+    if not silent then
+        local label = Toggles[id].label or id
+        Toast(had and (label .. " saiu das ações rápidas") or (label .. " fixado nas ações rápidas"),
+            had and "info" or "ok", 1.8)
+    end
+    return not had
+end
+V8.Renders = V8.Renders or {}
+table.insert(V8.Renders, function() V8.Fav.Paint() end)   -- troca de tema / config
+
 -- Switch animado
 local function SwitchRow(parent, id, labelText, description)
     local row = Instance.new("Frame")
@@ -51,8 +106,33 @@ local function SwitchRow(parent, id, labelText, description)
     row.Parent = parent
     V8.Cell(row, 5)   -- v8.0: cada linha é um cartão
 
+    -- v9.0: estrela dos favoritos, entre o texto e o switch
+    if Toggles[id] and Icon then
+        local star = Instance.new("TextButton")
+        star.AnchorPoint = Vector2.new(1, 0.5)
+        star.Position = UDim2.new(1, -52, 0.5, 0)
+        star.Size = UDim2.new(0, 26, 0, 26)
+        star.BackgroundTransparency = 1
+        star.Text = ""
+        star.AutoButtonColor = false
+        star.Parent = row
+        local ic = Icon(star, "star", THEME.Track, 14)
+        ic.AnchorPoint = Vector2.new(0.5, 0.5)
+        ic.Position = UDim2.new(0.5, 0, 0.5, 0)
+        V8.Fav.Stars[id] = V8.Fav.Stars[id] or {}
+        table.insert(V8.Fav.Stars[id], ic)
+        IconTint(ic, V8.Fav.Has(id) and THEME.Warning or THEME.Track)
+        star.MouseEnter:Connect(function()
+            if not V8.Fav.Has(id) then IconTint(ic, THEME.Dim) end
+        end)
+        star.MouseLeave:Connect(function()
+            IconTint(ic, V8.Fav.Has(id) and THEME.Warning or THEME.Track)
+        end)
+        star.MouseButton1Click:Connect(function() V8.Fav.Toggle(id) end)
+    end
+
     local name = Instance.new("TextLabel")
-    name.Size = UDim2.new(1, -70, 0, 18)
+    name.Size = UDim2.new(1, -96, 0, 18)
     name.Position = UDim2.new(0, 0, 0, description and 4 or 8)
     name.BackgroundTransparency = 1
     name.Text = labelText
@@ -65,7 +145,7 @@ local function SwitchRow(parent, id, labelText, description)
 
     if description then
         local desc = Instance.new("TextLabel")
-        desc.Size = UDim2.new(1, -70, 0, 14)
+        desc.Size = UDim2.new(1, -96, 0, 14)
         desc.Position = UDim2.new(0, 0, 0, 24)
         desc.BackgroundTransparency = 1
         desc.Text = description
@@ -220,6 +300,9 @@ local function KeybindRow(parent, id, labelText)
                 end
                 pcall(V8.Sit.Render)
             end
+            -- v9.0: macro com a mesma tecla perde a tecla (o handler global
+            -- roda macro antes dos atalhos — senão este nunca dispararia)
+            if V8.Macro and V8.Macro.Release then pcall(V8.Macro.Release, kc) end
             Keybinds[id] = kc
             Log("Keybind " .. labelText .. " = " .. KeyName(kc), "ok")
             StopCapture()

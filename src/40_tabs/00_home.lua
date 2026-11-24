@@ -104,24 +104,42 @@ do
     -- QUICK ACTIONS (pílulas com switch real)
     ----------------------------------------------------------------------------
     local quick = CreateCard(tab, "AÇÕES RÁPIDAS", 3)
-    SubLabel(quick, "Um clique liga/desliga. O switch mostra o estado real do toggle.", -1)
+    -- v9.0: as ações rápidas são os FAVORITOS (estrela em qualquer função)
+    SubLabel(quick, "Um clique liga/desliga. Toque na estrela ao lado de qualquer "
+        .. "função (Personagem, Visual, Troll...) para fixar ou tirar daqui.", -1)
 
     local qGrid = Grid(quick, 2, 40)   -- v8.0: janela estreita (era 4)
     local quickBtns = {}
 
-    local QUICK = {
-        { "fly", "Fly", "bolt", "Accent2" },
-        { "noclip", "Noclip", "ghost", "Accent" },
-        { "esp", "ESP", "eye", "Success" },
-        { "freecam", "Freecam", "cam", "Accent" },
-        { "infjump", "Inf Jump", "up", "Accent2" },
-        { "god", "God", "shield", "Success" },
-        { "invisible", "Invisível", "circle", "Accent" },
-        { "fullbright", "Fullbright", "sun", "Warning" },
+    -- v9.0: nome curto, ícone e cor de cada função (vale para qualquer
+    -- toggle que virar favorito)
+    V8.ToggleLook = {
+        fly        = { "Fly", "bolt", "Accent2" },
+        noclip     = { "Noclip", "ghost", "Accent" },
+        esp        = { "ESP", "eye", "Success" },
+        freecam    = { "Freecam", "cam", "Accent" },
+        infjump    = { "Inf Jump", "up", "Accent2" },
+        god        = { "God", "shield", "Success" },
+        invisible  = { "Invisível", "circle", "Accent" },
+        fullbright = { "Fullbright", "sun", "Warning" },
+        wall       = { "Paredes", "box", "Accent" },
+        chatspy    = { "Chat Spy", "clip", "Accent2" },
+        antiafk    = { "Anti-AFK", "clock", "Success" },
+        drone      = { "Drone", "wifi", "Accent" },
+        antifall   = { "Anti-Fall", "shield", "Accent2" },
+        antigrav   = { "Anti-Grav", "up", "Accent" },
+        wallwalk   = { "Wall Walk", "mask", "Warning" },
+        clicktp    = { "Clique TP", "link", "Accent2" },
     }
 
-    for i, item in ipairs(QUICK) do
-        local id, label, kind, ck = item[1], item[2], item[3], item[4]
+    local quickEmpty = SubLabel(quick, "Nenhuma função fixada. Toque na estrela de "
+        .. "uma função para ela aparecer aqui.", 2)
+    quickEmpty.Visible = false
+    local quickSig = nil
+
+    local function QuickPill(i, id)
+        local look = V8.ToggleLook[id] or { Toggles[id].label or id, "dot", "Accent" }
+        local label, kind, ck = look[1], look[2], look[3]
 
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(1, 0, 1, 0)
@@ -148,6 +166,7 @@ do
         lb.Font = Enum.Font.GothamMedium
         lb.TextSize = 12
         lb.TextXAlignment = Enum.TextXAlignment.Left
+        lb.TextTruncate = Enum.TextTruncate.AtEnd
         lb.Parent = b
         Paint(lb, "TextColor3", "Text")
 
@@ -184,6 +203,33 @@ do
         b.MouseButton1Click:Connect(function() Flip(id) end)
         quickBtns[id] = { track = track, knob = knob, state = state, icon = ic, key = ck }
     end
+
+    -- monta (de novo) as pílulas a partir da lista de favoritos
+    local function BuildQuick()
+        local list = V8.Fav and V8.Fav.List() or {}
+        quickSig = table.concat(list, " ")
+        for _, c in ipairs(qGrid:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
+        for k in pairs(quickBtns) do quickBtns[k] = nil end
+        local shown = 0
+        for _, id in ipairs(list) do
+            if Toggles[id] then
+                shown = shown + 1
+                QuickPill(shown, id)
+            end
+        end
+        quickEmpty.Visible = (shown == 0)
+        if RefreshQuick then pcall(RefreshQuick) end
+    end
+    BuildQuick()
+    if V8.Fav then V8.Fav.OnChange = BuildQuick end
+    -- config/perfil carregado trocou a lista: remonta só se mudou
+    V8.Renders = V8.Renders or {}
+    table.insert(V8.Renders, function()
+        local list = V8.Fav and V8.Fav.List() or {}
+        if table.concat(list, " ") ~= quickSig then BuildQuick() end
+    end)
 
     ----------------------------------------------------------------------------
     -- DESLIGAR TUDO (centralizado)

@@ -63,7 +63,41 @@ local PALETTES = {
         BtnHover = Color3.fromRGB(52, 53, 59), Track = Color3.fromRGB(56, 57, 63),
         Line = Color3.fromRGB(46, 47, 53),
     },
+    -- v9.0: três paletas novas (a "Personalizado" é montada em 50_v8/12_colors.lua)
+    Rosa = {
+        Main = Color3.fromRGB(19, 12, 17),   Sidebar = Color3.fromRGB(14, 8, 13),
+        Card = Color3.fromRGB(29, 18, 26),   Console = Color3.fromRGB(12, 6, 10),
+        Accent = Color3.fromRGB(255, 105, 180), Accent2 = Color3.fromRGB(255, 170, 210),
+        Text = Color3.fromRGB(252, 244, 248), Dim = Color3.fromRGB(175, 140, 160),
+        Danger = Color3.fromRGB(255, 70, 90), Success = Color3.fromRGB(120, 225, 165),
+        Warning = Color3.fromRGB(255, 190, 70), Btn = Color3.fromRGB(40, 24, 35),
+        BtnHover = Color3.fromRGB(55, 32, 48), Track = Color3.fromRGB(58, 34, 50),
+        Line = Color3.fromRGB(74, 44, 64),
+    },
+    Laranja = {
+        Main = Color3.fromRGB(19, 14, 10),   Sidebar = Color3.fromRGB(14, 10, 7),
+        Card = Color3.fromRGB(30, 22, 15),   Console = Color3.fromRGB(12, 8, 5),
+        Accent = Color3.fromRGB(255, 140, 50), Accent2 = Color3.fromRGB(255, 190, 120),
+        Text = Color3.fromRGB(252, 248, 242), Dim = Color3.fromRGB(175, 155, 135),
+        Danger = Color3.fromRGB(255, 75, 85), Success = Color3.fromRGB(120, 225, 160),
+        Warning = Color3.fromRGB(255, 205, 80), Btn = Color3.fromRGB(42, 30, 20),
+        BtnHover = Color3.fromRGB(58, 42, 28), Track = Color3.fromRGB(60, 44, 30),
+        Line = Color3.fromRGB(78, 57, 38),
+    },
+    ["Meia-noite"] = {
+        Main = Color3.fromRGB(9, 10, 22),    Sidebar = Color3.fromRGB(6, 7, 16),
+        Card = Color3.fromRGB(16, 18, 36),   Console = Color3.fromRGB(5, 6, 13),
+        Accent = Color3.fromRGB(124, 108, 255), Accent2 = Color3.fromRGB(170, 160, 255),
+        Text = Color3.fromRGB(238, 240, 255), Dim = Color3.fromRGB(135, 138, 175),
+        Danger = Color3.fromRGB(255, 80, 110), Success = Color3.fromRGB(90, 220, 160),
+        Warning = Color3.fromRGB(255, 195, 80), Btn = Color3.fromRGB(24, 26, 52),
+        BtnHover = Color3.fromRGB(34, 36, 70), Track = Color3.fromRGB(32, 34, 66),
+        Line = Color3.fromRGB(44, 46, 86),
+    },
 }
+-- v9.0: ordem em que os temas aparecem (Ajustes › Aparência e comando 'theme')
+local THEME_ORDER = { "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho",
+                      "Rosa", "Laranja", "Meia-noite" }
 
 -- v8.0: nasce no tema padrão (antes nascia Roxo e era repintado depois — o que
 -- não é registrado em Paint, como os switches, ficava com a cor errada)

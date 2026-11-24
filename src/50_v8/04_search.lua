@@ -59,7 +59,7 @@ do
     layout.Padding = UDim.new(0, 4)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local input = CreateInput(box, "buscar situação, função, jogador, waypoint, comando...", 36)
+    local input = CreateInput(box, "buscar função, ajuste, jogador, perfil, comando...", 36)
     input.LayoutOrder = 0
     input.ZIndex = 52
     input.TextSize = 14
@@ -160,16 +160,19 @@ do
     ----------------------------------------------------------------------------
     local function Collect(q)
         local out = {}
+        -- v9.0: sem acento e sem caixa ("situacao" acha "Situação")
+        q = V8.Fold and V8.Fold(q) or q
         local function add(kind, label, hint, run)
             local score
-            local low = tostring(label):lower()
+            local low = V8.Fold and V8.Fold(label) or tostring(label):lower()
+            local k = V8.Fold and V8.Fold(kind) or kind
             if q == "" then
                 score = 2
             elseif low:sub(1, #q) == q then
                 score = 0
             elseif low:find(q, 1, true) then
                 score = 1
-            elseif kind:find(q, 1, true) then
+            elseif k:find(q, 1, true) then
                 score = 3
             end
             if score then
@@ -226,6 +229,25 @@ do
                     Log("TP -> " .. (wp.name or idx), "ok")
                 end
             end)
+        end
+
+        -- v9.0: cartões de Configurações (abre já filtrado) e perfis
+        if V8.SetNav and V8.SetNav.Cards then
+            for _, e in ipairs(V8.SetNav.Cards) do
+                if e.title ~= "" then
+                    add("ajuste", e.title, "Configurações", function() V8.SetNav.Focus(e.title) end)
+                end
+            end
+        end
+        if V8.Prof and V8.Prof.Data then
+            for _, r in ipairs(V8.Prof.Data.list) do
+                local name = r.name
+                add("perfil", name, (V8.Prof.Current == name) and "ativo" or "usar este perfil",
+                    function()
+                        local ok, err = V8.Prof.Use(name)
+                        if not ok then Log(tostring(err), "error") end
+                    end)
+            end
         end
 
         if V8.CmdNames then

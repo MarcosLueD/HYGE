@@ -98,6 +98,8 @@ do
                     else
                         CONFIG.PanelKey = kc
                         Log("Tecla do painel = " .. KeyName(kc), "ok")
+                        -- v9.0: a tecla do painel ganha de tudo: macro nela some
+                        if V8.Macro and V8.Macro.Release then pcall(V8.Macro.Release, kc) end
                     end
                     btn.Text = KeyName(CONFIG.PanelKey)
                 end)
@@ -159,12 +161,16 @@ do
         if RefreshQuick then RefreshQuick() end
         -- v8.0: as linhas do log saíram do registry; redesenha com as cores novas
         if RenderLog then pcall(RenderLog, nil) end
-        Log("Tema: " .. paletteName, "ok")
+        -- v9.0: a prévia ao vivo da cor personalizada reaplica o tema várias
+        -- vezes seguidas; nessas o log fica quieto
+        if not V8.QuietTheme then Log("Tema: " .. paletteName, "ok") end
     end
 
     local themeGrid = Grid(look, 3, 32)
     themeGrid.LayoutOrder = 1
-    for i, n in ipairs({ "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho" }) do
+    -- v9.0: 9 temas (Rosa, Laranja e Meia-noite novos); a cor personalizada
+    -- tem cartão próprio (50_v8/12_colors.lua)
+    for i, n in ipairs(THEME_ORDER) do
         local b = CreateButton(themeGrid, "   " .. n:upper(), "Accent", 32)
         b.LayoutOrder = i
         local sw = Instance.new("Frame")
@@ -408,4 +414,11 @@ do
     txt.TextXAlignment = Enum.TextXAlignment.Left
     txt.Parent = about
     Paint(txt, "TextColor3", "Dim")
+
+    -- v9.0: reabre o cartão de novidades (50_v8/15_news.lua)
+    local news = CreateButton(about, "VER NOVIDADES DA " .. CONFIG.Version:upper(), "Accent", 32)
+    news.LayoutOrder = 2
+    news.MouseButton1Click:Connect(function()
+        if V8.News then V8.News.Show(false) end
+    end)
 end

@@ -1,12 +1,25 @@
 -- =============================================================================
--- HYGE v8.2 — ARQUIVO GERADO, NÃO EDITE AQUI.
+-- HYGE v9.0 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: 28ec56781721
+-- build: bb1c704c9ddc
 -- =============================================================================
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v8.2
+    HYGE ADMIN PANEL v9.0
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v9.0 trouxe (a maior atualizacao ate agora):
+      * Ajustes organizados: categorias + busca dentro de Configuracoes
+      * Favoritos: estrela em qualquer funcao vira acao rapida da Home
+      * Perfis: o painel inteiro salvo com um nome; um perfil por jogo
+      * Central de notificacoes no sino da ilha + modo Nao perturbe
+      * Macros de teclado (tecla -> qualquer comando)
+      * Temas Rosa, Laranja, Meia-noite e cor personalizada
+      * Diagnostico (executor, boot, erros) com relatorio para copiar
+      * Config salva sozinha a cada 30 s (antes: so ao descarregar)
+      * Modulos isolados: um modulo com erro nao derruba o painel; erros do
+        log apontam para src/arquivo.lua:linha
+      * Busca global sem acento, achando ajustes e perfis
 
     O que a v8.2 trouxe:
       * Pacote de animacao no personagem todo (andar, correr, pular, parado...)
@@ -84,7 +97,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v8.2",
+    Version   = "v9.0",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -240,7 +253,41 @@ local PALETTES = {
         BtnHover = Color3.fromRGB(52, 53, 59), Track = Color3.fromRGB(56, 57, 63),
         Line = Color3.fromRGB(46, 47, 53),
     },
+    -- v9.0: três paletas novas (a "Personalizado" é montada em 50_v8/12_colors.lua)
+    Rosa = {
+        Main = Color3.fromRGB(19, 12, 17),   Sidebar = Color3.fromRGB(14, 8, 13),
+        Card = Color3.fromRGB(29, 18, 26),   Console = Color3.fromRGB(12, 6, 10),
+        Accent = Color3.fromRGB(255, 105, 180), Accent2 = Color3.fromRGB(255, 170, 210),
+        Text = Color3.fromRGB(252, 244, 248), Dim = Color3.fromRGB(175, 140, 160),
+        Danger = Color3.fromRGB(255, 70, 90), Success = Color3.fromRGB(120, 225, 165),
+        Warning = Color3.fromRGB(255, 190, 70), Btn = Color3.fromRGB(40, 24, 35),
+        BtnHover = Color3.fromRGB(55, 32, 48), Track = Color3.fromRGB(58, 34, 50),
+        Line = Color3.fromRGB(74, 44, 64),
+    },
+    Laranja = {
+        Main = Color3.fromRGB(19, 14, 10),   Sidebar = Color3.fromRGB(14, 10, 7),
+        Card = Color3.fromRGB(30, 22, 15),   Console = Color3.fromRGB(12, 8, 5),
+        Accent = Color3.fromRGB(255, 140, 50), Accent2 = Color3.fromRGB(255, 190, 120),
+        Text = Color3.fromRGB(252, 248, 242), Dim = Color3.fromRGB(175, 155, 135),
+        Danger = Color3.fromRGB(255, 75, 85), Success = Color3.fromRGB(120, 225, 160),
+        Warning = Color3.fromRGB(255, 205, 80), Btn = Color3.fromRGB(42, 30, 20),
+        BtnHover = Color3.fromRGB(58, 42, 28), Track = Color3.fromRGB(60, 44, 30),
+        Line = Color3.fromRGB(78, 57, 38),
+    },
+    ["Meia-noite"] = {
+        Main = Color3.fromRGB(9, 10, 22),    Sidebar = Color3.fromRGB(6, 7, 16),
+        Card = Color3.fromRGB(16, 18, 36),   Console = Color3.fromRGB(5, 6, 13),
+        Accent = Color3.fromRGB(124, 108, 255), Accent2 = Color3.fromRGB(170, 160, 255),
+        Text = Color3.fromRGB(238, 240, 255), Dim = Color3.fromRGB(135, 138, 175),
+        Danger = Color3.fromRGB(255, 80, 110), Success = Color3.fromRGB(90, 220, 160),
+        Warning = Color3.fromRGB(255, 195, 80), Btn = Color3.fromRGB(24, 26, 52),
+        BtnHover = Color3.fromRGB(34, 36, 70), Track = Color3.fromRGB(32, 34, 66),
+        Line = Color3.fromRGB(44, 46, 86),
+    },
 }
+-- v9.0: ordem em que os temas aparecem (Ajustes › Aparência e comando 'theme')
+local THEME_ORDER = { "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho",
+                      "Rosa", "Laranja", "Meia-noite" }
 
 -- v8.0: nasce no tema padrão (antes nascia Roxo e era repintado depois — o que
 -- não é registrado em Paint, como os switches, ficava com a cor errada)
@@ -403,6 +450,72 @@ V8.Job = function(interval, fn) table.insert(V8.Jobs, { interval, fn }) end
 -- v8.1: [aba] = fn — roda 1x/s só enquanto essa aba está visível
 V8.TabTick = {}
 
+-- v9.0: MÓDULOS ISOLADOS. O build embrulha cada módulo (que não declara
+-- 'local' no topo) em V8.Mod(nome, linha inicial, linha final, fn): se ele
+-- quebrar ao carregar, só ele falha e o boot conta qual foi e em que linha.
+V8.BootT0 = os.clock()
+V8.Mods = {}     -- { name, from, to, ms, ok, err }
+V8.Errors = {}   -- últimos erros do log (Diagnóstico)
+V8.Mod = function(name, from, to, fn)
+    local t0 = os.clock()
+    local ok, err = pcall(fn)
+    local rec = { name = name, from = from, to = to, ok = ok,
+                  ms = (os.clock() - t0) * 1000, err = (not ok) and tostring(err) or nil }
+    table.insert(V8.Mods, rec)
+    if not ok then
+        rec.err = V8.Where(rec.err)
+        warn("[HYGE] módulo " .. name .. " falhou ao carregar: " .. rec.err)
+    end
+end
+
+-- "HYGE:1234: msg" -> "src/arquivo.lua:12: msg" (linha do main.lua -> do src/).
+-- Usa o V8.SrcMap do fim do arquivo (todos os módulos) ou, durante o boot,
+-- as faixas dos módulos que já carregaram.
+V8.Where = function(msg)
+    msg = tostring(msg)
+    local function Map(line)
+        for _, m in ipairs(V8.SrcMap or {}) do
+            if line >= m[2] and line <= m[3] then return m[1] .. ":" .. (line - m[2] + 1) end
+        end
+        for _, m in ipairs(V8.Mods) do
+            if m.from and line >= m.from and line <= m.to then
+                return m.name .. ":" .. (line - m.from + 1)
+            end
+        end
+    end
+    local function Sub(n)
+        local w = Map(tonumber(n))
+        return w and (w .. ":") or nil   -- nil = deixa como estava
+    end
+    msg = msg:gsub('%[string "[^"]*"%]:(%d+):', Sub)
+    -- só nomes de chunk ("HYGE" do loader, "...Script" do executor): um
+    -- "velocidade:50:" qualquer no meio da mensagem não é linha de código
+    msg = msg:gsub("([%w_%.]+):(%d+):", function(p, n)
+        if p == "HYGE" or p:find("Script", 1, true) then return Sub(n) end
+        return nil
+    end)
+    return msg
+end
+
+-- v9.0: compara texto sem acento e sem caixa ("Aparência" ~ "aparencia").
+-- string.lower não conhece UTF-8: as letras acentuadas (2 bytes, 0xC3 ..)
+-- são trocadas pela letra sem acento.
+V8.Fold = function(s)
+    s = tostring(s or ""):lower()
+    return (s:gsub("\195[\128-\191]", function(c)
+        local b = c:byte(2)
+        if b >= 160 then b = b - 32 end   -- minúscula -> faixa da maiúscula
+        if b >= 128 and b <= 133 then return "a" end
+        if b == 135 then return "c" end
+        if b >= 136 and b <= 139 then return "e" end
+        if b >= 140 and b <= 143 then return "i" end
+        if b == 145 then return "n" end
+        if b >= 146 and b <= 150 then return "o" end
+        if b >= 153 and b <= 156 then return "u" end
+        return c
+    end))
+end
+
 local function Track(inst) table.insert(Bin, inst) return inst end
 local function Drop(name)
     if Conn[name] then Conn[name]:Disconnect() Conn[name] = nil end
@@ -535,7 +648,7 @@ winShadow.SliceCenter = Rect.new(49, 49, 450, 450)
 winShadow.ZIndex = -1
 winShadow.Parent = Window
 
---------------------------------------------------------------------------------
+V8.Mod("src/10_ui/01_toasts.lua", 651, 793, function() --------------------------------------------------------------------------------
 -- TOASTS  (ícone, categoria, barra de duração, fechar, limite de 4)
 --------------------------------------------------------------------------------
 do
@@ -678,7 +791,8 @@ Toast = function(text, kind, duration)
 end
 end
 
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/10_ui/02_console.lua", 795, 1014, function() --------------------------------------------------------------------------------
 -- CONSOLE / LOG  (categorias, filtro, limpar, copiar — incremental)
 --------------------------------------------------------------------------------
 do
@@ -782,7 +896,18 @@ Log = function(msg, kind)
     -- v8.0: a opção "Registrar no console" existia mas nunca era lida.
     -- Desligada, só os ERROS continuam chegando no console.
     if SET.ShowLogs == false and kind ~= "error" then return end
-    local entry = { time = os.date("%H:%M:%S"), cat = kind, msg = tostring(msg) }
+    msg = tostring(msg)
+    -- v9.0: erro aponta para o src/ (não para a linha do main.lua) e fica
+    -- guardado para o Diagnóstico (Configurações › Sistema)
+    if kind == "error" then
+        if V8.Where then
+            local okW, w = pcall(V8.Where, msg)
+            if okW then msg = w end
+        end
+        table.insert(V8.Errors, { time = os.date("%H:%M:%S"), msg = msg })
+        while #V8.Errors > 20 do table.remove(V8.Errors, 1) end
+    end
+    local entry = { time = os.date("%H:%M:%S"), cat = kind, msg = msg }
     table.insert(LogEntries, entry)
     while #LogEntries > math.max(SET.MaxLog, 10) do table.remove(LogEntries, 1) end
     RenderLog(entry)
@@ -887,6 +1012,7 @@ do
 end
 end
 
+end)
 --------------------------------------------------------------------------------
 -- TOP BAR / SIDEBAR / CONTENT
 --------------------------------------------------------------------------------
@@ -1383,6 +1509,61 @@ end
 
 local function Flip(id) SetToggle(id, not IsOn(id)) end
 
+--------------------------------------------------------------------------------
+-- v9.0 — FAVORITOS
+-- Toda linha de função (SwitchRow) ganha uma estrela. As funções com estrela
+-- são as "Ações rápidas" da Home (padrão: as 8 de sempre). Vai na config
+-- (SET.Favs) e em cada perfil.
+--------------------------------------------------------------------------------
+V8.Fav = { Max = 12, Stars = {} }   -- Stars[id] = { ícone, ... }
+V8.Fav.Default = { "fly", "noclip", "esp", "freecam", "infjump", "god", "invisible", "fullbright" }
+V8.Fav.List = function()
+    if type(SET.Favs) ~= "table" then return V8.Fav.Default end
+    return SET.Favs
+end
+V8.Fav.Has = function(id)
+    for _, x in ipairs(V8.Fav.List()) do
+        if x == id then return true end
+    end
+    return false
+end
+V8.Fav.Paint = function()
+    for id, list in pairs(V8.Fav.Stars) do
+        local on = V8.Fav.Has(id)
+        for _, ic in ipairs(list) do
+            if ic.Parent then IconTint(ic, on and THEME.Warning or THEME.Track) end
+        end
+    end
+end
+-- liga/desliga a estrela. Devolve true se a função ficou nos favoritos
+V8.Fav.Toggle = function(id, silent)
+    if not Toggles[id] then return false end
+    local list, had = {}, false
+    for _, x in ipairs(V8.Fav.List()) do
+        if x == id then had = true elseif Toggles[x] then table.insert(list, x) end
+    end
+    if not had then
+        if #list >= V8.Fav.Max then
+            if not silent then
+                Toast("Limite de " .. V8.Fav.Max .. " favoritos — tire uma estrela antes", "warn", 3)
+            end
+            return false
+        end
+        table.insert(list, id)
+    end
+    SET.Favs = list
+    pcall(V8.Fav.Paint)
+    if V8.Fav.OnChange then pcall(V8.Fav.OnChange) end
+    if not silent then
+        local label = Toggles[id].label or id
+        Toast(had and (label .. " saiu das ações rápidas") or (label .. " fixado nas ações rápidas"),
+            had and "info" or "ok", 1.8)
+    end
+    return not had
+end
+V8.Renders = V8.Renders or {}
+table.insert(V8.Renders, function() V8.Fav.Paint() end)   -- troca de tema / config
+
 -- Switch animado
 local function SwitchRow(parent, id, labelText, description)
     local row = Instance.new("Frame")
@@ -1391,8 +1572,33 @@ local function SwitchRow(parent, id, labelText, description)
     row.Parent = parent
     V8.Cell(row, 5)   -- v8.0: cada linha é um cartão
 
+    -- v9.0: estrela dos favoritos, entre o texto e o switch
+    if Toggles[id] and Icon then
+        local star = Instance.new("TextButton")
+        star.AnchorPoint = Vector2.new(1, 0.5)
+        star.Position = UDim2.new(1, -52, 0.5, 0)
+        star.Size = UDim2.new(0, 26, 0, 26)
+        star.BackgroundTransparency = 1
+        star.Text = ""
+        star.AutoButtonColor = false
+        star.Parent = row
+        local ic = Icon(star, "star", THEME.Track, 14)
+        ic.AnchorPoint = Vector2.new(0.5, 0.5)
+        ic.Position = UDim2.new(0.5, 0, 0.5, 0)
+        V8.Fav.Stars[id] = V8.Fav.Stars[id] or {}
+        table.insert(V8.Fav.Stars[id], ic)
+        IconTint(ic, V8.Fav.Has(id) and THEME.Warning or THEME.Track)
+        star.MouseEnter:Connect(function()
+            if not V8.Fav.Has(id) then IconTint(ic, THEME.Dim) end
+        end)
+        star.MouseLeave:Connect(function()
+            IconTint(ic, V8.Fav.Has(id) and THEME.Warning or THEME.Track)
+        end)
+        star.MouseButton1Click:Connect(function() V8.Fav.Toggle(id) end)
+    end
+
     local name = Instance.new("TextLabel")
-    name.Size = UDim2.new(1, -70, 0, 18)
+    name.Size = UDim2.new(1, -96, 0, 18)
     name.Position = UDim2.new(0, 0, 0, description and 4 or 8)
     name.BackgroundTransparency = 1
     name.Text = labelText
@@ -1405,7 +1611,7 @@ local function SwitchRow(parent, id, labelText, description)
 
     if description then
         local desc = Instance.new("TextLabel")
-        desc.Size = UDim2.new(1, -70, 0, 14)
+        desc.Size = UDim2.new(1, -96, 0, 14)
         desc.Position = UDim2.new(0, 0, 0, 24)
         desc.BackgroundTransparency = 1
         desc.Text = description
@@ -1560,6 +1766,9 @@ local function KeybindRow(parent, id, labelText)
                 end
                 pcall(V8.Sit.Render)
             end
+            -- v9.0: macro com a mesma tecla perde a tecla (o handler global
+            -- roda macro antes dos atalhos — senão este nunca dispararia)
+            if V8.Macro and V8.Macro.Release then pcall(V8.Macro.Release, kc) end
             Keybinds[id] = kc
             Log("Keybind " .. labelText .. " = " .. KeyName(kc), "ok")
             StopCapture()
@@ -2960,7 +3169,7 @@ local function CycleSpectate(dir)
     StartSpectate(list[idx])
 end
 
---------------------------------------------------------------------------------
+V8.Mod("src/20_features/08_spectate_hud.lua", 3172, 3245, function() --------------------------------------------------------------------------------
 -- HUD DE SPECTATE (fora da janela, funciona com o painel fechado)
 --------------------------------------------------------------------------------
 do
@@ -3034,7 +3243,8 @@ do
 
     SpectateHud = hud
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/20_features/09_body.lua", 3247, 3392, function() --------------------------------------------------------------------------------
 -- v8.1 — ANTI-FALL e ANTI-GRAVIDADE (seção Personagem)
 --
 -- Anti-Fall, três camadas, tudo no SEU personagem:
@@ -3180,7 +3390,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/20_features/10_wallwalk.lua", 3394, 3673, function() --------------------------------------------------------------------------------
 -- v8.1 — WALK ON WALLS (seção Troll)
 --
 -- O Humanoid só sabe andar com o "para cima" do mundo, então aqui o painel
@@ -3460,7 +3671,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/20_features/11_clicktp.lua", 3675, 3728, function() --------------------------------------------------------------------------------
 -- v8.2 — CTRL + CLIQUE TELEPORTA (Personagem › Movimento › Teleporte)
 -- Com a função ligada, Ctrl + clique esquerdo leva o personagem até o ponto do
 -- mapa embaixo do mouse. Clique em cima de GUI (painel, chat) não conta: o
@@ -3514,6 +3726,7 @@ do
         disable = function() Drop("ClickTp") end,
     })
 end
+end)
 --------------------------------------------------------------------------------
 -- FÁBRICA DE UI v7
 -- Tiles de estatística, sliders com campo numérico + reset, switches genéricos
@@ -3971,7 +4184,7 @@ local function TagChip(parent, text, colorKey)
     return c
 end
 
---------------------------------------------------------------------------------
+V8.Mod("src/30_kit/01_icons.lua", 4187, 4304, function() --------------------------------------------------------------------------------
 -- ÍCONES VETORIAIS
 -- Sem asset: cada ícone é um punhado de Frames posicionados numa grade 24x24 e
 -- escalados. shape = { x, y, w, h, rot, corner, outline }
@@ -4038,6 +4251,12 @@ do
         swap     = { {3,6,16,2.5,0,1}, {14.5,3.5,6,2.5,40,1},
                      {5,15.5,16,2.5,0,1}, {3.5,18,6,2.5,40,1} },
         link     = { {2,8,11,8,0,4,1}, {11,8,11,8,0,4,1} },
+        -- v9.0: notificações, macros, perfis
+        bell     = { {6,4,12,13,0,6,1}, {3,15,18,2.5,0,1}, {10,19,4,3,0,1.5},
+                     {11,1.5,2,3,0,1} },
+        keyboard = { {2,6,20,13,0,3,1}, {5,9,2.5,2.5,0,0.5}, {9,9,2.5,2.5,0,0.5},
+                     {13,9,2.5,2.5,0,0.5}, {17,9,2.5,2.5,0,0.5}, {7,14,10,2,0,1} },
+        layers   = { {4,3,16,7,0,2,1}, {4,9,16,7,0,2,1}, {4,15,16,6,0,2,1} },
     }
 
     Icon = function(parent, kind, color, size, order)
@@ -4083,7 +4302,8 @@ do
         end
     end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/30_kit/02_topbar_chips.lua", 4306, 4385, function() --------------------------------------------------------------------------------
 -- CHIPS DA TOP BAR
 -- Substitui a linha de texto "FPS ... • PING ..." por chips com ícone.
 -- Reaproveita o mesmo Every(0.5) que já existia (nenhum loop novo): o scheduler
@@ -4163,7 +4383,8 @@ do
         end
     end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/30_kit/03_drone_hud.lua", 4387, 4774, function() --------------------------------------------------------------------------------
 -- DRONE HUD (overlay de câmera de drone)
 --
 -- Incremental: NÃO toca no movimento do drone. O toggle existente só chama
@@ -4551,7 +4772,8 @@ do
             math.floor(t / 3600), math.floor(t / 60) % 60, t % 60)
     end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/30_kit/04_net.lua", 4776, 4889, function() --------------------------------------------------------------------------------
 -- v8.1 — REDE E DISCO (helpers do executor)
 --
 -- O Roblox não deixa LocalScript fazer HTTP. Executores expõem request()
@@ -4665,7 +4887,8 @@ do
         return false, tostring(err)
     end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/30_kit/05_playtime.lua", 4891, 5373, function() --------------------------------------------------------------------------------
 -- v8.1 — TEMPO DE JOGO + COSMÉTICOS (base da Playtime Shop)
 --
 -- Moeda da loja = tempo com o HYGE aberto: 1 ponto por minuto. O total vai em
@@ -5148,7 +5371,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/30_kit/06_animpack.lua", 5375, 5899, function() --------------------------------------------------------------------------------
 -- v8.2 — PACOTES DE ANIMAÇÃO (motor; a UI fica em 40_tabs/02_movement_pack.lua)
 --
 -- Um pacote (bundle) do catálogo é uma lista de itens: Idle, Walk, Run, Jump,
@@ -5673,7 +5897,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/00_home.lua", 5901, 6235, function() --------------------------------------------------------------------------------
 -- ABA HOME (dashboard)
 --------------------------------------------------------------------------------
 do
@@ -5779,24 +6004,42 @@ do
     -- QUICK ACTIONS (pílulas com switch real)
     ----------------------------------------------------------------------------
     local quick = CreateCard(tab, "AÇÕES RÁPIDAS", 3)
-    SubLabel(quick, "Um clique liga/desliga. O switch mostra o estado real do toggle.", -1)
+    -- v9.0: as ações rápidas são os FAVORITOS (estrela em qualquer função)
+    SubLabel(quick, "Um clique liga/desliga. Toque na estrela ao lado de qualquer "
+        .. "função (Personagem, Visual, Troll...) para fixar ou tirar daqui.", -1)
 
     local qGrid = Grid(quick, 2, 40)   -- v8.0: janela estreita (era 4)
     local quickBtns = {}
 
-    local QUICK = {
-        { "fly", "Fly", "bolt", "Accent2" },
-        { "noclip", "Noclip", "ghost", "Accent" },
-        { "esp", "ESP", "eye", "Success" },
-        { "freecam", "Freecam", "cam", "Accent" },
-        { "infjump", "Inf Jump", "up", "Accent2" },
-        { "god", "God", "shield", "Success" },
-        { "invisible", "Invisível", "circle", "Accent" },
-        { "fullbright", "Fullbright", "sun", "Warning" },
+    -- v9.0: nome curto, ícone e cor de cada função (vale para qualquer
+    -- toggle que virar favorito)
+    V8.ToggleLook = {
+        fly        = { "Fly", "bolt", "Accent2" },
+        noclip     = { "Noclip", "ghost", "Accent" },
+        esp        = { "ESP", "eye", "Success" },
+        freecam    = { "Freecam", "cam", "Accent" },
+        infjump    = { "Inf Jump", "up", "Accent2" },
+        god        = { "God", "shield", "Success" },
+        invisible  = { "Invisível", "circle", "Accent" },
+        fullbright = { "Fullbright", "sun", "Warning" },
+        wall       = { "Paredes", "box", "Accent" },
+        chatspy    = { "Chat Spy", "clip", "Accent2" },
+        antiafk    = { "Anti-AFK", "clock", "Success" },
+        drone      = { "Drone", "wifi", "Accent" },
+        antifall   = { "Anti-Fall", "shield", "Accent2" },
+        antigrav   = { "Anti-Grav", "up", "Accent" },
+        wallwalk   = { "Wall Walk", "mask", "Warning" },
+        clicktp    = { "Clique TP", "link", "Accent2" },
     }
 
-    for i, item in ipairs(QUICK) do
-        local id, label, kind, ck = item[1], item[2], item[3], item[4]
+    local quickEmpty = SubLabel(quick, "Nenhuma função fixada. Toque na estrela de "
+        .. "uma função para ela aparecer aqui.", 2)
+    quickEmpty.Visible = false
+    local quickSig = nil
+
+    local function QuickPill(i, id)
+        local look = V8.ToggleLook[id] or { Toggles[id].label or id, "dot", "Accent" }
+        local label, kind, ck = look[1], look[2], look[3]
 
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(1, 0, 1, 0)
@@ -5823,6 +6066,7 @@ do
         lb.Font = Enum.Font.GothamMedium
         lb.TextSize = 12
         lb.TextXAlignment = Enum.TextXAlignment.Left
+        lb.TextTruncate = Enum.TextTruncate.AtEnd
         lb.Parent = b
         Paint(lb, "TextColor3", "Text")
 
@@ -5859,6 +6103,33 @@ do
         b.MouseButton1Click:Connect(function() Flip(id) end)
         quickBtns[id] = { track = track, knob = knob, state = state, icon = ic, key = ck }
     end
+
+    -- monta (de novo) as pílulas a partir da lista de favoritos
+    local function BuildQuick()
+        local list = V8.Fav and V8.Fav.List() or {}
+        quickSig = table.concat(list, " ")
+        for _, c in ipairs(qGrid:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
+        for k in pairs(quickBtns) do quickBtns[k] = nil end
+        local shown = 0
+        for _, id in ipairs(list) do
+            if Toggles[id] then
+                shown = shown + 1
+                QuickPill(shown, id)
+            end
+        end
+        quickEmpty.Visible = (shown == 0)
+        if RefreshQuick then pcall(RefreshQuick) end
+    end
+    BuildQuick()
+    if V8.Fav then V8.Fav.OnChange = BuildQuick end
+    -- config/perfil carregado trocou a lista: remonta só se mudou
+    V8.Renders = V8.Renders or {}
+    table.insert(V8.Renders, function()
+        local list = V8.Fav and V8.Fav.List() or {}
+        if table.concat(list, " ") ~= quickSig then BuildQuick() end
+    end)
 
     ----------------------------------------------------------------------------
     -- DESLIGAR TUDO (centralizado)
@@ -5962,7 +6233,8 @@ do
         end
     end)
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/01_home_dashboard.lua", 6237, 6804, function() --------------------------------------------------------------------------------
 -- v8.0 — DASHBOARD DA HOME (header + relogio, tira de status, card do jogador
 -- com chat rapido e Friend Activity). Tudo pendurado em V8.Dash: zero locais
 -- novos no chunk principal. Entra DEPOIS de 40_tabs/00_home.lua no build.
@@ -6530,7 +6802,8 @@ do
 
     pcall(D.Tick)
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/01_home_server.lua", 6806, 7079, function() --------------------------------------------------------------------------------
 -- v8.1 — INÍCIO: MAPA ATUAL + PERFIL
 -- Mapa: nome do jogo, Place ID, Job ID e jogadores, com os botões rápidos
 -- REJOIN (volta para este servidor), TROCAR SERVIDOR (outro servidor público
@@ -6804,7 +7077,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/02_movement.lua", 7081, 7413, function() --------------------------------------------------------------------------------
 -- ABA MOVEMENT
 --------------------------------------------------------------------------------
 do
@@ -7137,7 +7411,8 @@ do
 
     RenderWaypoints()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/02_movement_pack.lua", 7415, 7600, function() --------------------------------------------------------------------------------
 -- v8.2 — CARTÃO "PACOTE DE ANIMAÇÃO" (Personagem › Movimento)
 -- Cole o ID ou o link de um pacote do catálogo; o painel lê as animações dele
 -- (V8.Pack, 30_kit/06_animpack.lua) e guarda na lista. Em cada pacote:
@@ -7323,7 +7598,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/03_visuals.lua", 7602, 7695, function() --------------------------------------------------------------------------------
 -- ABA VISUALS
 --------------------------------------------------------------------------------
 do
@@ -7417,7 +7693,8 @@ do
     SubLabel(cores, "Aliados usam verde por padrão. Com 'Cores por equipe' ligado, "
         .. "a TeamColor tem prioridade.", 10)
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/04_players.lua", 7697, 7941, function() --------------------------------------------------------------------------------
 -- ABA PLAYERS
 --------------------------------------------------------------------------------
 do
@@ -7662,7 +7939,8 @@ do
 
     RebuildPlayerRows()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/05_moderation.lua", 7943, 8134, function() --------------------------------------------------------------------------------
 -- ABA MODERATION
 --------------------------------------------------------------------------------
 do
@@ -7854,7 +8132,8 @@ do
     OnTabOpen("Moderation", UpdateSelectedInfo)
     UpdateSelectedInfo()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/06_server.lua", 8136, 8269, function() --------------------------------------------------------------------------------
 -- ABA SERVER
 --------------------------------------------------------------------------------
 do
@@ -7988,7 +8267,8 @@ do
     OnTabOpen("Server", UpdateServerInfo)
     UpdateServerInfo()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/07_emotes.lua", 8271, 8863, function() --------------------------------------------------------------------------------
 -- ABA EMOTES (catálogo pesquisável + tocar por ID + favoritos)
 --
 -- Limitação do Roblox, não do painel: o Animator só carrega animação cujo
@@ -8581,7 +8861,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/08_settings.lua", 8865, 9288, function() --------------------------------------------------------------------------------
 -- ABA SETTINGS
 --------------------------------------------------------------------------------
 do
@@ -8681,6 +8962,8 @@ do
                     else
                         CONFIG.PanelKey = kc
                         Log("Tecla do painel = " .. KeyName(kc), "ok")
+                        -- v9.0: a tecla do painel ganha de tudo: macro nela some
+                        if V8.Macro and V8.Macro.Release then pcall(V8.Macro.Release, kc) end
                     end
                     btn.Text = KeyName(CONFIG.PanelKey)
                 end)
@@ -8742,12 +9025,16 @@ do
         if RefreshQuick then RefreshQuick() end
         -- v8.0: as linhas do log saíram do registry; redesenha com as cores novas
         if RenderLog then pcall(RenderLog, nil) end
-        Log("Tema: " .. paletteName, "ok")
+        -- v9.0: a prévia ao vivo da cor personalizada reaplica o tema várias
+        -- vezes seguidas; nessas o log fica quieto
+        if not V8.QuietTheme then Log("Tema: " .. paletteName, "ok") end
     end
 
     local themeGrid = Grid(look, 3, 32)
     themeGrid.LayoutOrder = 1
-    for i, n in ipairs({ "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho" }) do
+    -- v9.0: 9 temas (Rosa, Laranja e Meia-noite novos); a cor personalizada
+    -- tem cartão próprio (50_v8/12_colors.lua)
+    for i, n in ipairs(THEME_ORDER) do
         local b = CreateButton(themeGrid, "   " .. n:upper(), "Accent", 32)
         b.LayoutOrder = i
         local sw = Instance.new("Frame")
@@ -8991,8 +9278,16 @@ do
     txt.TextXAlignment = Enum.TextXAlignment.Left
     txt.Parent = about
     Paint(txt, "TextColor3", "Dim")
+
+    -- v9.0: reabre o cartão de novidades (50_v8/15_news.lua)
+    local news = CreateButton(about, "VER NOVIDADES DA " .. CONFIG.Version:upper(), "Accent", 32)
+    news.LayoutOrder = 2
+    news.MouseButton1Click:Connect(function()
+        if V8.News then V8.News.Show(false) end
+    end)
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/09_shop.lua", 9290, 9613, function() --------------------------------------------------------------------------------
 -- v8.1 — PLAYTIME SHOP (ícone de sacola do dock)
 -- Loja do próprio painel paga com tempo de jogo: 1 ponto por minuto com o HYGE
 -- aberto (V8.Play, 30_kit/05_playtime.lua). Categorias: All, Ranks, Icons,
@@ -9316,7 +9611,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/10_scripts.lua", 9615, 9689, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA SCRIPTS (ícone de terminal do dock)
 -- O console de log sai do rodapé da janela e passa a morar aqui, ocupando a
 -- aba inteira, com uma linha de comando embaixo (Enter executa, ↑/↓ histórico).
@@ -9391,7 +9687,8 @@ do
     -- "Modo compacto" só escondia o console do rodapé, que não existe mais
     if V8.CompactRow then V8.CompactRow.Visible = false end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/11_chat.lua", 9691, 9820, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA CHAT (balão do dock)
 -- Feed do chat DESTE servidor + enviar no chat do jogo + privado pelo Remote.
 -- Mostra só o que o seu cliente já recebe do Roblox: nenhuma mensagem é
@@ -9521,7 +9818,8 @@ do
     end
     status.Text = "Nenhuma mensagem ainda   ·   " .. mode
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/12_troll.lua", 9822, 10010, function() --------------------------------------------------------------------------------
 -- v8.1 — SEÇÃO TROLL (ícone de máscara do dock)
 -- * Walk on Walls (20_features/10_wallwalk.lua): roda no SEU personagem, então
 --   funciona em qualquer jogo — e os outros veem você andando na parede.
@@ -9710,7 +10008,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/40_tabs/13_hychat.lua", 10012, 10392, function() --------------------------------------------------------------------------------
 -- v8.1 — CHAT HYGE (Chat › HYGE)
 -- Conversa entre quem usa o HYGE: sala "Este servidor" (mesmo JobId) e sala
 -- "Global" (todos os servidores). Dois clientes Roblox não falam direto um
@@ -10091,7 +10390,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/00_dock.lua", 10394, 10860, function() --------------------------------------------------------------------------------
 -- v8.0 — DOCK (navegação principal)
 -- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
 -- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
@@ -10558,7 +10858,8 @@ do
 
     K.Apply(SET.Dock)
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/01_shell.lua", 10862, 11250, function() --------------------------------------------------------------------------------
 -- v8.0 — SHELL (layout novo)
 -- NAO recria a janela: reconfigura as instancias que o engine ja criou.
 -- Dois modos, escolhidos por SET.Dock (Ajustes › Navegação):
@@ -10947,7 +11248,8 @@ do
         pcall(ApplyTheme, SET.Theme)
     end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/02_situations.lua", 11252, 11591, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — SISTEMA DE SITUAÇÕES
 -- Um clique troca o modo de operação inteiro: liga o que pertence à situação
 -- e DESLIGA o que não pertence. Cards no Dashboard + keybind por situação.
@@ -11274,6 +11576,8 @@ do
                         for other, okc in pairs(S.Keys) do
                             if okc == kc and other ~= n then S.Keys[other] = nil end
                         end
+                        -- v9.0: situação ganha das macros no handler global
+                        if V8.Macro and V8.Macro.Release then pcall(V8.Macro.Release, kc) end
                         S.Keys[n] = kc
                         Log("Situação " .. n .. " = " .. KeyName(kc), "ok")
                     end
@@ -11285,7 +11589,8 @@ do
 
     S.Render()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/03_persist.lua", 11593, 12111, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — PERSISTÊNCIA (HYGE/config.json)
 -- Salva/carrega keybinds, aparência, comportamento, velocidades, opções de ESP,
 -- waypoints, favoritos de emote, notas e a última situação.
@@ -11353,7 +11658,12 @@ do
                        -- v8.1.1: animação do voo
                        "FlyStyle", "FlyTilt",
                        -- v8.2: pacotes de animação, botões na tela, atualização
-                       "Packs", "PackOn", "FlyPack", "TouchHud", "UpdateCheck" }
+                       "Packs", "PackOn", "FlyPack", "TouchHud", "UpdateCheck",
+                       -- v9.0: favoritos, notificações, cor própria, macros,
+                       -- tela de novidades
+                       "Favs", "Dnd", "ToastDur", "CustomHue", "CustomSat",
+                       "Macros", "SeenVersion" }
+    C.SetKeys = SET_KEYS   -- v9.0: os perfis usam a mesma lista
 
     -- v8.2: waypoints POR JOGO. State.Waypoints é sempre a lista do jogo
     -- atual; os dos outros jogos ficam aqui (como vieram do arquivo) e voltam
@@ -11565,8 +11875,10 @@ do
         if status then status.Text = msg end
     end
 
-    C.Save = function(silent)
+    -- quiet (v9.0, salvamento automático): não escreve no log, só no status
+    C.Save = function(silent, quiet)
         if not C.Supported() then
+            if quiet then return false end
             Say("Não salvei: este executor não expõe writefile/readfile "
                 .. "(use EXPORTAR e guarde o JSON à mão)", "error")
             if not silent then Toast("Executor sem API de arquivos — nada foi salvo", "error", 4) end
@@ -11574,9 +11886,10 @@ do
         end
         local json, err = Encode(C.Snapshot())
         if not json then
-            Say("Falha ao gerar o JSON: " .. tostring(err), "error")
+            if not quiet then Say("Falha ao gerar o JSON: " .. tostring(err), "error") end
             return false
         end
+        if quiet and json == C.LastJson then return true end   -- nada mudou
         local ok, werr = pcall(function()
             if typeof(makefolder) == "function" and typeof(isfolder) == "function" then
                 if not isfolder(C.Folder) then makefolder(C.Folder) end
@@ -11586,14 +11899,33 @@ do
             writefile(C.Path, json)
         end)
         if not ok then
+            if quiet then return false end
             Say("Falha ao escrever " .. C.Path .. ": " .. tostring(werr), "error")
             if not silent then Toast("Não deu para salvar a config", "error", 4) end
             return false
+        end
+        C.LastJson = json
+        C.LoadState = "ok"   -- salvou na mão depois de um erro: o automático volta
+        if quiet then
+            if status then status.Text = "Salvo sozinho às " .. os.date("%H:%M:%S")
+                .. " (" .. #json .. " bytes)" end
+            return true
         end
         Say("Config salva em " .. C.Path .. " (" .. #json .. " bytes)", "ok")
         if not silent then Toast("Config salva", "ok", 2) end
         return true
     end
+
+    -- v9.0: SALVAMENTO AUTOMÁTICO. Antes a config só ia para o disco no
+    -- Unload — quem saía do jogo sem descarregar o painel perdia o que mudou.
+    -- Agora, com "Salvar automaticamente" ligado, a cada 30 s grava se algo
+    -- mudou. Se o arquivo existia e NÃO deu para ler, não sobrescreve (para
+    -- não apagar uma config que só está com problema).
+    C.LoadState = nil   -- "ok" | "missing" | "error" (depois do boot)
+    V8.Job(30, function()
+        if not SET.AutoSave or C.LoadState == nil or C.LoadState == "error" then return end
+        pcall(C.Save, true, true)
+    end)
 
     C.Load = function(silent)
         if not C.Supported() then
@@ -11608,24 +11940,31 @@ do
         local exists = false
         pcall(function() exists = isfile(C.Path) end)
         if not exists then
+            C.LoadState = C.LoadState or "missing"
             if not silent then Say("Nenhuma config salva ainda em " .. C.Path, "warn") end
             return false
         end
         local ok, raw = pcall(function() return readfile(C.Path) end)
         if not ok or type(raw) ~= "string" then
+            C.LoadState = "error"
             Say("Falha ao ler " .. C.Path, "error")
             return false
         end
         local d, derr = Decode(raw)
         if not d then
-            Say("JSON inválido em " .. C.Path .. ": " .. tostring(derr), "error")
+            C.LoadState = "error"
+            Say("JSON inválido em " .. C.Path .. ": " .. tostring(derr)
+                .. " — o salvamento automático fica parado até você SALVAR AGORA", "error")
             return false
         end
-        local okR = pcall(C.Restore, d)
+        local okR, rerr = pcall(C.Restore, d)
         if not okR then
-            Say("Config lida, mas falhou ao aplicar", "error")
+            C.LoadState = "error"
+            Say("Config lida, mas falhou ao aplicar: " .. tostring(rerr), "error")
             return false
         end
+        C.LoadState = "ok"
+        C.LastJson = nil
         Say("Config carregada de " .. C.Path, "ok")
         if not silent then Toast("Config carregada", "ok", 2) end
 
@@ -11738,8 +12077,8 @@ do
             Confirm("Apagar " .. C.Path .. " e voltar tudo ao padrão?", function() C.Reset() end)
         end)
 
-        CheckRow(card, "Salvar automaticamente ao fechar",
-            "Grava a config no Unload (e ao descarregar pelo botão)",
+        CheckRow(card, "Salvar automaticamente",
+            "A cada 30 s, se algo mudou, e ao descarregar (v9.0)",
             function() return SET.AutoSave end,
             function(v) SET.AutoSave = v end, 2)
 
@@ -11770,7 +12109,8 @@ do
         end)
     end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/04_search.lua", 12113, 12571, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — BUSCA GLOBAL (Ctrl+K)
 -- Overlay único que pesquisa situações, funções, jogadores, waypoints e
 -- comandos. Enter executa o item selecionado; ↑/↓ navegam; Esc fecha.
@@ -11831,7 +12171,7 @@ do
     layout.Padding = UDim.new(0, 4)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local input = CreateInput(box, "buscar situação, função, jogador, waypoint, comando...", 36)
+    local input = CreateInput(box, "buscar função, ajuste, jogador, perfil, comando...", 36)
     input.LayoutOrder = 0
     input.ZIndex = 52
     input.TextSize = 14
@@ -11932,16 +12272,19 @@ do
     ----------------------------------------------------------------------------
     local function Collect(q)
         local out = {}
+        -- v9.0: sem acento e sem caixa ("situacao" acha "Situação")
+        q = V8.Fold and V8.Fold(q) or q
         local function add(kind, label, hint, run)
             local score
-            local low = tostring(label):lower()
+            local low = V8.Fold and V8.Fold(label) or tostring(label):lower()
+            local k = V8.Fold and V8.Fold(kind) or kind
             if q == "" then
                 score = 2
             elseif low:sub(1, #q) == q then
                 score = 0
             elseif low:find(q, 1, true) then
                 score = 1
-            elseif kind:find(q, 1, true) then
+            elseif k:find(q, 1, true) then
                 score = 3
             end
             if score then
@@ -11998,6 +12341,25 @@ do
                     Log("TP -> " .. (wp.name or idx), "ok")
                 end
             end)
+        end
+
+        -- v9.0: cartões de Configurações (abre já filtrado) e perfis
+        if V8.SetNav and V8.SetNav.Cards then
+            for _, e in ipairs(V8.SetNav.Cards) do
+                if e.title ~= "" then
+                    add("ajuste", e.title, "Configurações", function() V8.SetNav.Focus(e.title) end)
+                end
+            end
+        end
+        if V8.Prof and V8.Prof.Data then
+            for _, r in ipairs(V8.Prof.Data.list) do
+                local name = r.name
+                add("perfil", name, (V8.Prof.Current == name) and "ativo" or "usar este perfil",
+                    function()
+                        local ok, err = V8.Prof.Use(name)
+                        if not ok then Log(tostring(err), "error") end
+                    end)
+            end
         end
 
         if V8.CmdNames then
@@ -12207,7 +12569,8 @@ do
         open.MouseButton1Click:Connect(function() S.Open() end)
     end
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/05_island.lua", 12573, 12707, function() --------------------------------------------------------------------------------
 -- v8.0 — ILHA NO TOPO DA TELA
 -- Pílula fixa no alto, centralizada: logo, hora, FPS e ping — à vista mesmo
 -- com o painel fechado. Clicar abre/fecha o painel.
@@ -12235,6 +12598,7 @@ do
     pill.Visible = SET.Island ~= false
     pill.ZIndex = 20
     pill.Parent = Gui
+    I.Pill = pill   -- v9.0: o sino das notificações mora aqui (50_v8/11_notify.lua)
     Paint(pill, "BackgroundColor3", "Sidebar")
     Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 12)
     do
@@ -12341,7 +12705,8 @@ do
 
     pcall(I.Update, State.Fps, nil)
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/06_auto.lua", 12709, 12791, function() --------------------------------------------------------------------------------
 -- v8.1 — RECURSOS AUTOMÁTICOS (Configurações › Ajustes › Automático)
 -- * escolha quais funções ligam sozinhas toda vez que o painel carrega
 --   (SET.Auto, vai na config em disco). O BootStep "Automático" roda depois do
@@ -12424,7 +12789,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/07_mobile.lua", 12793, 13012, function() --------------------------------------------------------------------------------
 -- v8.2 — CELULAR (botões na tela + janela que cabe)
 -- * Botões na tela (SET.TouchHud; padrão: ligado em aparelho com toque):
 --   FLY liga/desliga o voo; com ele ligado aparecem SUBIR, DESCER e 2x.
@@ -12644,7 +13010,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/08_quests.lua", 13014, 13278, function() --------------------------------------------------------------------------------
 -- v8.2 — MISSÕES E BÔNUS DIÁRIO (Playtime Shop › Missões de hoje)
 -- Mais um jeito de ganhar pontos além do 1/minuto:
 --   * bônus diário: na primeira vez que o painel abre no dia. Dias seguidos
@@ -12909,7 +13276,8 @@ do
     end
     Build()
 end
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/50_v8/09_update.lua", 13280, 13500, function() --------------------------------------------------------------------------------
 -- v8.2 — ATUALIZAÇÃO (Configurações › Ajustes › Atualização)
 -- Confere se existe um main.lua mais novo no endereço de atualização:
 --   * aberto pelo loader.lua: o loader conta qual build ele rodou
@@ -13130,6 +13498,1686 @@ do
     end
     Build()
 end
+end)
+V8.Mod("src/50_v8/10_profiles.lua", 13502, 13833, function() --------------------------------------------------------------------------------
+-- v9.0 — PERFIS (Configurações › Dados › Perfis)
+-- Um perfil é o painel inteiro guardado com um nome: tema, tamanho, teclas,
+-- macros, velocidades, opções de ESP, favoritos, ajustes e as funções que
+-- estavam ligadas. USAR troca tudo de uma vez.
+-- JOGO marca o perfil para abrir sozinho neste jogo (PlaceId): o BootStep
+-- "Perfil do jogo" aplica depois da config e das funções automáticas.
+-- Ficam FORA do perfil: waypoints (são por jogo), emotes favoritos, notas, os
+-- pacotes de animação (biblioteca e o que está em uso) e a posição da janela.
+-- Freecam e Drone nunca ligam sozinhos (tomam a câmera).
+-- Arquivo próprio: HYGE/profiles.json. Sem writefile, valem só nesta sessão.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local C = V8.Cfg
+        if not C then return end
+        V8.Prof = { Path = "HYGE/profiles.json", Max = 10,
+                    Data = { list = {}, places = {} }, Current = nil }
+        local P = V8.Prof
+        local Http = V8.Net and V8.Net.Http
+        local PLACE = tostring(game.PlaceId)
+        local NOAUTO = { freecam = true, drone = true }
+        -- pacote de animação fica fora: a biblioteca (Packs) não vai no perfil e
+        -- trocar PackOn sem reaplicar o Animate deixaria o personagem no meio
+        local SKIP = { Packs = true, PackOn = true, FlyPack = true, WinPos = true, SeenVersion = true }
+
+        ----------------------------------------------------------------------------
+        -- disco
+        ----------------------------------------------------------------------------
+        local function CanDisk() return V8.Disk and V8.Disk.Ok() and Http ~= nil end
+
+        local function Load()
+            if not CanDisk() then return end
+            local raw = V8.Disk.Read(P.Path)
+            if not raw then return end
+            local ok, d = pcall(function() return Http:JSONDecode(raw) end)
+            if not ok or type(d) ~= "table" then
+                Log("Perfis: " .. P.Path .. " ilegível — a lista começa vazia", "warn")
+                return
+            end
+            local list = {}
+            if type(d.list) == "table" then
+                for _, r in ipairs(d.list) do
+                    if type(r) == "table" and type(r.name) == "string" and type(r.data) == "table" then
+                        table.insert(list, r)
+                    end
+                end
+            end
+            P.Data.list = list
+            P.Data.places = type(d.places) == "table" and d.places or {}
+        end
+
+        local function Save()
+            if not CanDisk() then return false, "executor sem writefile (perfis só nesta sessão)" end
+            local ok, json = pcall(function() return Http:JSONEncode(P.Data) end)
+            if not ok then return false, "JSON: " .. tostring(json) end
+            return V8.Disk.Write(P.Path, json)
+        end
+
+        Load()
+
+        ----------------------------------------------------------------------------
+        -- lógica
+        ----------------------------------------------------------------------------
+        local function Clean(name)
+            name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if #name > 24 then name = name:sub(1, 24) end
+            return name
+        end
+
+        -- exato primeiro (sem acento/caixa), depois começo do nome
+        P.Find = function(name, exact)
+            local q = V8.Fold(Clean(name))
+            if q == "" then return nil end
+            for _, r in ipairs(P.Data.list) do
+                if V8.Fold(r.name) == q then return r end
+            end
+            if exact then return nil end
+            for _, r in ipairs(P.Data.list) do
+                if V8.Fold(r.name):sub(1, #q) == q then return r end
+            end
+            return nil
+        end
+
+        P.Capture = function()
+            local d = C.Snapshot()
+            d.waypoints, d.wpplaces, d.emotes, d.notes, d.situation = nil, nil, nil, nil, nil
+            if type(d.set) == "table" then
+                for k in pairs(SKIP) do d.set[k] = nil end
+            end
+            d.on = {}
+            for _, id in ipairs(ToggleOrder) do
+                if IsOn(id) and not NOAUTO[id] then table.insert(d.on, id) end
+            end
+            return d
+        end
+
+        P.SaveAs = function(name)
+            name = Clean(name)
+            if name == "" then return false, "dê um nome ao perfil" end
+            local rec = P.Find(name, true)
+            if not rec then
+                if #P.Data.list >= P.Max then return false, "limite de " .. P.Max .. " perfis" end
+                rec = { name = name }
+                table.insert(P.Data.list, rec)
+            end
+            rec.data = P.Capture()
+            rec.saved = os.time()
+            P.Current = rec.name
+            local ok, err = Save()
+            if P.Render then pcall(P.Render) end
+            Log("Perfil '" .. rec.name .. "' salvo (" .. #rec.data.on .. " função(ões) ligada(s))"
+                .. (ok and "" or ("  — " .. tostring(err))), ok and "ok" or "warn")
+            return true
+        end
+
+        P.Use = function(name, silent)
+            local rec = P.Find(name)
+            if not rec then return false, "perfil não encontrado: " .. tostring(name) end
+            local ok, err = pcall(C.Restore, rec.data)
+            if not ok then return false, "falhou ao aplicar: " .. tostring(err) end
+            if type(rec.data.on) == "table" then
+                local want = {}
+                for _, id in ipairs(rec.data.on) do want[id] = true end
+                for _, id in ipairs(ToggleOrder) do
+                    if not NOAUTO[id] and IsOn(id) ~= (want[id] == true) then
+                        pcall(SetToggle, id, want[id] == true, true)
+                    end
+                end
+            end
+            P.Current = rec.name
+            if RefreshStatus then pcall(RefreshStatus) end
+            if P.Render then pcall(P.Render) end
+            if not silent then
+                Log("Perfil '" .. rec.name .. "' aplicado", "ok")
+                Toast("Perfil: " .. rec.name, "ok", 2)
+            end
+            return true
+        end
+
+        P.Delete = function(name)
+            local rec = P.Find(name, true)
+            if not rec then return false, "perfil não encontrado" end
+            for i, r in ipairs(P.Data.list) do
+                if r == rec then table.remove(P.Data.list, i) break end
+            end
+            for place, n in pairs(P.Data.places) do
+                if n == rec.name then P.Data.places[place] = nil end
+            end
+            if P.Current == rec.name then P.Current = nil end
+            Save()
+            if P.Render then pcall(P.Render) end
+            Log("Perfil '" .. rec.name .. "' apagado", "action")
+            return true
+        end
+
+        P.HereName = function() return P.Data.places[PLACE] end
+
+        -- marca (ou desmarca, com name = nil) o perfil que abre sozinho neste jogo
+        P.BindHere = function(name)
+            if name then
+                local rec = P.Find(name, true)
+                if not rec then return false, "perfil não encontrado" end
+                P.Data.places[PLACE] = rec.name
+                Log("Perfil '" .. rec.name .. "' vai abrir sozinho neste jogo (PlaceId "
+                    .. PLACE .. ")", "ok")
+            else
+                P.Data.places[PLACE] = nil
+                Log("Este jogo não tem mais perfil automático", "action")
+            end
+            Save()
+            if P.Render then pcall(P.Render) end
+            return true
+        end
+
+        P.Boot = function()
+            local n = P.HereName()
+            if not n then return end
+            if not P.Find(n, true) then
+                P.Data.places[PLACE] = nil
+                return
+            end
+            local ok, err = P.Use(n, true)
+            if ok then
+                Log("Perfil deste jogo aplicado: " .. n, "ok")
+            else
+                Log("Perfil deste jogo (" .. n .. "): " .. tostring(err), "error")
+            end
+        end
+
+        ----------------------------------------------------------------------------
+        -- Ajustes › Perfis
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Settings, "PERFIS", 6)
+        SubLabel(card, "Um perfil guarda o painel do jeito que está agora: tema, teclas, "
+            .. "macros, velocidades, ESP, favoritos e as funções ligadas (menos Freecam e "
+            .. "Drone). JOGO faz o perfil abrir sozinho neste jogo.", -1)
+        local status = SubLabel(card, "", 0)
+
+        local addRow = Instance.new("Frame")
+        addRow.Size = UDim2.new(1, 0, 0, 32)
+        addRow.BackgroundTransparency = 1
+        addRow.LayoutOrder = 1
+        addRow.Parent = card
+        local nameBox = CreateInput(addRow, "nome do perfil (ex.: Explorar, PvP)", 32)
+        nameBox.Size = UDim2.new(1, -150, 1, 0)
+        local bSave = CreateButton(addRow, "SALVAR PERFIL", "Success", 32)
+        bSave.AnchorPoint = Vector2.new(1, 0)
+        bSave.Position = UDim2.new(1, 0, 0, 0)
+        bSave.Size = UDim2.new(0, 142, 1, 0)
+
+        local list = Instance.new("Frame")
+        list.Size = UDim2.new(1, 0, 0, 0)
+        list.AutomaticSize = Enum.AutomaticSize.Y
+        list.BackgroundTransparency = 1
+        list.LayoutOrder = 2
+        list.Parent = card
+        do
+            local l = Instance.new("UIListLayout", list)
+            l.Padding = UDim.new(0, 6)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+        local empty = SubLabel(card, "Nenhum perfil ainda. Deixe o painel do seu jeito, "
+            .. "dê um nome e toque em SALVAR PERFIL.", 3)
+
+        local function SmallBtn(parent, text, colorKey, w, x)
+            local b = CreateButton(parent, text, colorKey, 26)
+            b.AnchorPoint = Vector2.new(1, 0.5)
+            b.Position = UDim2.new(1, x, 0.5, 0)
+            b.Size = UDim2.new(0, w, 0, 26)
+            b.TextSize = 10
+            return b
+        end
+
+        P.Render = function()
+            for _, c in ipairs(list:GetChildren()) do
+                if c:IsA("Frame") then c:Destroy() end
+            end
+            empty.Visible = (#P.Data.list == 0)
+            local here = P.HereName()
+            for i, r in ipairs(P.Data.list) do
+                local row = Instance.new("Frame")
+                row.Size = UDim2.new(1, 0, 0, 46)
+                row.BackgroundTransparency = 1
+                row.LayoutOrder = i
+                row.Parent = list
+                V8.Cell(row, 0)
+
+                local active = (P.Current == r.name)
+                local nm = Instance.new("TextLabel")
+                nm.Size = UDim2.new(1, -176, 0, 18)
+                nm.Position = UDim2.new(0, 0, 0, 6)
+                nm.BackgroundTransparency = 1
+                nm.Text = r.name .. (active and "  ·  ativo" or "")
+                nm.TextColor3 = active and THEME.Accent or THEME.Text
+                nm.Font = Enum.Font.GothamBold
+                nm.TextSize = 13
+                nm.TextXAlignment = Enum.TextXAlignment.Left
+                nm.TextTruncate = Enum.TextTruncate.AtEnd
+                nm.Parent = row
+
+                local on = (type(r.data) == "table" and type(r.data.on) == "table") and #r.data.on or 0
+                local sub = Instance.new("TextLabel")
+                sub.Size = UDim2.new(1, -176, 0, 14)
+                sub.Position = UDim2.new(0, 0, 0, 25)
+                sub.BackgroundTransparency = 1
+                sub.Text = (r.saved and os.date("salvo %d/%m %H:%M", r.saved) or "salvo")
+                    .. "  ·  " .. on .. " função(ões)"
+                    .. ((here == r.name) and "  ·  abre neste jogo" or "")
+                sub.TextColor3 = (here == r.name) and THEME.Success or THEME.Dim
+                sub.Font = Enum.Font.GothamMedium
+                sub.TextSize = 10
+                sub.TextXAlignment = Enum.TextXAlignment.Left
+                sub.TextTruncate = Enum.TextTruncate.AtEnd
+                sub.Parent = row
+
+                local bUse = SmallBtn(row, "USAR", "Accent", 52, -96)
+                bUse.MouseButton1Click:Connect(function()
+                    local ok, err = P.Use(r.name)
+                    if not ok then Log(tostring(err), "error") end
+                end)
+                -- marcado: borda verde e o texto "abre neste jogo" na linha de baixo
+                local bHere = SmallBtn(row, "JOGO", (here == r.name) and "Success" or "Accent", 52, -38)
+                if here == r.name then bHere.TextColor3 = THEME.Success end
+                bHere.MouseButton1Click:Connect(function()
+                    P.BindHere((P.HereName() ~= r.name) and r.name or nil)
+                end)
+                local bDel = SmallBtn(row, "", "Danger", 30, 0)
+                local ic = Icon(bDel, "trash", THEME.Danger, 13)
+                ic.AnchorPoint = Vector2.new(0.5, 0.5)
+                ic.Position = UDim2.new(0.5, 0, 0.5, 0)
+                bDel.MouseButton1Click:Connect(function()
+                    Confirm("Apagar o perfil '" .. r.name .. "'?", function() P.Delete(r.name) end)
+                end)
+            end
+            status.Text = (CanDisk() and ("Arquivo: " .. P.Path)
+                    or "Este executor não tem writefile: os perfis valem só nesta sessão.")
+                .. "  ·  " .. #P.Data.list .. "/" .. P.Max .. " perfis"
+                .. (here and ("  ·  este jogo abre com '" .. here .. "'") or "")
+        end
+
+        bSave.MouseButton1Click:Connect(function()
+            local name = nameBox.Text
+            if Clean(name) == "" then name = P.Current or "" end
+            if Clean(name) == "" then
+                Toast("Dê um nome ao perfil", "warn", 2)
+                return
+            end
+            local exists = P.Find(name, true) ~= nil
+            local function go()
+                local ok, err = P.SaveAs(name)
+                if ok then
+                    nameBox.Text = ""
+                    Toast("Perfil salvo: " .. Clean(name), "ok", 2)
+                else
+                    Toast(tostring(err), "warn", 3)
+                end
+            end
+            if exists then
+                Confirm("Já existe o perfil '" .. Clean(name) .. "'. Trocar pelo que está agora?", go)
+            else
+                go()
+            end
+        end)
+
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(P.Render) end)
+        P.Render()
+    end
+    Build()
+end
+end)
+V8.Mod("src/50_v8/11_notify.lua", 13835, 14155, function() --------------------------------------------------------------------------------
+-- v9.0 — CENTRAL DE NOTIFICAÇÕES
+-- Todo Toast passa a ficar guardado (os últimos 60). O sino na ilha do topo
+-- mostra quantos chegaram desde a última olhada; clicar abre a lista.
+-- "Não perturbe": nada pula na tela (menos erro), tudo continua no sino.
+-- "Tempo dos avisos": 50% a 200% da duração normal de cada aviso.
+-- Sem loop próprio: só embrulha o Toast. Tudo dentro de Build().
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Notif = { List = {}, Unread = 0, Max = 60, Shown = false }
+        local N = V8.Notif
+        if SET.Dnd == nil then SET.Dnd = false end
+        if type(SET.ToastDur) ~= "number" then SET.ToastDur = 100 end
+
+        local KIND = { info = "Accent", ok = "Success", warn = "Warning",
+                       error = "Danger", action = "Accent2" }
+
+        ----------------------------------------------------------------------------
+        -- sino na ilha (se a ilha existir)
+        ----------------------------------------------------------------------------
+        local bell, bellIco, badge
+        if V8.Island and V8.Island.Pill then
+            bell = Instance.new("TextButton")
+            bell.Name = "Bell"
+            bell.Size = UDim2.new(0, 24, 0, 24)
+            bell.BackgroundTransparency = 1
+            bell.Text = ""
+            bell.AutoButtonColor = false
+            bell.LayoutOrder = 9
+            bell.ZIndex = 21
+            bell.Parent = V8.Island.Pill
+            bellIco = Icon(bell, "bell", THEME.Dim, 16)
+            bellIco.AnchorPoint = Vector2.new(0.5, 0.5)
+            bellIco.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+            badge = Instance.new("TextLabel")
+            badge.AnchorPoint = Vector2.new(1, 0)
+            badge.Position = UDim2.new(1, 6, 0, -4)
+            badge.Size = UDim2.new(0, 16, 0, 14)
+            badge.BackgroundColor3 = THEME.Danger
+            badge.BorderSizePixel = 0
+            badge.Text = ""
+            badge.TextColor3 = Color3.new(1, 1, 1)
+            badge.Font = Enum.Font.GothamBold
+            badge.TextSize = 9
+            badge.Visible = false
+            badge.ZIndex = 23
+            badge.Parent = bell
+            Paint(badge, "BackgroundColor3", "Danger")
+            Instance.new("UICorner", badge).CornerRadius = UDim.new(1, 0)
+        end
+
+        N.Badge = function()
+            if not badge then return end
+            badge.Visible = N.Unread > 0
+            badge.Text = (N.Unread > 9) and "9+" or tostring(N.Unread)
+            badge.Size = UDim2.new(0, (N.Unread > 9) and 20 or 15, 0, 14)
+            IconTint(bellIco, SET.Dnd and THEME.Warning or (N.Unread > 0 and THEME.Text or THEME.Dim))
+        end
+
+        ----------------------------------------------------------------------------
+        -- painel da lista (abaixo da ilha)
+        ----------------------------------------------------------------------------
+        local catcher = Instance.new("TextButton")   -- clique fora fecha
+        catcher.Name = "NotifCatcher"
+        catcher.Size = UDim2.new(1, 0, 1, 0)
+        catcher.BackgroundTransparency = 1
+        catcher.Text = ""
+        catcher.AutoButtonColor = false
+        catcher.Visible = false
+        catcher.ZIndex = 44
+        catcher.Parent = Gui
+
+        local panel = Instance.new("Frame")
+        panel.Name = "Notifications"
+        panel.AnchorPoint = Vector2.new(0.5, 0)
+        panel.Position = UDim2.new(0.5, 0, 0, 50)
+        panel.Size = UDim2.new(0, 340, 0, 340)
+        panel.BackgroundColor3 = THEME.Card
+        panel.BorderSizePixel = 0
+        panel.Visible = false
+        panel.ZIndex = 45
+        panel.Parent = Gui
+        Paint(panel, "BackgroundColor3", "Card")
+        Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
+        do
+            local st = Instance.new("UIStroke", panel)
+            st.Transparency = 0.2
+            Paint(st, "Color", "Line")
+        end
+
+        local title = Instance.new("TextLabel")
+        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Size = UDim2.new(0, 140, 0, 24)
+        title.BackgroundTransparency = 1
+        title.Text = "Notificações"
+        title.TextColor3 = THEME.Text
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 15
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Parent = panel
+        Paint(title, "TextColor3", "Text")
+
+        local bDnd = CreateButton(panel, "NÃO PERTURBE", "Warning", 24)
+        bDnd.AnchorPoint = Vector2.new(1, 0)
+        bDnd.Position = UDim2.new(1, -82, 0, 10)
+        bDnd.Size = UDim2.new(0, 104, 0, 24)
+        bDnd.TextSize = 10
+
+        local bClear = CreateButton(panel, "LIMPAR", "Danger", 24)
+        bClear.AnchorPoint = Vector2.new(1, 0)
+        bClear.Position = UDim2.new(1, -12, 0, 10)
+        bClear.Size = UDim2.new(0, 64, 0, 24)
+        bClear.TextSize = 10
+
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Position = UDim2.new(0, 10, 0, 44)
+        scroll.Size = UDim2.new(1, -20, 1, -54)
+        scroll.BackgroundTransparency = 1
+        scroll.BorderSizePixel = 0
+        scroll.ScrollBarThickness = 3
+        scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        scroll.Parent = panel
+        Paint(scroll, "ScrollBarImageColor3", "Accent")
+        do
+            local l = Instance.new("UIListLayout", scroll)
+            l.Padding = UDim.new(0, 5)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+
+        local empty = Instance.new("TextLabel")
+        empty.Size = UDim2.new(1, -6, 0, 60)
+        empty.BackgroundTransparency = 1
+        empty.Text = "Nenhum aviso por enquanto."
+        empty.TextColor3 = THEME.Dim
+        empty.Font = Enum.Font.GothamMedium
+        empty.TextSize = 12
+        empty.LayoutOrder = 9999
+        empty.Parent = scroll
+        Paint(empty, "TextColor3", "Dim")
+
+        local function PaintDnd()
+            bDnd.Text = SET.Dnd and "NÃO PERTURBE: ON" or "NÃO PERTURBE"
+            bDnd.Size = UDim2.new(0, SET.Dnd and 128 or 104, 0, 24)
+        end
+
+        -- linhas desenhadas na hora de abrir (não entram no registry de tema)
+        N.Render = function()
+            for _, c in ipairs(scroll:GetChildren()) do
+                if c:IsA("Frame") then c:Destroy() end
+            end
+            empty.Visible = (#N.List == 0)
+            for i, e in ipairs(N.List) do
+                local row = Instance.new("Frame")
+                row.Size = UDim2.new(1, -6, 0, 0)
+                row.AutomaticSize = Enum.AutomaticSize.Y
+                row.BackgroundColor3 = THEME.Btn
+                row.BorderSizePixel = 0
+                row.LayoutOrder = i
+                row.Parent = scroll
+                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 9)
+                local pad = Instance.new("UIPadding", row)
+                pad.PaddingTop = UDim.new(0, 7)
+                pad.PaddingBottom = UDim.new(0, 7)
+                pad.PaddingLeft = UDim.new(0, 10)
+                pad.PaddingRight = UDim.new(0, 10)
+
+                local dot = Instance.new("Frame")
+                dot.Size = UDim2.new(0, 7, 0, 7)
+                dot.Position = UDim2.new(0, 0, 0, 5)
+                dot.BackgroundColor3 = THEME[KIND[e.kind] or "Accent"]
+                dot.BorderSizePixel = 0
+                dot.Parent = row
+                Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+                local txt = Instance.new("TextLabel")
+                txt.Position = UDim2.new(0, 15, 0, 0)
+                txt.Size = UDim2.new(1, -58, 0, 0)
+                txt.AutomaticSize = Enum.AutomaticSize.Y
+                txt.BackgroundTransparency = 1
+                txt.Text = e.text
+                txt.TextColor3 = THEME.Text
+                txt.Font = Enum.Font.GothamMedium
+                txt.TextSize = 12
+                txt.TextWrapped = true
+                txt.TextXAlignment = Enum.TextXAlignment.Left
+                txt.Parent = row
+
+                local tm = Instance.new("TextLabel")
+                tm.AnchorPoint = Vector2.new(1, 0)
+                tm.Position = UDim2.new(1, 0, 0, 0)
+                tm.Size = UDim2.new(0, 40, 0, 16)
+                tm.BackgroundTransparency = 1
+                tm.Text = e.t .. ((e.n or 1) > 1 and (" x" .. e.n) or "")
+                tm.TextColor3 = THEME.Dim
+                tm.Font = Enum.Font.Code
+                tm.TextSize = 10
+                tm.TextXAlignment = Enum.TextXAlignment.Right
+                tm.Parent = row
+            end
+            PaintDnd()
+            scroll.CanvasPosition = Vector2.new(0, 0)
+        end
+
+        N.Open = function()
+            N.Shown = true
+            N.Unread = 0
+            N.Badge()
+            N.Render()
+            -- logo abaixo da ilha quando ela está na tela; senão no topo
+            local island = V8.Island and V8.Island.Pill
+            local y = (island and island.Visible) and 50 or 14
+            panel.Position = UDim2.new(0.5, 0, 0, y)
+            catcher.Visible = true
+            panel.Visible = true
+        end
+        N.Close = function()
+            N.Shown = false
+            catcher.Visible = false
+            panel.Visible = false
+        end
+        N.IsOpen = function() return N.Shown end
+        N.Clear = function()
+            for i = #N.List, 1, -1 do N.List[i] = nil end
+            N.Unread = 0
+            N.Badge()
+            if N.Shown then N.Render() end
+        end
+        N.SetDnd = function(on)
+            SET.Dnd = on and true or false
+            N.Badge()
+            PaintDnd()
+            if N.Render2 then pcall(N.Render2) end
+        end
+
+        if bell then
+            bell.MouseButton1Click:Connect(function()
+                if N.Shown then N.Close() else N.Open() end
+            end)
+        end
+        catcher.MouseButton1Click:Connect(N.Close)
+        bClear.MouseButton1Click:Connect(N.Clear)
+        bDnd.MouseButton1Click:Connect(function()
+            N.SetDnd(not SET.Dnd)
+            Log("Não perturbe: " .. (SET.Dnd and "ligado" or "desligado"), "action")
+        end)
+        Conn.NotifKeys = UserInputService.InputBegan:Connect(function(input)
+            if N.Shown and input.KeyCode == Enum.KeyCode.Escape then N.Close() end
+        end)
+
+        ----------------------------------------------------------------------------
+        -- guarda TODO aviso (repetido seguido vira "x2", "x3"...)
+        ----------------------------------------------------------------------------
+        -- o número do sino conta só o que pede atenção: aviso, erro e mensagens
+        -- longas (atualização, mensagem de admin...). "Fly ativado" fica na
+        -- lista mas não acende o sino.
+        N.Push = function(text, kind, duration)
+            text = tostring(text)
+            local top = N.List[1]
+            if top and top.text == text and top.kind == kind then
+                top.n = (top.n or 1) + 1
+                top.t = os.date("%H:%M")
+            else
+                table.insert(N.List, 1, { t = os.date("%H:%M"), text = text, kind = kind, n = 1 })
+                while #N.List > N.Max do table.remove(N.List) end
+            end
+            -- ("desativado" é um aviso curto, 1.6 s: não conta)
+            local dur = tonumber(duration) or 2.6
+            local important = kind == "error" or dur >= 4 or (kind == "warn" and dur >= 2.6)
+            if important and not N.Shown then N.Unread = N.Unread + 1 end
+            N.Badge()
+            if N.Shown then N.Render() end
+        end
+
+        local base = Toast
+        Toast = function(text, kind, duration)
+            kind = (kind and KIND[kind]) and kind or "info"
+            pcall(N.Push, text, kind, duration)
+            if SET.Dnd and kind ~= "error" then return end
+            local mult = math.clamp((tonumber(SET.ToastDur) or 100) / 100, 0.5, 2)
+            return base(text, kind, (duration or 2.6) * mult)
+        end
+
+        ----------------------------------------------------------------------------
+        -- Ajustes › Notificações
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Settings, "NOTIFICAÇÕES", 10)
+        SubLabel(card, "Todo aviso fica guardado no sino da ilha do topo (os últimos "
+            .. N.Max .. "). Clique no sino para ver; o número mostra os que você não viu.", -1)
+        local dndRender = CheckRow(card, "Não perturbe",
+            "Nenhum aviso pula na tela (erros continuam); tudo fica no sino",
+            function() return SET.Dnd == true end,
+            function(v) N.SetDnd(v) end, 1)
+        N.Render2 = dndRender
+        local durSet = SliderRow(card, {
+            label = "Tempo dos avisos na tela", min = 50, max = 200, def = SET.ToastDur,
+            suffix = "%", order = 2,
+            apply = function(v) SET.ToastDur = v end,
+        })
+        local g = Grid(card, 2, 32)
+        g.LayoutOrder = 3
+        local bOpen = CreateButton(g, "VER HISTÓRICO", "Accent", 32)
+        bOpen.LayoutOrder = 1
+        bOpen.MouseButton1Click:Connect(function() N.Open() end)
+        local bWipe = CreateButton(g, "LIMPAR HISTÓRICO", "Danger", 32)
+        bWipe.LayoutOrder = 2
+        bWipe.MouseButton1Click:Connect(N.Clear)
+
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function()
+            pcall(durSet, tonumber(SET.ToastDur) or 100, true)
+            pcall(N.Badge)
+            pcall(PaintDnd)
+        end)
+        N.Badge()
+        PaintDnd()
+    end
+    Build()
+end
+end)
+V8.Mod("src/50_v8/12_colors.lua", 14157, 14319, function() --------------------------------------------------------------------------------
+-- v9.0 — COR PERSONALIZADA (Configurações › Visual)
+-- Tema "Personalizado": a base escura do Grafite levemente tingida + a cor de
+-- destaque que você escolher (matiz 0–360° e intensidade). USAR ESTA COR
+-- aplica; com o tema já ativo, mexer nos sliders troca ao vivo.
+-- SET.CustomHue / SET.CustomSat vão na config (e nos perfis).
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Colors = { Name = "Personalizado" }
+        local K = V8.Colors
+        if type(SET.CustomHue) ~= "number" then SET.CustomHue = 275 end
+        if type(SET.CustomSat) ~= "number" then SET.CustomSat = 60 end
+
+        -- monta a paleta a partir de matiz (0-360) e intensidade (15-100)
+        K.Make = function(hue, sat)
+            local h = (math.clamp(tonumber(hue) or 275, 0, 360) % 360) / 360
+            local s = math.clamp(tonumber(sat) or 60, 15, 100) / 100
+            local p = {}
+            for k, v in pairs(PALETTES.Grafite) do p[k] = v end
+            local tint = 0.18 * s
+            p.Accent   = Color3.fromHSV(h, s, 1)
+            p.Accent2  = Color3.fromHSV(h, s * 0.55, 1)
+            p.Main     = Color3.fromHSV(h, tint, 0.075)
+            p.Sidebar  = Color3.fromHSV(h, tint, 0.10)
+            p.Card     = Color3.fromHSV(h, tint, 0.135)
+            p.Console  = Color3.fromHSV(h, tint, 0.055)
+            p.Btn      = Color3.fromHSV(h, tint, 0.175)
+            p.BtnHover = Color3.fromHSV(h, tint, 0.225)
+            p.Track    = Color3.fromHSV(h, tint * 0.8, 0.245)
+            p.Line     = Color3.fromHSV(h, tint * 0.8, 0.21)
+            return p
+        end
+        PALETTES[K.Name] = K.Make(SET.CustomHue, SET.CustomSat)
+
+        -- quem pede o tema "Personalizado" recebe a cor atual de SET
+        do
+            local base = ApplyTheme
+            if base then
+                ApplyTheme = function(name)
+                    if name == K.Name then
+                        PALETTES[K.Name] = K.Make(SET.CustomHue, SET.CustomSat)
+                    end
+                    return base(name)
+                end
+            end
+        end
+
+        ----------------------------------------------------------------------------
+        -- Ajustes › Cor personalizada
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Settings, "COR PERSONALIZADA", 2)
+        SubLabel(card, "Escolha a cor de destaque. USAR ESTA COR troca o tema; com ele "
+            .. "ativo, os sliders mudam ao vivo. Também: theme personalizado.", -1)
+
+        -- prévia: bolinha + botão de exemplo + switch ligado
+        local prev = Instance.new("Frame")
+        prev.Size = UDim2.new(1, 0, 0, 52)
+        prev.LayoutOrder = 0
+        prev.Parent = card
+        V8.Cell(prev, 0)
+
+        local sw = Instance.new("Frame")
+        sw.AnchorPoint = Vector2.new(0, 0.5)
+        sw.Position = UDim2.new(0, 0, 0.5, 0)
+        sw.Size = UDim2.new(0, 30, 0, 30)
+        sw.BorderSizePixel = 0
+        sw.Parent = prev
+        Instance.new("UICorner", sw).CornerRadius = UDim.new(1, 0)
+
+        local name = Instance.new("TextLabel")
+        name.Position = UDim2.new(0, 42, 0, 0)
+        name.Size = UDim2.new(1, -200, 1, 0)
+        name.BackgroundTransparency = 1
+        name.Text = "Prévia"
+        name.Font = Enum.Font.GothamBold
+        name.TextSize = 13
+        name.TextXAlignment = Enum.TextXAlignment.Left
+        name.Parent = prev
+
+        local sample = Instance.new("TextLabel")
+        sample.AnchorPoint = Vector2.new(1, 0.5)
+        sample.Position = UDim2.new(1, -56, 0.5, 0)
+        sample.Size = UDim2.new(0, 86, 0, 26)
+        sample.BorderSizePixel = 0
+        sample.Text = "BOTÃO"
+        sample.Font = Enum.Font.GothamBold
+        sample.TextSize = 11
+        sample.Parent = prev
+        Instance.new("UICorner", sample).CornerRadius = UDim.new(0, 9)
+
+        local track = Instance.new("Frame")
+        track.AnchorPoint = Vector2.new(1, 0.5)
+        track.Position = UDim2.new(1, 0, 0.5, 0)
+        track.Size = UDim2.new(0, 46, 0, 24)
+        track.BorderSizePixel = 0
+        track.Parent = prev
+        Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+        local knob = Instance.new("Frame")
+        knob.Position = UDim2.new(1, -21, 0.5, -9)
+        knob.Size = UDim2.new(0, 18, 0, 18)
+        knob.BorderSizePixel = 0
+        knob.Parent = track
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+        K.Preview = function()
+            local p = K.Make(SET.CustomHue, SET.CustomSat)
+            prev.BackgroundColor3 = p.Card
+            sw.BackgroundColor3 = p.Accent
+            name.TextColor3 = p.Text
+            sample.BackgroundColor3 = p.Accent
+            sample.TextColor3 = p.Main
+            track.BackgroundColor3 = p.Accent
+            knob.BackgroundColor3 = p.Main
+        end
+
+        -- com o tema já ativo: reaplica ao vivo, no máximo ~3x por segundo
+        local token = 0
+        local function Live()
+            pcall(K.Preview)
+            if SET.Theme ~= K.Name then return end
+            token = token + 1
+            local mine = token
+            task.delay(0.3, function()
+                if mine ~= token or SET.Theme ~= K.Name then return end
+                V8.QuietTheme = true
+                pcall(ApplyTheme, K.Name)
+                V8.QuietTheme = false
+            end)
+        end
+
+        local hueSet = SliderRow(card, {
+            label = "Cor (matiz)", min = 0, max = 360, def = SET.CustomHue, suffix = "°", order = 1,
+            apply = function(v) SET.CustomHue = v Live() end,
+        })
+        local satSet = SliderRow(card, {
+            label = "Intensidade", min = 15, max = 100, def = SET.CustomSat, suffix = "%", order = 2,
+            apply = function(v) SET.CustomSat = v Live() end,
+        })
+
+        local g = Grid(card, 2, 32)
+        g.LayoutOrder = 3
+        local bUse = CreateButton(g, "USAR ESTA COR", "Success", 32)
+        bUse.LayoutOrder = 1
+        bUse.MouseButton1Click:Connect(function() ApplyTheme(K.Name) end)
+        local bRand = CreateButton(g, "SORTEAR", "Accent", 32)
+        bRand.LayoutOrder = 2
+        bRand.MouseButton1Click:Connect(function()
+            hueSet(math.random(0, 359))
+            satSet(math.random(45, 85))
+        end)
+
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function()
+            pcall(hueSet, SET.CustomHue, true)
+            pcall(satSet, SET.CustomSat, true)
+            pcall(K.Preview)
+        end)
+        K.Preview()
+    end
+    Build()
+end
+end)
+V8.Mod("src/50_v8/13_macros.lua", 14321, 14582, function() --------------------------------------------------------------------------------
+-- v9.0 — MACROS DE TECLADO (Configurações › Teclas › Macros de teclado)
+-- Uma tecla roda qualquer comando da barra (;) — "tp joao", "sit caça",
+-- "flyspeed 200", "theme rosa"... Vários de uma vez: separe com &&
+-- ("fly on && flyspeed 150"). Até 12 macros, salvas em SET.Macros
+-- ({ key = "H", cmd = "..." }) na config e nos perfis.
+-- A tecla não pode ser de outra coisa (painel, barra, busca, função,
+-- situação); ao dar a tecla de uma macro para uma função, a macro perde a
+-- tecla (com aviso). Com Fly/Freecam/Drone/Walk on Walls ligados, as teclas
+-- de movimento deles não disparam macro.
+-- O handler global de teclas (90_runtime/03_input.lua) chama V8.Macro.HandleKey.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Macro = { Max = 12 }
+        local M = V8.Macro
+        local function List()
+            if type(SET.Macros) ~= "table" then SET.Macros = {} end
+            return SET.Macros
+        end
+        List()
+
+        local function KC(name)
+            if type(name) ~= "string" then return nil end
+            local ok, kc = pcall(function() return Enum.KeyCode[name] end)
+            return ok and kc or nil
+        end
+
+        -- de quem é esta tecla? (nil = livre). 'except' = índice da macro que
+        -- está pedindo (ela não conflita consigo mesma)
+        M.Owner = function(kc, except)
+            if kc == CONFIG.PanelKey then return "abrir o painel" end
+            if kc == CONFIG.ConsoleKey then return "barra de comandos" end
+            if kc == CONFIG.SearchKey and not CONFIG.SearchCtrl then return "busca global" end
+            if kc == Enum.KeyCode.Escape or kc == Enum.KeyCode.Return
+                or kc == Enum.KeyCode.Backspace or kc == Enum.KeyCode.Tab
+                or kc == Enum.KeyCode.Slash then
+                return "uso do Roblox"
+            end
+            for id, k in pairs(Keybinds) do
+                if k == kc then return (Toggles[id] and Toggles[id].label or id) end
+            end
+            if V8.Sit then
+                for n, k in pairs(V8.Sit.Keys) do
+                    if k == kc then return "situação " .. n end
+                end
+            end
+            for i, m in ipairs(List()) do
+                if i ~= except and m.key == kc.Name then return "macro " .. i end
+            end
+            return nil
+        end
+
+        -- outra coisa pegou esta tecla: a macro que tinha ela fica sem tecla
+        M.Release = function(kc)
+            for i, m in ipairs(List()) do
+                if m.key == kc.Name then
+                    m.key = nil
+                    Log("[" .. KeyName(kc) .. "] estava na macro " .. i .. " ('" .. tostring(m.cmd)
+                        .. "') — ela ficou sem tecla", "warn")
+                    Toast("Macro " .. i .. " perdeu a tecla " .. KeyName(kc), "warn", 3)
+                end
+            end
+            if M.Render then pcall(M.Render) end
+        end
+
+        M.Run = function(m)
+            local n = 0
+            for part in (tostring(m.cmd or "") .. "&&"):gmatch("(.-)&&") do
+                if part:match("%S") and V8.RunCommand then
+                    V8.RunCommand(part)
+                    n = n + 1
+                end
+            end
+            return n
+        end
+
+        M.HandleKey = function(input)
+            local kc = input.KeyCode
+            for _, m in ipairs(List()) do
+                if m.key == kc.Name and type(m.cmd) == "string" and m.cmd:match("%S") then
+                    -- WASD do fly/freecam/drone: a tecla está ocupada movendo
+                    if V8.KeyBusy and V8.KeyBusy(kc, nil) then return false end
+                    M.Run(m)
+                    return true
+                end
+            end
+            return false
+        end
+
+        ----------------------------------------------------------------------------
+        -- Ajustes › Macros de teclado
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Settings, "MACROS DE TECLADO", 1)
+        SubLabel(card, "Uma tecla roda qualquer comando da barra (;). Exemplos: tp joao · "
+            .. "sit caça · flyspeed 200 · theme rosa. Vários comandos: separe com && "
+            .. "(fly on && flyspeed 150). Clique na tecla e aperte; Backspace tira.", -1)
+
+        local list = Instance.new("Frame")
+        list.Size = UDim2.new(1, 0, 0, 0)
+        list.AutomaticSize = Enum.AutomaticSize.Y
+        list.BackgroundTransparency = 1
+        list.LayoutOrder = 1
+        list.Parent = card
+        do
+            local l = Instance.new("UIListLayout", list)
+            l.Padding = UDim.new(0, 6)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+        local empty = SubLabel(card, "Nenhuma macro ainda.", 2)
+
+        local bAdd = CreateButton(card, "+ NOVA MACRO", "Success", 32)
+        bAdd.LayoutOrder = 3
+
+        local function Capture(i, btn)
+            Drop("MacroCapture")
+            if StopCapture then pcall(StopCapture) end
+            capturing = "macro"
+            btn.Text = "aperte..."
+            Toast("Aperte a tecla da macro " .. i .. " (Backspace tira)", nil, 3)
+            Conn.MacroCapture = UserInputService.InputBegan:Connect(function(input)
+                if capturing ~= "macro" then
+                    Drop("MacroCapture")
+                    return
+                end
+                if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+                local kc = input.KeyCode
+                if kc == Enum.KeyCode.Unknown then return end
+                Drop("MacroCapture")
+                -- solta depois deste evento: senão o handler global já roda a macro
+                task.defer(function() if capturing == "macro" then capturing = nil end end)
+                local m = List()[i]
+                if not m then return end
+                if kc == Enum.KeyCode.Backspace then
+                    m.key = nil
+                    Log("Macro " .. i .. " sem tecla", "action")
+                else
+                    local owner = M.Owner(kc, i)
+                    if owner then
+                        Toast("[" .. KeyName(kc) .. "] já é de " .. owner .. " — escolha outra", "warn", 3)
+                    else
+                        m.key = kc.Name
+                        Log("Macro " .. i .. " = [" .. KeyName(kc) .. "] " .. tostring(m.cmd), "ok")
+                    end
+                end
+                pcall(M.Render)
+            end)
+        end
+
+        M.Render = function()
+            for _, c in ipairs(list:GetChildren()) do
+                if c:IsA("Frame") then c:Destroy() end
+            end
+            local all = List()
+            empty.Visible = (#all == 0)
+            for i, m in ipairs(all) do
+                local row = Instance.new("Frame")
+                row.Size = UDim2.new(1, 0, 0, 42)
+                row.BackgroundTransparency = 1
+                row.LayoutOrder = i
+                row.Parent = list
+                V8.Cell(row, 0)
+
+                local kb = Instance.new("TextButton")
+                kb.AnchorPoint = Vector2.new(0, 0.5)
+                kb.Position = UDim2.new(0, 0, 0.5, 0)
+                kb.Size = UDim2.new(0, 70, 0, 28)
+                kb.BackgroundColor3 = THEME.Btn
+                kb.Text = m.key and KeyName(KC(m.key)) or "tecla"
+                kb.TextColor3 = m.key and THEME.Accent2 or THEME.Dim
+                kb.Font = Enum.Font.GothamBold
+                kb.TextSize = 12
+                kb.AutoButtonColor = false
+                kb.Parent = row
+                Instance.new("UICorner", kb).CornerRadius = UDim.new(0, 7)
+                do
+                    local st = Instance.new("UIStroke", kb)
+                    st.Transparency = 0.6
+                    st.Color = THEME.Accent
+                end
+                kb.MouseButton1Click:Connect(function() Capture(i, kb) end)
+
+                local box = Instance.new("TextBox")
+                box.AnchorPoint = Vector2.new(0, 0.5)
+                box.Position = UDim2.new(0, 80, 0.5, 0)
+                box.Size = UDim2.new(1, -160, 0, 28)
+                box.BackgroundColor3 = THEME.Btn
+                box.Text = tostring(m.cmd or "")
+                box.PlaceholderText = "comando (ex.: tp joao)"
+                box.PlaceholderColor3 = THEME.Dim
+                box.TextColor3 = THEME.Text
+                box.Font = Enum.Font.Code
+                box.TextSize = 12
+                box.TextXAlignment = Enum.TextXAlignment.Left
+                box.ClearTextOnFocus = false
+                box.Parent = row
+                Instance.new("UICorner", box).CornerRadius = UDim.new(0, 7)
+                do
+                    local p = Instance.new("UIPadding", box)
+                    p.PaddingLeft = UDim.new(0, 8)
+                    p.PaddingRight = UDim.new(0, 8)
+                end
+                box.FocusLost:Connect(function()
+                    local t = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
+                    if t ~= m.cmd then
+                        m.cmd = t
+                        Log("Macro " .. i .. ": " .. (t ~= "" and t or "(vazia)"), "action")
+                    end
+                end)
+
+                local function IconBtn(kind, colorKey, x)
+                    local b = Instance.new("TextButton")
+                    b.AnchorPoint = Vector2.new(1, 0.5)
+                    b.Position = UDim2.new(1, x, 0.5, 0)
+                    b.Size = UDim2.new(0, 30, 0, 28)
+                    b.BackgroundColor3 = THEME.Btn
+                    b.Text = ""
+                    b.AutoButtonColor = false
+                    b.Parent = row
+                    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+                    local ic = Icon(b, kind, THEME[colorKey], 13)
+                    ic.AnchorPoint = Vector2.new(0.5, 0.5)
+                    ic.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    return b
+                end
+                -- roda esta macro agora (para testar sem precisar da tecla)
+                local run = IconBtn("play", "Success", -36)
+                run.MouseButton1Click:Connect(function()
+                    if not (m.cmd or ""):match("%S") then
+                        Toast("Escreva o comando da macro " .. i .. " antes", "warn", 2)
+                        return
+                    end
+                    M.Run(m)
+                end)
+                local del = IconBtn("trash", "Danger", 0)
+                del.MouseButton1Click:Connect(function()
+                    table.remove(List(), i)
+                    Log("Macro " .. i .. " apagada", "action")
+                    pcall(M.Render)
+                end)
+            end
+            bAdd.Visible = (#all < M.Max)
+        end
+
+        bAdd.MouseButton1Click:Connect(function()
+            local all = List()
+            if #all >= M.Max then
+                Toast("Limite de " .. M.Max .. " macros", "warn", 2)
+                return
+            end
+            table.insert(all, { cmd = "" })
+            pcall(M.Render)
+            Toast("Macro " .. #all .. " criada: escreva o comando e escolha a tecla", "ok", 3)
+        end)
+
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(M.Render) end)
+        M.Render()
+    end
+    Build()
+end
+end)
+V8.Mod("src/50_v8/14_diag.lua", 14584, 14796, function() --------------------------------------------------------------------------------
+-- v9.0 — DIAGNÓSTICO (Configurações › Sistema › Diagnóstico)
+-- Num lugar só: o que este executor suporta, quanto o boot demorou, qual
+-- módulo falhou (e em que linha do src/), memória, FPS/ping e os últimos
+-- erros do log. COPIAR RELATÓRIO manda tudo para o clipboard — é o que pedir
+-- para alguém quando "não funciona". Comando: diag.
+-- Só calcula quando a aba Ajustes abre ou no botão (sem loop).
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.Diag = {}
+        local D = V8.Diag
+
+        local function Fn(f) return typeof(f) == "function" end
+        local function Member(get)
+            local ok, v = pcall(get)
+            return ok and v ~= nil
+        end
+
+        D.Executor = function()
+            local name
+            pcall(function()
+                if Fn(identifyexecutor) then
+                    local a, b = identifyexecutor()
+                    name = tostring(a) .. ((b ~= nil) and (" " .. tostring(b)) or "")
+                elseif Fn(getexecutorname) then
+                    name = tostring(getexecutorname())
+                end
+            end)
+            return name or "não identificado"
+        end
+
+        -- { nome, tem?, para que serve }
+        D.Caps = function()
+            return {
+                { "request()",    V8.Net and V8.Net.Fn() ~= nil, "enviar no Chat HYGE, trocar de servidor" },
+                { "HttpGet",      Member(function() return game.HttpGet end), "ler catálogo e atualização" },
+                { "Arquivos",     V8.Disk and V8.Disk.Ok() or false, "config, perfis, tempo de jogo" },
+                { "Clipboard",    Fn(setclipboard), "copiar IDs, log e config" },
+                { "loadstring",   Fn(loadstring), "atualizar sem sair do jogo" },
+                { "gethui",       Fn(gethui), "GUI escondida do jogo" },
+                { "getgenv",      Fn(getgenv), "loader e atualização" },
+                { "GetObjects",   Member(function() return game.GetObjects end), "pacotes de animação" },
+            }
+        end
+
+        D.Lines = function()
+            local out = {}
+            local function add(s) table.insert(out, s) end
+            local mods, fails, total = 0, {}, 0
+            local slow = {}
+            for _, m in ipairs(V8.Mods) do
+                mods = mods + 1
+                total = total + (m.ms or 0)
+                if not m.ok then table.insert(fails, m) end
+                table.insert(slow, m)
+            end
+            table.sort(slow, function(a, b) return (a.ms or 0) > (b.ms or 0) end)
+
+            local build = (V8.Update and V8.Update.MyBuild ~= "" and V8.Update.MyBuild) or "?"
+            add("HYGE " .. CONFIG.Version .. "  ·  build " .. build
+                .. "  ·  " .. ((V8.Update and V8.Update.Loader) and "loader" or "colado direto"))
+            add("Executor: " .. D.Executor())
+            add("Jogo: PlaceId " .. tostring(game.PlaceId) .. "  ·  JobId "
+                .. (game.JobId ~= "" and game.JobId:sub(1, 8) .. "…" or "estúdio")
+                .. "  ·  " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers .. " jogadores")
+            add(string.format("Boot: %d ms  ·  %d módulos isolados (%d ms)  ·  %d falha(s)",
+                math.floor(V8.BootMs or 0), mods, math.floor(total + 0.5), #fails))
+            for _, m in ipairs(fails) do
+                add("  FALHOU " .. m.name .. ": " .. tostring(m.err))
+            end
+            if #slow > 0 then
+                local t = {}
+                for i = 1, math.min(3, #slow) do
+                    local nm = slow[i].name:gsub("^src/", ""):gsub("%.lua$", "")
+                    table.insert(t, nm .. " " .. math.floor(slow[i].ms + 0.5) .. " ms")
+                end
+                add("Mais lentos: " .. table.concat(t, ", "))
+            end
+
+            local lua = 0
+            pcall(function() lua = gcinfo() / 1024 end)
+            local mem = 0
+            pcall(function() mem = Stats:GetTotalMemoryUsageMb() end)
+            local ping = 0
+            pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 2000) end)
+            add(string.format("FPS %d  ·  ping %d ms  ·  memória Lua %.1f MB  ·  total %d MB",
+                State.Fps or 0, ping, lua, math.floor(mem)))
+
+            local conns, on = 0, 0
+            for _ in pairs(Conn) do conns = conns + 1 end
+            for _, id in ipairs(ToggleOrder) do if IsOn(id) then on = on + 1 end end
+            add("Conexões " .. conns .. "  ·  registry de tema " .. #Painted
+                .. "  ·  funções ligadas " .. on .. "/" .. #ToggleOrder
+                .. "  ·  Remotes " .. (select(1, V8.RemoteStatus())) .. "/" .. #V8.RemoteInfo)
+
+            local cfg = V8.Cfg and V8.Cfg.LoadState or nil
+            add("Config: " .. (V8.Cfg and V8.Cfg.Supported() and "em disco" or "sem disco")
+                .. (cfg and ("  ·  carregamento: " .. cfg) or "")
+                .. "  ·  salvar sozinho " .. (SET.AutoSave and "ligado" or "desligado")
+                .. ((V8.Prof and V8.Prof.Current) and ("  ·  perfil " .. V8.Prof.Current) or ""))
+
+            local caps = {}
+            for _, c in ipairs(D.Caps()) do
+                table.insert(caps, c[1] .. (c[2] and " sim" or " NÃO"))
+            end
+            add("Executor tem: " .. table.concat(caps, " · "))
+
+            if #V8.Errors > 0 then
+                add("Últimos erros (" .. #V8.Errors .. "):")
+                for i = math.max(1, #V8.Errors - 4), #V8.Errors do
+                    local e = V8.Errors[i]
+                    add("  [" .. e.time .. "] " .. e.msg)
+                end
+            else
+                add("Nenhum erro registrado nesta sessão.")
+            end
+            return out
+        end
+
+        ----------------------------------------------------------------------------
+        -- Ajustes › Diagnóstico
+        ----------------------------------------------------------------------------
+        local card = CreateCard(Tabs.Settings, "DIAGNÓSTICO", 19)
+        SubLabel(card, "O que o executor suporta, o boot e os erros recentes. Se algo "
+            .. "não funcionar, COPIAR RELATÓRIO e mande junto.", -1)
+
+        local capGrid = Grid(card, 2, 30)
+        capGrid.LayoutOrder = 1
+        local capCells = {}
+        for i, c in ipairs(D.Caps()) do
+            local cell = Instance.new("Frame")
+            cell.LayoutOrder = i
+            cell.BackgroundColor3 = THEME.Btn
+            cell.BorderSizePixel = 0
+            cell.Parent = capGrid
+            Paint(cell, "BackgroundColor3", "Btn")
+            Instance.new("UICorner", cell).CornerRadius = UDim.new(0, 8)
+            local dot = Instance.new("Frame")
+            dot.AnchorPoint = Vector2.new(0, 0.5)
+            dot.Position = UDim2.new(0, 10, 0.5, 0)
+            dot.Size = UDim2.new(0, 8, 0, 8)
+            dot.BorderSizePixel = 0
+            dot.Parent = cell
+            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+            local lbl = Instance.new("TextLabel")
+            lbl.Position = UDim2.new(0, 26, 0, 0)
+            lbl.Size = UDim2.new(1, -32, 1, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = c[1]
+            lbl.Font = Enum.Font.GothamBold
+            lbl.TextSize = 11
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+            lbl.TextTruncate = Enum.TextTruncate.AtEnd
+            lbl.Parent = cell
+            capCells[i] = { dot = dot, lbl = lbl }
+        end
+
+        local report = Instance.new("TextLabel")
+        report.Size = UDim2.new(1, 0, 0, 0)
+        report.AutomaticSize = Enum.AutomaticSize.Y
+        report.BackgroundTransparency = 1
+        report.Text = ""
+        report.TextColor3 = THEME.Dim
+        report.Font = Enum.Font.Code
+        report.TextSize = 11
+        report.TextWrapped = true
+        report.TextXAlignment = Enum.TextXAlignment.Left
+        report.TextYAlignment = Enum.TextYAlignment.Top
+        report.LayoutOrder = 2
+        report.Parent = card
+        Paint(report, "TextColor3", "Dim")
+
+        local g = Grid(card, 2, 32)
+        g.LayoutOrder = 3
+        local bRefresh = CreateButton(g, "ATUALIZAR", "Accent", 32)
+        bRefresh.LayoutOrder = 1
+        local bCopy = CreateButton(g, "COPIAR RELATÓRIO", "Success", 32)
+        bCopy.LayoutOrder = 2
+
+        D.Render = function()
+            for i, c in ipairs(D.Caps()) do
+                local cell = capCells[i]
+                if cell then
+                    cell.dot.BackgroundColor3 = c[2] and THEME.Success or THEME.Danger
+                    cell.lbl.TextColor3 = c[2] and THEME.Text or THEME.Dim
+                    cell.lbl.Text = c[1] .. (c[2] and "" or "  —  não tem")
+                end
+            end
+            report.Text = table.concat(D.Lines(), "\n")
+        end
+
+        D.Copy = function()
+            local text = "HYGE — diagnóstico (" .. os.date("%d/%m/%Y %H:%M") .. ")\n"
+                .. table.concat(D.Lines(), "\n")
+            if Fn(setclipboard) and pcall(setclipboard, text) then
+                Toast("Relatório copiado", "ok", 2)
+                return true
+            end
+            print(text)
+            Toast("Sem clipboard: o relatório foi para o console do Roblox (F9)", "warn", 3)
+            return false
+        end
+
+        bRefresh.MouseButton1Click:Connect(function() pcall(D.Render) end)
+        bCopy.MouseButton1Click:Connect(function() pcall(D.Render) D.Copy() end)
+        OnTabOpen("Settings", function() pcall(D.Render) end)
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(D.Render) end)
+    end
+    Build()
+end
+end)
+V8.Mod("src/50_v8/15_news.lua", 14798, 14996, function() --------------------------------------------------------------------------------
+-- v9.0 — NOVIDADES / BOAS-VINDAS
+-- Na primeira vez que uma versão nova abre, aparece um cartão com o que
+-- mudou. Quem nunca usou o HYGE (sem config salva) vê os primeiros passos.
+-- Aparece uma vez por versão (SET.SeenVersion, vai na config). Reabrir:
+-- comando 'novidades' ou Configurações › Sobre.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        V8.News = {}
+        local W = V8.News
+
+        -- já existia config ANTES deste boot? (decide boas-vindas x novidades)
+        W.HadConfig = false
+        pcall(function()
+            if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
+        end)
+
+        W.Items = {
+            { "grid",     "Ajustes organizados", "Categorias (Geral, Teclas, Visual, Dados, Sistema) e busca dentro de Configurações." },
+            { "star",     "Favoritos", "Estrela em qualquer função: ela vira uma ação rápida na Home." },
+            { "layers",   "Perfis", "Guarde o painel inteiro com um nome e deixe um perfil abrir sozinho em cada jogo." },
+            { "bell",     "Notificações", "Todo aviso fica no sino da ilha do topo. Tem modo Não perturbe." },
+            { "keyboard", "Macros", "Uma tecla roda qualquer comando (ex.: H = tp amigo)." },
+            { "sun",      "Temas", "Rosa, Laranja, Meia-noite e uma cor só sua." },
+            { "check",    "Salva sozinho", "A config vai para o disco a cada 30 s — sair do jogo não perde mais nada." },
+            { "shield",   "Mais estável", "Um módulo com erro não derruba o painel; o Diagnóstico mostra onde foi." },
+        }
+        -- função: as teclas podem ter mudado depois que a config carregou
+        W.Tips = function()
+            return {
+                { "home",     "Dock no rodapé", "Cada ícone abre uma seção. Clique de novo para fechar." },
+                { "keyboard", "Teclas", "[" .. KeyName(CONFIG.PanelKey) .. "] abre/fecha  ·  ["
+                    .. KeyName(CONFIG.ConsoleKey) .. "] comandos  ·  "
+                    .. (CONFIG.SearchCtrl and "Ctrl+" or "") .. KeyName(CONFIG.SearchKey) .. " busca tudo." },
+                { "star",     "Favoritos", "A estrela ao lado de cada função fixa ela na Home." },
+                { "gear",     "Do seu jeito", "Temas, teclas e perfis em Configurações." },
+            }
+        end
+
+        local overlay, box, titleLbl, subLbl, list
+
+        local function Row(parent, order, item)
+            local r = Instance.new("Frame")
+            r.Size = UDim2.new(1, 0, 0, 0)
+            r.AutomaticSize = Enum.AutomaticSize.Y
+            r.BackgroundTransparency = 1
+            r.LayoutOrder = order
+            r.Parent = parent
+            local pad = Instance.new("Frame")
+            pad.Size = UDim2.new(0, 30, 0, 30)
+            pad.BackgroundColor3 = THEME.Btn
+            pad.BorderSizePixel = 0
+            pad.Parent = r
+            Instance.new("UICorner", pad).CornerRadius = UDim.new(0, 9)
+            local ic = Icon(pad, item[1], THEME.Accent, 16)
+            ic.AnchorPoint = Vector2.new(0.5, 0.5)
+            ic.Position = UDim2.new(0.5, 0, 0.5, 0)
+            local t = Instance.new("TextLabel")
+            t.Position = UDim2.new(0, 42, 0, 0)
+            t.Size = UDim2.new(1, -42, 0, 16)
+            t.BackgroundTransparency = 1
+            t.Text = item[2]
+            t.TextColor3 = THEME.Text
+            t.Font = Enum.Font.GothamBold
+            t.TextSize = 13
+            t.TextXAlignment = Enum.TextXAlignment.Left
+            t.Parent = r
+            local d = Instance.new("TextLabel")
+            d.Position = UDim2.new(0, 42, 0, 17)
+            d.Size = UDim2.new(1, -42, 0, 0)
+            d.AutomaticSize = Enum.AutomaticSize.Y
+            d.BackgroundTransparency = 1
+            d.Text = item[3]
+            d.TextColor3 = THEME.Dim
+            d.Font = Enum.Font.GothamMedium
+            d.TextSize = 11
+            d.TextWrapped = true
+            d.TextXAlignment = Enum.TextXAlignment.Left
+            d.Parent = r
+        end
+
+        local function Create()
+            overlay = Instance.new("Frame")
+            overlay.Name = "News"
+            overlay.Size = UDim2.new(1, 0, 1, 0)
+            overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+            overlay.BackgroundTransparency = 0.4
+            overlay.Visible = false
+            overlay.ZIndex = 65
+            overlay.Parent = Gui
+
+            box = Instance.new("Frame")
+            box.AnchorPoint = Vector2.new(0.5, 0.5)
+            box.Position = UDim2.new(0.5, 0, 0.5, 0)
+            box.Size = UDim2.new(0, 430, 0, 470)
+            box.BackgroundColor3 = THEME.Card
+            box.BorderSizePixel = 0
+            box.Parent = overlay
+            Instance.new("UICorner", box).CornerRadius = UDim.new(0, 18)
+            local st = Instance.new("UIStroke", box)
+            st.Color = THEME.Line
+            st.Transparency = 0.1
+
+            titleLbl = Instance.new("TextLabel")
+            titleLbl.Position = UDim2.new(0, 22, 0, 18)
+            titleLbl.Size = UDim2.new(1, -44, 0, 26)
+            titleLbl.BackgroundTransparency = 1
+            titleLbl.TextColor3 = THEME.Text
+            titleLbl.Font = Enum.Font.GothamBold
+            titleLbl.TextSize = 21
+            titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            titleLbl.Parent = box
+
+            subLbl = Instance.new("TextLabel")
+            subLbl.Position = UDim2.new(0, 22, 0, 46)
+            subLbl.Size = UDim2.new(1, -44, 0, 16)
+            subLbl.BackgroundTransparency = 1
+            subLbl.TextColor3 = THEME.Dim
+            subLbl.Font = Enum.Font.GothamMedium
+            subLbl.TextSize = 12
+            subLbl.TextXAlignment = Enum.TextXAlignment.Left
+            subLbl.Parent = box
+
+            list = Instance.new("ScrollingFrame")
+            list.Position = UDim2.new(0, 22, 0, 76)
+            list.Size = UDim2.new(1, -36, 1, -140)
+            list.BackgroundTransparency = 1
+            list.BorderSizePixel = 0
+            list.ScrollBarThickness = 3
+            list.ScrollBarImageColor3 = THEME.Accent
+            list.CanvasSize = UDim2.new(0, 0, 0, 0)
+            list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            list.Parent = box
+            local l = Instance.new("UIListLayout", list)
+            l.Padding = UDim.new(0, 12)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+            local p = Instance.new("UIPadding", list)
+            p.PaddingRight = UDim.new(0, 10)
+
+            local ok = CreateButton(box, "BORA!", "Success", 38)
+            ok.AnchorPoint = Vector2.new(0.5, 1)
+            ok.Position = UDim2.new(0.5, 0, 1, -16)
+            ok.Size = UDim2.new(1, -44, 0, 38)
+            ok.TextSize = 14
+            ok.Font = Enum.Font.GothamBold
+            ok.MouseButton1Click:Connect(function() W.Close() end)
+        end
+
+        W.Close = function()
+            if overlay then overlay.Visible = false end
+        end
+
+        -- welcome = true: primeiros passos (quem nunca usou)
+        W.Show = function(welcome)
+            if not overlay then Create() end
+            for _, c in ipairs(list:GetChildren()) do
+                if c:IsA("Frame") then c:Destroy() end
+            end
+            -- cores do tema atual (o cartão não fica no registry: é efêmero)
+            box.BackgroundColor3 = THEME.Card
+            titleLbl.TextColor3 = THEME.Text
+            subLbl.TextColor3 = THEME.Dim
+            if welcome then
+                titleLbl.Text = "Bem-vindo ao HYGE " .. CONFIG.Version
+                subLbl.Text = "Quatro coisas para começar:"
+                for i, it in ipairs(W.Tips()) do Row(list, i, it) end
+            else
+                titleLbl.Text = "Novidades da " .. CONFIG.Version
+                subLbl.Text = "A maior atualização do HYGE até agora:"
+                for i, it in ipairs(W.Items) do Row(list, i, it) end
+            end
+            -- tela baixa (celular deitado): o cartão encolhe e a lista rola
+            local vp = Gui.AbsoluteSize
+            local h = 470
+            if vp.Y > 100 then h = math.clamp(vp.Y - 40, 260, 470) end
+            local w = 430
+            if vp.X > 100 then w = math.min(430, vp.X - 24) end
+            box.Size = UDim2.new(0, w, 0, h)
+            overlay.Visible = true
+        end
+
+        W.Boot = function()
+            if SET.SeenVersion == CONFIG.Version then return end
+            local welcome = not W.HadConfig
+            SET.SeenVersion = CONFIG.Version   -- o salvamento automático grava
+            task.delay(0.8, function() pcall(W.Show, welcome) end)
+        end
+
+        Conn.NewsKeys = UserInputService.InputBegan:Connect(function(input)
+            if overlay and overlay.Visible and (input.KeyCode == Enum.KeyCode.Escape
+                or input.KeyCode == Enum.KeyCode.Return) then
+                W.Close()
+            end
+        end)
+    end
+    Build()
+end
+end)
+V8.Mod("src/50_v8/19_settings_nav.lua", 14998, 15179, function() --------------------------------------------------------------------------------
+-- v9.0 — AJUSTES ORGANIZADOS (Configurações › Ajustes)
+-- A aba tinha ~20 cartões numa rolagem só. Agora, no topo:
+--   * categorias em pílula: Tudo · Geral · Teclas · Visual · Dados · Sistema
+--   * busca dentro dos ajustes (sem acento: "aparencia" acha "Aparência";
+--     procura no título E no texto de cada opção do cartão)
+-- Cada cartão vai para a categoria pelo título (tabela MAP abaixo) e a ordem
+-- dentro da aba passa a seguir as categorias. Cartão novo sem entrada no MAP
+-- cai em "Geral". A busca global (Ctrl+K) acha os cartões e abre filtrado.
+-- Entra DEPOIS de todos os módulos que criam cartões em Ajustes.
+-- Tudo dentro de Build(): zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+do
+    local function Build()
+        local tab = Tabs.Settings
+        if not tab then return end
+        V8.SetNav = { Cat = "all", Query = "", Cards = {} }
+        local N = V8.SetNav
+
+        N.Cats = {
+            { "all", "Tudo" }, { "geral", "Geral" }, { "teclas", "Teclas" },
+            { "visual", "Visual" }, { "dados", "Dados" }, { "sistema", "Sistema" },
+        }
+        -- título do cartão (V8.Fold: minúsculo, sem acento) -> { categoria, ordem }
+        local MAP = {
+            ["comportamento"]          = { "geral", 1 },
+            ["automatico"]             = { "geral", 2 },
+            ["presets"]                = { "geral", 3 },
+            ["celular e toque"]        = { "geral", 4 },
+            ["keybinds"]               = { "teclas", 1 },
+            ["macros de teclado"]      = { "teclas", 2 },
+            ["atalhos das situacoes"]  = { "teclas", 3 },
+            ["busca global"]           = { "teclas", 4 },
+            ["aparencia"]              = { "visual", 1 },
+            ["cor personalizada"]      = { "visual", 2 },
+            ["notificacoes"]           = { "visual", 3 },
+            ["navegacao"]              = { "visual", 4 },
+            ["ilha no topo"]           = { "visual", 5 },
+            ["perfis"]                 = { "dados", 1 },
+            ["configuracao em disco"]  = { "dados", 2 },
+            ["atualizacao"]            = { "sistema", 1 },
+            ["diagnostico"]            = { "sistema", 2 },
+            ["sistema"]                = { "sistema", 3 },
+            ["sobre"]                  = { "sistema", 4 },
+        }
+        local IDX = {}
+        for i, c in ipairs(N.Cats) do IDX[c[1]] = i end
+
+        for _, c in ipairs(tab:GetChildren()) do
+            if c:IsA("Frame") and c.Name == "Card" then
+                local t = CardTitleRef(c)
+                local title = t and t.Text or ""
+                local m = MAP[V8.Fold(title)] or { "geral", 50 }
+                c.LayoutOrder = IDX[m[1]] * 100 + m[2]
+                table.insert(N.Cards, { card = c, title = title, cat = m[1] })
+            end
+        end
+        table.sort(N.Cards, function(a, b) return a.card.LayoutOrder < b.card.LayoutOrder end)
+
+        ----------------------------------------------------------------------------
+        -- topo: pílulas + busca (rolam junto com a aba)
+        ----------------------------------------------------------------------------
+        local head = Instance.new("Frame")
+        head.Name = "SettingsNav"
+        head.Size = UDim2.new(1, 0, 0, 0)
+        head.AutomaticSize = Enum.AutomaticSize.Y
+        head.BackgroundTransparency = 1
+        head.LayoutOrder = -100
+        head.Parent = tab
+        do
+            local l = Instance.new("UIListLayout", head)
+            l.Padding = UDim.new(0, 8)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+
+        local chips = Instance.new("Frame")
+        chips.Size = UDim2.new(1, 0, 0, 28)
+        chips.BackgroundTransparency = 1
+        chips.LayoutOrder = 1
+        chips.Parent = head
+        do
+            local l = Instance.new("UIListLayout", chips)
+            l.FillDirection = Enum.FillDirection.Horizontal
+            l.Padding = UDim.new(0, 5)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+        end
+
+        local chipBtns = {}
+        local n = #N.Cats
+        for i, c in ipairs(N.Cats) do
+            local b = Instance.new("TextButton")
+            b.Size = UDim2.new(1 / n, -5 * (n - 1) / n, 1, 0)
+            b.BackgroundColor3 = THEME.Btn
+            b.Text = c[2]
+            b.TextColor3 = THEME.Text
+            b.Font = Enum.Font.GothamBold
+            b.TextSize = 11
+            b.AutoButtonColor = false
+            b.LayoutOrder = i
+            b.Parent = chips
+            Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+            chipBtns[c[1]] = b
+        end
+
+        local search = CreateInput(head, "buscar nos ajustes (tema, tecla, salvar...)", 32)
+        search.LayoutOrder = 2
+
+        local empty = SubLabel(tab, "", 9999)
+        empty.Visible = false
+
+        ----------------------------------------------------------------------------
+        -- filtro
+        ----------------------------------------------------------------------------
+        local function Haystack(card)
+            local parts = {}
+            for _, d in ipairs(card:GetDescendants()) do
+                if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
+                    table.insert(parts, d.Text)
+                end
+            end
+            return V8.Fold(table.concat(parts, " "))
+        end
+
+        local function PaintChips()
+            for id, b in pairs(chipBtns) do
+                local on = (id == N.Cat)
+                b.BackgroundColor3 = on and THEME.Accent or THEME.Btn
+                b.TextColor3 = on and THEME.Main or THEME.Text
+            end
+        end
+
+        N.Apply = function()
+            local q = V8.Fold(N.Query or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local shown = 0
+            for _, e in ipairs(N.Cards) do
+                local ok = (N.Cat == "all" or e.cat == N.Cat)
+                if ok and q ~= "" then
+                    ok = V8.Fold(e.title):find(q, 1, true) ~= nil
+                        or Haystack(e.card):find(q, 1, true) ~= nil
+                end
+                e.card.Visible = ok
+                if ok then shown = shown + 1 end
+            end
+            empty.Visible = (shown == 0)
+            empty.Text = (q ~= "") and ("Nada nos ajustes com \"" .. (N.Query or "") .. "\""
+                .. ((N.Cat ~= "all") and " nesta categoria — tente Tudo." or "."))
+                or "Nada nesta categoria."
+            PaintChips()
+        end
+
+        N.SetCat = function(cat)
+            if not IDX[cat] then cat = "all" end
+            N.Cat = cat
+            N.Apply()
+            tab.CanvasPosition = Vector2.new(0, 0)
+        end
+
+        for id, b in pairs(chipBtns) do
+            b.MouseButton1Click:Connect(function() N.SetCat(id) end)
+        end
+        search:GetPropertyChangedSignal("Text"):Connect(function()
+            N.Query = search.Text
+            pcall(N.Apply)
+        end)
+
+        -- busca global: abre Configurações › Ajustes mostrando só esse cartão
+        N.Focus = function(title)
+            N.Cat = "all"
+            search.Text = title or ""   -- dispara o filtro
+            N.Query = search.Text
+            N.Apply()
+            ShowTab("Settings")
+            if V8.IsOpen and not V8.IsOpen() and V8.SetOpen then V8.SetOpen(true) end
+            tab.CanvasPosition = Vector2.new(0, 0)
+        end
+
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, function() pcall(PaintChips) end)
+        N.Apply()
+    end
+    Build()
+end
+end)
 --------------------------------------------------------------------------------
 -- NAVEGAÇÃO, COMANDOS, ORB, SCHEDULER, RESPAWN, UNLOAD, BOOT
 --------------------------------------------------------------------------------
@@ -13165,7 +15213,7 @@ AddNav("Scripts", 11)
 AddNav("HyChat", 12)      -- v8.1
 AddNav("Chat", 13)
 
---------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/01_commands.lua", 15216, 15948, function() --------------------------------------------------------------------------------
 -- BARRA DE COMANDOS (histórico, autocomplete, aliases)
 --------------------------------------------------------------------------------
 do
@@ -13523,12 +15571,21 @@ do
         end
     end)
 
-    DefCmd("theme", "theme <Grafite|Azul|Roxo|Ciano|Verde|Vermelho>", "troca a paleta", function(args)
-        local n = args[1]
-        if not n then Log("uso: theme Grafite|Azul|Roxo|Ciano|Verde|Vermelho", "warn") return end
-        n = n:sub(1, 1):upper() .. n:sub(2):lower()
-        if not PALETTES[n] then Log("Tema inexistente: " .. n, "warn") return end
-        if ApplyTheme then ApplyTheme(n) end
+    DefCmd("theme", "theme <nome>", "troca a paleta (sem nome: lista)", function(args)
+        -- v9.0: lista vem de THEME_ORDER (+ Personalizado); aceita sem acento
+        local names = {}
+        for _, n in ipairs(THEME_ORDER) do table.insert(names, n) end
+        if PALETTES.Personalizado then table.insert(names, "Personalizado") end
+        local q = table.concat(args, " ")
+        if q == "" then Log("Temas: " .. table.concat(names, ", ")) return end
+        local want = V8.Fold(q)
+        for _, n in ipairs(names) do
+            if V8.Fold(n) == want or V8.Fold(n):sub(1, #want) == want then
+                if ApplyTheme then ApplyTheme(n) end
+                return
+            end
+        end
+        Log("Tema inexistente: " .. q .. " (temas: " .. table.concat(names, ", ") .. ")", "warn")
     end)
 
     DefCmd("preset", "preset <Default|Admin|Visual|Movement|Minimal>", "aplica um preset",
@@ -13696,6 +15753,81 @@ do
         if (args[1] or ""):lower() == "now" then V8.Update.Apply() else V8.Update.Check(true) end
     end)
 
+    ----------------------------------------------------------------------------
+    -- v9.0: favoritos, perfis, notificações, diagnóstico, novidades
+    ----------------------------------------------------------------------------
+    DefCmd("fav", "fav [função]", "fixa/tira uma função das ações rápidas (sem nome: lista)",
+        function(args)
+            if not V8.Fav then return end
+            local id = (args[1] or ""):lower()
+            if id == "" then
+                local names = {}
+                for _, x in ipairs(V8.Fav.List()) do
+                    table.insert(names, Toggles[x] and Toggles[x].label or x)
+                end
+                Log("Ações rápidas (" .. #names .. "): " .. (#names > 0 and table.concat(names, ", ") or "nenhuma"))
+                return
+            end
+            if not Toggles[id] then
+                Log("Função desconhecida: " .. id .. " (ids: " .. table.concat(ToggleOrder, ", ") .. ")", "warn")
+                return
+            end
+            V8.Fav.Toggle(id)
+        end)
+
+    DefCmd("perfil", "perfil list|save <nome>|use <nome>|del <nome>|jogo <nome|off>",
+        "perfis do painel (v9.0)", function(args)
+            local P = V8.Prof
+            if not P then Log("Perfis indisponíveis", "error") return end
+            local sub = (args[1] or "list"):lower()
+            local name = table.concat(args, " ", 2)
+            if sub == "list" or sub == "ls" then
+                if #P.Data.list == 0 then Log("Nenhum perfil. Use: perfil save <nome>", "warn") return end
+                for i, r in ipairs(P.Data.list) do
+                    Log(i .. ") " .. r.name .. ((P.Current == r.name) and "  ·  ativo" or "")
+                        .. ((P.HereName() == r.name) and "  ·  abre neste jogo" or ""))
+                end
+            elseif sub == "save" then
+                local ok, err = P.SaveAs(name ~= "" and name or (P.Current or ""))
+                if not ok then Log(tostring(err), "warn") end
+            elseif sub == "use" then
+                local ok, err = P.Use(name)
+                if not ok then Log(tostring(err), "warn") end
+            elseif sub == "del" or sub == "rm" then
+                local ok, err = P.Delete(name)
+                if not ok then Log(tostring(err), "warn") end
+            elseif sub == "jogo" or sub == "here" then
+                if name == "" or name:lower() == "off" then P.BindHere(nil)
+                else
+                    local ok, err = P.BindHere((P.Find(name) or {}).name or name)
+                    if not ok then Log(tostring(err), "warn") end
+                end
+            else
+                Log("uso: perfil list | save <nome> | use <nome> | del <nome> | jogo <nome|off>", "warn")
+            end
+        end, "profile")
+
+    DefCmd("notif", "notif [limpar|dnd]", "abre as notificações (ou limpa / não perturbe)", function(args)
+        local N = V8.Notif
+        if not N then return end
+        local a = (args[1] or ""):lower()
+        if a == "limpar" or a == "clear" then N.Clear() Log("Notificações limpas", "action")
+        elseif a == "dnd" then
+            N.SetDnd(not SET.Dnd)
+            Log("Não perturbe: " .. (SET.Dnd and "ligado" or "desligado"), "action")
+        else N.Open() end
+    end)
+
+    DefCmd("diag", "diag [copiar]", "diagnóstico: executor, boot, erros", function(args)
+        if not V8.Diag then return end
+        if (args[1] or ""):lower():find("^cop") then V8.Diag.Copy() return end
+        for _, l in ipairs(V8.Diag.Lines()) do Log(l) end
+    end)
+
+    DefCmd("novidades", "novidades", "mostra o que mudou nesta versão", function()
+        if V8.News then V8.News.Show(false) end
+    end, "news")
+
     DefCmd("center", "center", "traz a janela de volta para o centro da tela", function()
         if V8.Win then V8.Win.Center() end
     end)
@@ -13814,7 +15946,8 @@ do
     end)
 end
 
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/90_runtime/02_window_ctl.lua", 15950, 16166, function() --------------------------------------------------------------------------------
 -- ORB FLUTUANTE
 --------------------------------------------------------------------------------
 do
@@ -14031,7 +16164,8 @@ do
     end)
 end
 
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/90_runtime/03_input.lua", 16168, 16248, function() --------------------------------------------------------------------------------
 -- INPUT GLOBAL (teclas)
 --------------------------------------------------------------------------------
 -- v8.0: teclas que cada modo usa para se mover. Com o modo ligado, um atalho
@@ -14085,6 +16219,11 @@ Conn.Input = UserInputService.InputBegan:Connect(function(input, gpe)
     -- v8.0: busca global (Ctrl+K) e atalhos das situações (Keypad 1-6)
     if V8.Search and V8.Search.HandleKey(input) then return end
     if V8.Sit and V8.Sit.HandleKey(input) then return end
+    -- v9.0: macros (tecla -> comando), antes dos atalhos das funções
+    if V8.Macro then
+        local okM, handled = pcall(V8.Macro.HandleKey, input)
+        if okM and handled then return end
+    end
 
     for id, kc in pairs(Keybinds) do
         if kc == input.KeyCode then
@@ -14107,7 +16246,8 @@ Conn.Input = UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/90_runtime/04_scheduler.lua", 16250, 16356, function() --------------------------------------------------------------------------------
 -- SCHEDULER ÚNICO (um Heartbeat para todo o painel)
 --------------------------------------------------------------------------------
 do
@@ -14214,7 +16354,8 @@ do
     end)
 end
 
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/90_runtime/05_events.lua", 16358, 16464, function() --------------------------------------------------------------------------------
 -- RESPAWN: reaplica o que estava ligado (e avisa o que não deu)
 --------------------------------------------------------------------------------
 Conn.CharAdded = LocalPlayer.CharacterAdded:Connect(function(char)
@@ -14321,7 +16462,8 @@ if Remotes.Announce then
     end)
 end
 
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/90_runtime/06_unload.lua", 16466, 16518, function() --------------------------------------------------------------------------------
 -- UNLOAD (desfaz tudo)
 --------------------------------------------------------------------------------
 Unload = function()
@@ -14374,7 +16516,8 @@ Unload = function()
     print("[HYGE] painel descarregado.")
 end
 
---------------------------------------------------------------------------------
+end)
+V8.Mod("src/90_runtime/07_boot.lua", 16520, 16597, function() --------------------------------------------------------------------------------
 -- BOOT
 --------------------------------------------------------------------------------
 do
@@ -14396,6 +16539,8 @@ do
     BootStep("Config",        function() if V8.Cfg then V8.Cfg.Load(true) end end)
     -- v8.1: funções marcadas em Configurações › Automático (depois da config)
     BootStep("Automático",    function() if V8.Auto then V8.Auto.Run() end end)
+    -- v9.0: perfil marcado para este jogo (ganha da config e do Automático)
+    BootStep("Perfil do jogo", function() if V8.Prof then V8.Prof.Boot() end end)
     BootStep("Cosméticos",    function() if V8.Cos then V8.Cos.Apply() end end)
     -- v8.2: pacote salvo no personagem, missões/bônus diário, tela do celular
     -- e conferência de versão nova (todos depois da config carregada)
@@ -14404,10 +16549,29 @@ do
     BootStep("Celular",       function() if V8.Mobile then V8.Mobile.Fit() V8.Mobile.Render() end end)
     BootStep("Atualização",   function() if V8.Update then V8.Update.Boot() end end)
     BootStep("Voo",           function() if V8.FlyStyleRender then V8.FlyStyleRender() end end)
-    BootStep("Friends",       function() if V8.Dash then V8.Dash.Friends(true) end end)
+    -- v9.0: a lista de amigos é uma chamada web (espera a resposta): vai em
+    -- paralelo, o painel abre sem esperar por ela
+    BootStep("Friends",       function()
+        if V8.Dash then task.spawn(function() pcall(V8.Dash.Friends, true) end) end
+    end)
     BootStep("SetOpen",       function() SetOpen(true) end)
     -- v8.0: em tela baixa a janela "acima do dock" pode nascer cortada
     BootStep("Janela",        function() if V8.Win then task.defer(V8.Win.Clamp) end end)
+    -- v9.0: cartão de novidades (uma vez por versão)
+    BootStep("Novidades",     function() if V8.News then V8.News.Boot() end end)
+
+    -- v9.0: módulos que quebraram ao carregar (o resto do painel abriu)
+    local modFails = {}
+    for _, m in ipairs(V8.Mods) do
+        if not m.ok then
+            table.insert(modFails, (m.name:gsub("^src/", "")))
+            Log("Módulo " .. m.name .. " não carregou: " .. tostring(m.err), "error")
+        end
+    end
+    if #modFails > 0 then
+        table.insert(falhas, #modFails .. " módulo(s): " .. table.concat(modFails, ", "))
+    end
+    V8.BootMs = (os.clock() - (V8.BootT0 or os.clock())) * 1000
 
     -- garante que sempre existe um jeito de abrir, mesmo se algo acima falhar:
     -- o dock (padrão) ou, no modo sidebar, a bolinha H
@@ -14425,8 +16589,11 @@ do
         .. KeyName(CONFIG.SearchKey) .. "] busca global  •  [Keypad 1-6] situações", "ok")
     if #falhas > 0 then
         Log("Boot com falhas em: " .. table.concat(falhas, ", "), "error")
-        Toast("Boot parcial — veja o log", "error", 5)
+        Toast("Boot parcial — veja Configurações › Diagnóstico", "error", 5)
     else
+        Log(string.format("Boot em %d ms (%d módulos isolados)", math.floor(V8.BootMs), #V8.Mods), "ok")
         Toast("HYGE " .. CONFIG.Version .. " pronto — aperte " .. KeyName(CONFIG.PanelKey), "ok", 4)
     end
 end
+end)
+V8.SrcMap = { { "src/00_core/00_header.lua", 6, 81 }, { "src/00_core/01_config.lua", 82, 190 }, { "src/00_core/02_theme.lua", 191, 304 }, { "src/00_core/03_bootstrap.lua", 305, 370 }, { "src/00_core/04_state.lua", 371, 559 }, { "src/00_core/05_helpers.lua", 560, 601 }, { "src/10_ui/00_window.lua", 602, 650 }, { "src/10_ui/01_toasts.lua", 651, 794 }, { "src/10_ui/02_console.lua", 795, 1015 }, { "src/10_ui/03_topbar_sidebar.lua", 1016, 1161 }, { "src/10_ui/04_factory.lua", 1162, 1466 }, { "src/10_ui/05_toggles_keybinds.lua", 1467, 1779 }, { "src/20_features/00_fly.lua", 1780, 2208 }, { "src/20_features/01_character.lua", 2209, 2340 }, { "src/20_features/02_esp.lua", 2341, 2667 }, { "src/20_features/03_world.lua", 2668, 2739 }, { "src/20_features/04_freecam.lua", 2740, 2821 }, { "src/20_features/05_drone.lua", 2822, 2938 }, { "src/20_features/06_actions.lua", 2939, 3121 }, { "src/20_features/07_spectate.lua", 3122, 3171 }, { "src/20_features/08_spectate_hud.lua", 3172, 3246 }, { "src/20_features/09_body.lua", 3247, 3393 }, { "src/20_features/10_wallwalk.lua", 3394, 3674 }, { "src/20_features/11_clicktp.lua", 3675, 3729 }, { "src/30_kit/00_widgets.lua", 3730, 4186 }, { "src/30_kit/01_icons.lua", 4187, 4305 }, { "src/30_kit/02_topbar_chips.lua", 4306, 4386 }, { "src/30_kit/03_drone_hud.lua", 4387, 4775 }, { "src/30_kit/04_net.lua", 4776, 4890 }, { "src/30_kit/05_playtime.lua", 4891, 5374 }, { "src/30_kit/06_animpack.lua", 5375, 5900 }, { "src/40_tabs/00_home.lua", 5901, 6236 }, { "src/40_tabs/01_home_dashboard.lua", 6237, 6805 }, { "src/40_tabs/01_home_server.lua", 6806, 7080 }, { "src/40_tabs/02_movement.lua", 7081, 7414 }, { "src/40_tabs/02_movement_pack.lua", 7415, 7601 }, { "src/40_tabs/03_visuals.lua", 7602, 7696 }, { "src/40_tabs/04_players.lua", 7697, 7942 }, { "src/40_tabs/05_moderation.lua", 7943, 8135 }, { "src/40_tabs/06_server.lua", 8136, 8270 }, { "src/40_tabs/07_emotes.lua", 8271, 8864 }, { "src/40_tabs/08_settings.lua", 8865, 9289 }, { "src/40_tabs/09_shop.lua", 9290, 9614 }, { "src/40_tabs/10_scripts.lua", 9615, 9690 }, { "src/40_tabs/11_chat.lua", 9691, 9821 }, { "src/40_tabs/12_troll.lua", 9822, 10011 }, { "src/40_tabs/13_hychat.lua", 10012, 10393 }, { "src/50_v8/00_dock.lua", 10394, 10861 }, { "src/50_v8/01_shell.lua", 10862, 11251 }, { "src/50_v8/02_situations.lua", 11252, 11592 }, { "src/50_v8/03_persist.lua", 11593, 12112 }, { "src/50_v8/04_search.lua", 12113, 12572 }, { "src/50_v8/05_island.lua", 12573, 12708 }, { "src/50_v8/06_auto.lua", 12709, 12792 }, { "src/50_v8/07_mobile.lua", 12793, 13013 }, { "src/50_v8/08_quests.lua", 13014, 13279 }, { "src/50_v8/09_update.lua", 13280, 13501 }, { "src/50_v8/10_profiles.lua", 13502, 13834 }, { "src/50_v8/11_notify.lua", 13835, 14156 }, { "src/50_v8/12_colors.lua", 14157, 14320 }, { "src/50_v8/13_macros.lua", 14321, 14583 }, { "src/50_v8/14_diag.lua", 14584, 14797 }, { "src/50_v8/15_news.lua", 14798, 14997 }, { "src/50_v8/19_settings_nav.lua", 14998, 15180 }, { "src/90_runtime/00_status_nav.lua", 15181, 15215 }, { "src/90_runtime/01_commands.lua", 15216, 15949 }, { "src/90_runtime/02_window_ctl.lua", 15950, 16167 }, { "src/90_runtime/03_input.lua", 16168, 16249 }, { "src/90_runtime/04_scheduler.lua", 16250, 16357 }, { "src/90_runtime/05_events.lua", 16358, 16465 }, { "src/90_runtime/06_unload.lua", 16466, 16519 }, { "src/90_runtime/07_boot.lua", 16520, 16598 } }

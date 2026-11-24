@@ -325,6 +325,8 @@ do
                         for other, okc in pairs(S.Keys) do
                             if okc == kc and other ~= n then S.Keys[other] = nil end
                         end
+                        -- v9.0: situação ganha das macros no handler global
+                        if V8.Macro and V8.Macro.Release then pcall(V8.Macro.Release, kc) end
                         S.Keys[n] = kc
                         Log("Situação " .. n .. " = " .. KeyName(kc), "ok")
                     end

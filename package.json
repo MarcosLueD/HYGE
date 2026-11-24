@@ -1,6 +1,6 @@
 {
   "name": "hyge-panel",
-  "version": "8.2.0",
+  "version": "9.0.0",
   "private": true,
   "description": "HYGE Admin Panel — build (src/ -> main.lua) e validação estática",
   "scripts": {

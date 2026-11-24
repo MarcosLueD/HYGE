@@ -1,5 +1,80 @@
 # Changelog
 
+## v9.0
+
+A maior atualização até agora: o painel ficou mais organizado, mais seu e
+mais difícil de quebrar.
+
+### Configurações organizadas
+- **Categorias** no topo de Configurações › Ajustes: Tudo · Geral · Teclas ·
+  Visual · Dados · Sistema. Os ~20 cartões passam a seguir essa ordem.
+- **Busca dentro dos ajustes**, sem acento ("aparencia" acha "Aparência") e
+  olhando também o texto de cada opção do cartão.
+- A busca global (Ctrl+K) acha os cartões de ajuste (abre já filtrado) e os
+  perfis, e também ficou sem acento.
+
+### Favoritos
+- Toda linha de função ganhou uma **estrela**. As funções com estrela são as
+  **Ações rápidas** da Home (padrão: as 8 de antes; até 12). Comando `fav`.
+
+### Perfis
+- Configurações › Dados › **Perfis**: o painel inteiro salvo com um nome —
+  tema, tamanho, teclas, macros, velocidades, ESP, favoritos, ajustes e as
+  funções ligadas. **USAR** troca tudo de uma vez.
+- **JOGO**: o perfil abre sozinho toda vez que você entra neste jogo.
+- Ficam fora do perfil: waypoints (são por jogo), emotes favoritos, notas,
+  pacotes de animação e a posição da janela. Freecam e Drone nunca ligam
+  sozinhos. Arquivo próprio: `HYGE/profiles.json` (até 10 perfis).
+- Comando `perfil list | save <nome> | use <nome> | del <nome> | jogo <nome|off>`.
+
+### Notificações
+- Todo aviso fica guardado (os últimos 60) no **sino da ilha** do topo. O
+  número conta só o que pede atenção (avisos, erros, mensagens longas);
+  "Fly ativado" fica na lista mas não acende o sino. Repetido vira "x2".
+- **Não perturbe**: nada pula na tela (menos erro), tudo vai para o sino.
+- **Tempo dos avisos na tela**: 50% a 200%.
+- Comando `notif [limpar|dnd]`.
+
+### Macros de teclado
+- Configurações › Teclas › **Macros**: uma tecla roda qualquer comando da
+  barra (`tp joao`, `sit caça`, `theme rosa`...). Vários de uma vez com `&&`.
+  Até 12. O botão ▶ de cada linha testa sem precisar da tecla.
+- A tecla não pode ser de outra coisa; dar a tecla de uma macro para uma
+  função, situação ou para o painel tira a tecla da macro (com aviso). Com
+  Fly/Freecam/Drone/Walk on Walls ligados, as teclas de movimento não disparam
+  macro.
+
+### Temas
+- Três temas novos: **Rosa**, **Laranja** e **Meia-noite**.
+- **Cor personalizada**: escolha matiz e intensidade (com prévia); o fundo
+  ganha um leve tom da cor. Com o tema ativo, os sliders mudam ao vivo.
+  `theme personalizado`. O comando `theme` aceita nome sem acento e sem nome
+  lista os temas.
+
+### Estabilidade e diagnóstico
+- **Módulos isolados**: o build embrulha cada módulo em `V8.Mod(...)`. Se um
+  módulo quebrar ao carregar, só ele falha — o painel abre e o boot diz qual
+  foi e em que linha.
+- **Erros apontam para o `src/`**: o log troca `HYGE:12345:` por
+  `src/arquivo.lua:linha` (mapa `V8.SrcMap` no fim do `main.lua`).
+- Configurações › Sistema › **Diagnóstico**: o que o executor suporta
+  (request, HttpGet, arquivos, clipboard, loadstring, gethui, getgenv,
+  GetObjects), tempo de boot, módulos mais lentos, memória, conexões e os
+  últimos erros. **COPIAR RELATÓRIO**. Comando `diag [copiar]`.
+- **Config salva sozinha** a cada 30 s quando algo muda. Antes ela só ia para
+  o disco ao descarregar o painel — quem saía do jogo perdia o que tinha
+  mudado. Se o arquivo existir mas não der para ler, o automático não
+  sobrescreve até você salvar na mão.
+- A lista de amigos da Home (chamada web) carrega em paralelo: o painel abre
+  sem esperar por ela.
+
+### Outros
+- Cartão de **novidades** na primeira abertura de cada versão; quem nunca usou
+  vê os primeiros passos. Reabre em Configurações › Sobre ou `novidades`.
+- Locais no chunk principal: 187 → 168 (o isolamento tira as locais dos
+  blocos do chunk) — sobra espaço para as próximas versões.
+- `tools/check.js` conhece `identifyexecutor`, `getexecutorname` e `gcinfo`.
+
 ## v8.2
 
 ### Pacote de animação no personagem todo

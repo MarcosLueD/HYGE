@@ -80,6 +80,72 @@ V8.Job = function(interval, fn) table.insert(V8.Jobs, { interval, fn }) end
 -- v8.1: [aba] = fn — roda 1x/s só enquanto essa aba está visível
 V8.TabTick = {}
 
+-- v9.0: MÓDULOS ISOLADOS. O build embrulha cada módulo (que não declara
+-- 'local' no topo) em V8.Mod(nome, linha inicial, linha final, fn): se ele
+-- quebrar ao carregar, só ele falha e o boot conta qual foi e em que linha.
+V8.BootT0 = os.clock()
+V8.Mods = {}     -- { name, from, to, ms, ok, err }
+V8.Errors = {}   -- últimos erros do log (Diagnóstico)
+V8.Mod = function(name, from, to, fn)
+    local t0 = os.clock()
+    local ok, err = pcall(fn)
+    local rec = { name = name, from = from, to = to, ok = ok,
+                  ms = (os.clock() - t0) * 1000, err = (not ok) and tostring(err) or nil }
+    table.insert(V8.Mods, rec)
+    if not ok then
+        rec.err = V8.Where(rec.err)
+        warn("[HYGE] módulo " .. name .. " falhou ao carregar: " .. rec.err)
+    end
+end
+
+-- "HYGE:1234: msg" -> "src/arquivo.lua:12: msg" (linha do main.lua -> do src/).
+-- Usa o V8.SrcMap do fim do arquivo (todos os módulos) ou, durante o boot,
+-- as faixas dos módulos que já carregaram.
+V8.Where = function(msg)
+    msg = tostring(msg)
+    local function Map(line)
+        for _, m in ipairs(V8.SrcMap or {}) do
+            if line >= m[2] and line <= m[3] then return m[1] .. ":" .. (line - m[2] + 1) end
+        end
+        for _, m in ipairs(V8.Mods) do
+            if m.from and line >= m.from and line <= m.to then
+                return m.name .. ":" .. (line - m.from + 1)
+            end
+        end
+    end
+    local function Sub(n)
+        local w = Map(tonumber(n))
+        return w and (w .. ":") or nil   -- nil = deixa como estava
+    end
+    msg = msg:gsub('%[string "[^"]*"%]:(%d+):', Sub)
+    -- só nomes de chunk ("HYGE" do loader, "...Script" do executor): um
+    -- "velocidade:50:" qualquer no meio da mensagem não é linha de código
+    msg = msg:gsub("([%w_%.]+):(%d+):", function(p, n)
+        if p == "HYGE" or p:find("Script", 1, true) then return Sub(n) end
+        return nil
+    end)
+    return msg
+end
+
+-- v9.0: compara texto sem acento e sem caixa ("Aparência" ~ "aparencia").
+-- string.lower não conhece UTF-8: as letras acentuadas (2 bytes, 0xC3 ..)
+-- são trocadas pela letra sem acento.
+V8.Fold = function(s)
+    s = tostring(s or ""):lower()
+    return (s:gsub("\195[\128-\191]", function(c)
+        local b = c:byte(2)
+        if b >= 160 then b = b - 32 end   -- minúscula -> faixa da maiúscula
+        if b >= 128 and b <= 133 then return "a" end
+        if b == 135 then return "c" end
+        if b >= 136 and b <= 139 then return "e" end
+        if b >= 140 and b <= 143 then return "i" end
+        if b == 145 then return "n" end
+        if b >= 146 and b <= 150 then return "o" end
+        if b >= 153 and b <= 156 then return "u" end
+        return c
+    end))
+end
+
 local function Track(inst) table.insert(Bin, inst) return inst end
 local function Drop(name)
     if Conn[name] then Conn[name]:Disconnect() Conn[name] = nil end

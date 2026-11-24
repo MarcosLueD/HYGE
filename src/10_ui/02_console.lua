@@ -102,7 +102,18 @@ Log = function(msg, kind)
     -- v8.0: a opção "Registrar no console" existia mas nunca era lida.
     -- Desligada, só os ERROS continuam chegando no console.
     if SET.ShowLogs == false and kind ~= "error" then return end
-    local entry = { time = os.date("%H:%M:%S"), cat = kind, msg = tostring(msg) }
+    msg = tostring(msg)
+    -- v9.0: erro aponta para o src/ (não para a linha do main.lua) e fica
+    -- guardado para o Diagnóstico (Configurações › Sistema)
+    if kind == "error" then
+        if V8.Where then
+            local okW, w = pcall(V8.Where, msg)
+            if okW then msg = w end
+        end
+        table.insert(V8.Errors, { time = os.date("%H:%M:%S"), msg = msg })
+        while #V8.Errors > 20 do table.remove(V8.Errors, 1) end
+    end
+    local entry = { time = os.date("%H:%M:%S"), cat = kind, msg = msg }
     table.insert(LogEntries, entry)
     while #LogEntries > math.max(SET.MaxLog, 10) do table.remove(LogEntries, 1) end
     RenderLog(entry)

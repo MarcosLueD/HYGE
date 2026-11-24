@@ -1,4 +1,4 @@
-# HYGE Admin Panel v8.2
+# HYGE Admin Panel v9.0
 
 Painel admin client-side para Roblox (executor ou LocalScript) + script de
 servidor opcional para as ações que afetam outros jogadores.
@@ -20,7 +20,7 @@ faça commit e push do `main.lua`. O painel aberto confere a cada 15 minutos
 
 ```
 HYGE/
-├── loader.lua          ← v8.2: cole ESTE no executor (baixa o main.lua mais novo)
+├── loader.lua          ← cole ESTE no executor (baixa o main.lua mais novo)
 ├── main.lua            ← GERADO pelo build. É o arquivo que o loader baixa.
 ├── src/                ← código-fonte, dividido por assunto (edite aqui)
 │   ├── 00_core/        config, temas, checagem de admin, estado, helpers
@@ -35,7 +35,9 @@ HYGE/
 │   │                   players, moderation, server, emotes, settings, shop, scripts, chat,
 │   │                   troll, chat HYGE
 │   ├── 50_v8/          dock, shell, situações, persistência (config.json), busca global,
-│   │                   ilha, automático, celular, missões, atualização
+│   │                   ilha, automático, celular, missões, atualização; v9.0: perfis,
+│   │                   notificações, cor personalizada, macros, diagnóstico, novidades,
+│   │                   ajustes organizados (19_settings_nav: sempre o último)
 │   └── 90_runtime/     comandos, abrir/fechar/arrastar, teclas, scheduler, eventos, unload, boot
 ├── server/             ← opcional
 │   ├── HYGE_AdminServer.server.lua   (no SEU jogo: ServerScriptService)
@@ -69,10 +71,22 @@ O build **não grava** o `main.lua` se encontrar:
 - variável global desconhecida (quase sempre erro de digitação ou local fora
   de escopo) — no Roblox isso só explodiria em jogo
 - mais de **200 locais** no chunk principal (limite do Luau: o script nem
-  carrega). O painel está em ~187. Código novo vai dentro de `do ... end` ou
+  carrega). O painel está em ~168. Código novo vai dentro de `do ... end` ou
   pendurado na tabela `V8` — nunca como `local` solto no topo de um módulo.
   Os módulos da v8.1 usam `do local function Build() ... end Build() end`:
   as locais ficam dentro da função e não contam no chunk.
+
+**Módulos isolados (v9.0).** Todo módulo depois de `src/00_core/` que não
+declara `local` no topo vai embrulhado em
+`V8.Mod("src/arquivo.lua", ini, fim, function() ... end)` (na mesma linha da
+primeira linha do arquivo, então as linhas do `main.lua` continuam batendo com
+o `src/`). Se ele quebrar ao carregar, só ele falha: o painel abre, o boot
+avisa e Configurações › Sistema › Diagnóstico mostra
+`src/arquivo.lua:linha`. Módulo com `local` no topo (os de `00_core`, a
+fábrica de UI, as features base) continua solto — essas locais são
+compartilhadas com os módulos seguintes. O build mostra quantos foram
+isolados. No fim do `main.lua` vai `V8.SrcMap`, que o log usa para trocar
+`HYGE:12345:` por `src/arquivo.lua:linha` nos erros.
 
 Se o `main.lua` for editado à mão, o build se recusa a sobrescrever (para não
 apagar sua mudança). Leve a mudança para `src/` ou use `node build.js --force`.
@@ -123,6 +137,33 @@ No alto da tela fica a **ilha** (hora, FPS e ping; clique abre/fecha o painel)
 
 Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
 desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
+
+### O que a v9.0 trouxe
+
+- **Configurações organizadas**: categorias no topo (Tudo · Geral · Teclas ·
+  Visual · Dados · Sistema) e busca dentro dos ajustes, sem acento. A busca
+  global (Ctrl+K) também acha os ajustes e os perfis.
+- **Favoritos**: estrela em toda linha de função; as marcadas são as Ações
+  rápidas da Home (até 12). Comando `fav [função]`.
+- **Perfis** (Configurações › Dados): o painel inteiro salvo com um nome —
+  tema, teclas, macros, velocidades, ESP, favoritos, ajustes e funções ligadas.
+  **JOGO** faz o perfil abrir sozinho neste jogo. Em `HYGE/profiles.json`.
+  Comando `perfil list | save | use | del | jogo`.
+- **Notificações**: sino na ilha do topo com os últimos 60 avisos; o número
+  conta só o que pede atenção. **Não perturbe** e tempo dos avisos (50–200%).
+  Comando `notif [limpar|dnd]`.
+- **Macros de teclado** (Configurações › Teclas): tecla → qualquer comando da
+  barra, vários com `&&` (`fly on && flyspeed 150`).
+- **Temas** Rosa, Laranja, Meia-noite e **cor personalizada** (matiz +
+  intensidade, com prévia).
+- **Diagnóstico** (Configurações › Sistema): recursos do executor, boot,
+  módulos mais lentos, memória, últimos erros e COPIAR RELATÓRIO. Comando `diag`.
+- **Salva sozinho**: a config vai para o disco a cada 30 s quando algo muda
+  (antes, só ao descarregar o painel).
+- **Mais estável**: módulos isolados (veja "Gerar o main.lua"); a lista de
+  amigos não segura mais a abertura do painel.
+- Cartão de **novidades** na primeira abertura de cada versão (comando
+  `novidades` ou Configurações › Sobre).
 
 ### O que a v8.2 trouxe
 
@@ -224,6 +265,8 @@ Hospede onde quiser (VPS, Render, Railway, Fly.io — atrás de proxy use
 
 Tudo remapeável em **Ajustes**. Com freecam/drone/fly ligados, as teclas que
 eles usam para se mover (WASD, E/Q, Space, Ctrl, Shift) não disparam atalhos.
+v9.0: **Macros** (Configurações › Teclas) ligam qualquer tecla livre a um
+comando da barra.
 
 Janela perdida fora da tela: comando `center` ou **Ajustes › Sistema ›
 Centralizar janela**.
@@ -233,8 +276,12 @@ Centralizar janela**.
 `HYGE/config.json` (pasta do executor) guarda keybinds (inclusive a tecla do
 painel), tema, escala, velocidades e gravidade, opções de ESP, waypoints (v8.2:
 por jogo, em `wpplaces`), emotes favoritos, funções automáticas, endereço do
-Chat HYGE, a última situação, a posição da janela e (v8.2) os pacotes de
-animação já lidos. O tempo de jogo, os itens da Playtime Shop e o progresso das
+Chat HYGE, a última situação, a posição da janela, (v8.2) os pacotes de
+animação já lidos e (v9.0) favoritos, macros, cor personalizada, Não perturbe
+e a última versão vista. **v9.0: salva sozinho a cada 30 s quando algo muda**
+(com "Salvar automaticamente" ligado); se o arquivo existir mas estiver
+ilegível, o automático espera você salvar na mão. Os perfis ficam em
+`HYGE/profiles.json`. O tempo de jogo, os itens da Playtime Shop e o progresso das
 missões ficam à parte, em `HYGE/playtime.json`. Executor sem `writefile`/`readfile`: use
 **Exportar/Importar** pelo clipboard em Ajustes.
 

@@ -66,7 +66,12 @@ do
                        -- v8.1.1: animação do voo
                        "FlyStyle", "FlyTilt",
                        -- v8.2: pacotes de animação, botões na tela, atualização
-                       "Packs", "PackOn", "FlyPack", "TouchHud", "UpdateCheck" }
+                       "Packs", "PackOn", "FlyPack", "TouchHud", "UpdateCheck",
+                       -- v9.0: favoritos, notificações, cor própria, macros,
+                       -- tela de novidades
+                       "Favs", "Dnd", "ToastDur", "CustomHue", "CustomSat",
+                       "Macros", "SeenVersion" }
+    C.SetKeys = SET_KEYS   -- v9.0: os perfis usam a mesma lista
 
     -- v8.2: waypoints POR JOGO. State.Waypoints é sempre a lista do jogo
     -- atual; os dos outros jogos ficam aqui (como vieram do arquivo) e voltam
@@ -278,8 +283,10 @@ do
         if status then status.Text = msg end
     end
 
-    C.Save = function(silent)
+    -- quiet (v9.0, salvamento automático): não escreve no log, só no status
+    C.Save = function(silent, quiet)
         if not C.Supported() then
+            if quiet then return false end
             Say("Não salvei: este executor não expõe writefile/readfile "
                 .. "(use EXPORTAR e guarde o JSON à mão)", "error")
             if not silent then Toast("Executor sem API de arquivos — nada foi salvo", "error", 4) end
@@ -287,9 +294,10 @@ do
         end
         local json, err = Encode(C.Snapshot())
         if not json then
-            Say("Falha ao gerar o JSON: " .. tostring(err), "error")
+            if not quiet then Say("Falha ao gerar o JSON: " .. tostring(err), "error") end
             return false
         end
+        if quiet and json == C.LastJson then return true end   -- nada mudou
         local ok, werr = pcall(function()
             if typeof(makefolder) == "function" and typeof(isfolder) == "function" then
                 if not isfolder(C.Folder) then makefolder(C.Folder) end
@@ -299,14 +307,33 @@ do
             writefile(C.Path, json)
         end)
         if not ok then
+            if quiet then return false end
             Say("Falha ao escrever " .. C.Path .. ": " .. tostring(werr), "error")
             if not silent then Toast("Não deu para salvar a config", "error", 4) end
             return false
+        end
+        C.LastJson = json
+        C.LoadState = "ok"   -- salvou na mão depois de um erro: o automático volta
+        if quiet then
+            if status then status.Text = "Salvo sozinho às " .. os.date("%H:%M:%S")
+                .. " (" .. #json .. " bytes)" end
+            return true
         end
         Say("Config salva em " .. C.Path .. " (" .. #json .. " bytes)", "ok")
         if not silent then Toast("Config salva", "ok", 2) end
         return true
     end
+
+    -- v9.0: SALVAMENTO AUTOMÁTICO. Antes a config só ia para o disco no
+    -- Unload — quem saía do jogo sem descarregar o painel perdia o que mudou.
+    -- Agora, com "Salvar automaticamente" ligado, a cada 30 s grava se algo
+    -- mudou. Se o arquivo existia e NÃO deu para ler, não sobrescreve (para
+    -- não apagar uma config que só está com problema).
+    C.LoadState = nil   -- "ok" | "missing" | "error" (depois do boot)
+    V8.Job(30, function()
+        if not SET.AutoSave or C.LoadState == nil or C.LoadState == "error" then return end
+        pcall(C.Save, true, true)
+    end)
 
     C.Load = function(silent)
         if not C.Supported() then
@@ -321,24 +348,31 @@ do
         local exists = false
         pcall(function() exists = isfile(C.Path) end)
         if not exists then
+            C.LoadState = C.LoadState or "missing"
             if not silent then Say("Nenhuma config salva ainda em " .. C.Path, "warn") end
             return false
         end
         local ok, raw = pcall(function() return readfile(C.Path) end)
         if not ok or type(raw) ~= "string" then
+            C.LoadState = "error"
             Say("Falha ao ler " .. C.Path, "error")
             return false
         end
         local d, derr = Decode(raw)
         if not d then
-            Say("JSON inválido em " .. C.Path .. ": " .. tostring(derr), "error")
+            C.LoadState = "error"
+            Say("JSON inválido em " .. C.Path .. ": " .. tostring(derr)
+                .. " — o salvamento automático fica parado até você SALVAR AGORA", "error")
             return false
         end
-        local okR = pcall(C.Restore, d)
+        local okR, rerr = pcall(C.Restore, d)
         if not okR then
-            Say("Config lida, mas falhou ao aplicar", "error")
+            C.LoadState = "error"
+            Say("Config lida, mas falhou ao aplicar: " .. tostring(rerr), "error")
             return false
         end
+        C.LoadState = "ok"
+        C.LastJson = nil
         Say("Config carregada de " .. C.Path, "ok")
         if not silent then Toast("Config carregada", "ok", 2) end
 
@@ -451,8 +485,8 @@ do
             Confirm("Apagar " .. C.Path .. " e voltar tudo ao padrão?", function() C.Reset() end)
         end)
 
-        CheckRow(card, "Salvar automaticamente ao fechar",
-            "Grava a config no Unload (e ao descarregar pelo botão)",
+        CheckRow(card, "Salvar automaticamente",
+            "A cada 30 s, se algo mudou, e ao descarregar (v9.0)",
             function() return SET.AutoSave end,
             function(v) SET.AutoSave = v end, 2)
 

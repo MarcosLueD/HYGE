@@ -26,6 +26,7 @@ do
     pill.Visible = SET.Island ~= false
     pill.ZIndex = 20
     pill.Parent = Gui
+    I.Pill = pill   -- v9.0: o sino das notificações mora aqui (50_v8/11_notify.lua)
     Paint(pill, "BackgroundColor3", "Sidebar")
     Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 12)
     do

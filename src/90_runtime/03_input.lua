@@ -52,6 +52,11 @@ Conn.Input = UserInputService.InputBegan:Connect(function(input, gpe)
     -- v8.0: busca global (Ctrl+K) e atalhos das situações (Keypad 1-6)
     if V8.Search and V8.Search.HandleKey(input) then return end
     if V8.Sit and V8.Sit.HandleKey(input) then return end
+    -- v9.0: macros (tecla -> comando), antes dos atalhos das funções
+    if V8.Macro then
+        local okM, handled = pcall(V8.Macro.HandleKey, input)
+        if okM and handled then return end
+    end
 
     for id, kc in pairs(Keybinds) do
         if kc == input.KeyCode then

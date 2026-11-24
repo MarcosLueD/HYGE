@@ -29,6 +29,7 @@ const ALLOWED = new Set(`
   bit32 debug require _G shared
   gethui syn setclipboard writefile readfile isfile makefolder isfolder delfile
   request http_request http loadstring getgenv
+  identifyexecutor getexecutorname gcinfo
 `.split(/\s+/).filter(Boolean));
 
 function analyze(code) {
