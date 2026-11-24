@@ -17,6 +17,8 @@ Unload = function()
     for _, id in ipairs(ToggleOrder) do
         if IsOn(id) then pcall(Toggles[id].disable) end
     end
+    -- v9.0.1: Shift Lock do Roblox volta como o jogo deixou
+    pcall(function() if V8.ShiftLock then V8.ShiftLock.Stop() end end)
     pcall(StopSpectate)
     pcall(ClearEsp)
     pcall(function() Emote.Stop(true) end)
@@ -24,7 +26,10 @@ Unload = function()
     -- v8.2: animações originais de volta (SET.PackOn já foi salvo acima)
     pcall(function() if V8.Pack then V8.Pack.Restore() end end)
 
-    for name in pairs(Conn) do pcall(Drop, name) end
+    -- v9.1: Conn é um proxy — a lista de verdade fica em V8.Conns.live
+    local names = {}
+    for name in pairs(V8.Conns.live) do table.insert(names, name) end
+    for _, name in ipairs(names) do pcall(Drop, name) end
     for _, inst in ipairs(Bin) do pcall(function() inst:Destroy() end) end
 
     pcall(function()
@@ -48,6 +53,45 @@ Unload = function()
     State.SelectedPlayer = nil
     State.SpectateTarget = nil
 
+    -- v9.1: CONFERÊNCIA DO UNLOAD. Sobrou conexão? Tarefa agendada que ainda
+    -- vai rodar, ou rodando (esperando HTTP/wait)? Vai para o console e para
+    -- HYGE/unload.json (o Diagnóstico da próxima sessão mostra).
+    pcall(function()
+        local left = {}
+        for name in pairs(V8.Conns.live) do table.insert(left, name) end
+        local pending, running = V8.Pending(), V8.Tasks.running
+        local clean = (#left == 0 and running == 0)
+        local status = clean and "CLEAN" or "SOBROU"
+        local msg = string.format("[HYGE] Unload: %s — %d conexões criadas, %d encerradas, %d ativas"
+            .. "; tarefas: %d pendentes, %d rodando", status, V8.Conns.created, V8.Conns.closed,
+            #left, pending, running)
+        if clean then print(msg) else warn(msg .. (#left > 0 and (" (" .. table.concat(left, ", ") .. ")") or "")) end
+        if pending > 0 then
+            print("[HYGE] " .. pending .. " tarefa(s) agendada(s) ainda vão rodar (toasts/animações;"
+                .. " se alguma fizer algo, aparece como 'tarefa rodou depois do unload')")
+        end
+        V8.LastUnload = { status = status, created = V8.Conns.created, closed = V8.Conns.closed,
+            active = #left, left = left, pending = pending, running = running, time = os.time() }
+        if V8.Disk and V8.Disk.Ok() and V8.Net and V8.Net.Http then
+            V8.Disk.Write("HYGE/unload.json", V8.Net.Http:JSONEncode(V8.LastUnload))
+        end
+    end)
+    V8.Unloaded = true
+    -- a próxima instância não precisa mais chamar este Unload
+    pcall(function()
+        local env = (typeof(getgenv) == "function" and getgenv()) or _G
+        if env.HYGE_UNLOAD == Unload then env.HYGE_UNLOAD = nil end
+    end)
+
     print("[HYGE] painel descarregado.")
 end
+
+-- v9.1: rodar o script de novo SEM descarregar deixava a instância anterior
+-- viva (só a GUI dela era destruída: conexões, scheduler e teclas continuavam
+-- e as duas reagiam juntas). A próxima instância chama este Unload primeiro
+-- (00_core/03_bootstrap.lua).
+pcall(function()
+    local env = (typeof(getgenv) == "function" and getgenv()) or _G
+    env.HYGE_UNLOAD = Unload
+end)
 

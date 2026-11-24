@@ -50,6 +50,9 @@ do
         if ok and type(res) == "table" then return res end
         return nil, tostring(res)
     end
+    -- v9.1: o que a gravação segura (V8.Disk.SafeWrite) aceita como válido
+    local function JsonOk(s) return Decode(s) ~= nil end
+    C.JsonOk = JsonOk
 
     ----------------------------------------------------------------------------
     -- snapshot / restauração
@@ -70,7 +73,9 @@ do
                        -- v9.0: favoritos, notificações, cor própria, macros,
                        -- tela de novidades
                        "Favs", "Dnd", "ToastDur", "CustomHue", "CustomSat",
-                       "Macros", "SeenVersion" }
+                       "Macros", "SeenVersion",
+                       -- v9.0.1: bloqueio do Shift Lock do Roblox
+                       "NoShiftLock" }
     C.SetKeys = SET_KEYS   -- v9.0: os perfis usam a mesma lista
 
     -- v8.2: waypoints POR JOGO. State.Waypoints é sempre a lista do jogo
@@ -142,6 +147,15 @@ do
     C.Restore = function(d)
         if type(d) ~= "table" then return false end
         local ui = V8.UI or {}
+        -- v9.1: cada passo que falhar fica anotado (antes o pcall engolia e
+        -- ninguém sabia). A troca de perfil confere C.LastRestoreErrors.
+        local errs = {}
+        C.LastRestoreErrors = errs
+        local function Try(what, fn, ...)
+            local ok, err = pcall(fn, ...)
+            if not ok then table.insert(errs, what .. ": " .. tostring(err)) end
+            return ok
+        end
 
         -- comportamento / aparência
         if type(d.set) == "table" then
@@ -150,19 +164,19 @@ do
             end
             CONFIG.MaxLog = SET.MaxLog or CONFIG.MaxLog
         end
-        if d.theme and PALETTES[d.theme] and ApplyTheme then pcall(ApplyTheme, d.theme) end
-        if ui.scale and d.scale then pcall(ui.scale, d.scale) end
-        if ui.alpha and SET.Transparency then pcall(ui.alpha, math.floor(SET.Transparency * 100 + 0.5)) end
-        if ui.maxlog and SET.MaxLog then pcall(ui.maxlog, SET.MaxLog, true) end
-        if ui.compact then pcall(ui.compact, SET.Compact == true) end
+        if d.theme and PALETTES[d.theme] and ApplyTheme then Try("tema", ApplyTheme, d.theme) end
+        if ui.scale and d.scale then Try("tamanho", ui.scale, d.scale) end
+        if ui.alpha and SET.Transparency then Try("transparência", ui.alpha, math.floor(SET.Transparency * 100 + 0.5)) end
+        if ui.maxlog and SET.MaxLog then Try("log", ui.maxlog, SET.MaxLog, true) end
+        if ui.compact then Try("modo compacto", ui.compact, SET.Compact == true) end
         if ui.compactRender then pcall(ui.compactRender) end
         -- sidebar x dock: o render do switch é visual, o Apply é que troca o layout
-        if V8.Dock then pcall(V8.Dock.Apply, SET.Dock == true) end
+        if V8.Dock then Try("dock", V8.Dock.Apply, SET.Dock == true) end
         -- v8.0: posição da janela (validada e presa dentro da tela)
         if V8.Win and type(SET.WinPos) == "table" then pcall(V8.Win.Restore, SET.WinPos) end
         -- os 3 cards de status da Home (string "fly noclip esp")
         if type(SET.Slots) == "string" and V8.Dash and V8.Dash.SetSlots then
-            pcall(V8.Dash.SetSlots, SET.Slots, true)
+            Try("cards da Home", V8.Dash.SetSlots, SET.Slots, true)
             if V8.Dock and V8.Dock.SlotBox then
                 V8.Dock.SlotBox.Text = table.concat(V8.Dash.Slots, " ")
             end
@@ -181,16 +195,16 @@ do
 
         -- velocidades (pelos sliders reais, então a UI acompanha)
         if type(d.speeds) == "table" then
-            if d.speeds.walk and WalkSlider then pcall(WalkSlider, d.speeds.walk) end
-            if d.speeds.fly and FlySlider then pcall(FlySlider, d.speeds.fly) end
-            if d.speeds.jump and JumpSlider then pcall(JumpSlider, d.speeds.jump) end
-            if d.speeds.drone and DroneSpeedSlider then pcall(DroneSpeedSlider, d.speeds.drone) end
+            if d.speeds.walk and WalkSlider then Try("velocidade", WalkSlider, d.speeds.walk) end
+            if d.speeds.fly and FlySlider then Try("velocidade do Fly", FlySlider, d.speeds.fly) end
+            if d.speeds.jump and JumpSlider then Try("pulo", JumpSlider, d.speeds.jump) end
+            if d.speeds.drone and DroneSpeedSlider then Try("velocidade do Drone", DroneSpeedSlider, d.speeds.drone) end
             if d.speeds.wall then State.WallAlpha = d.speeds.wall end
-            if d.speeds.grav and V8.GravSlider then pcall(V8.GravSlider, d.speeds.grav) end
+            if d.speeds.grav and V8.GravSlider then Try("gravidade", V8.GravSlider, d.speeds.grav) end
         end
         -- v8.1.1: o slider mostra a inclinação salva (o valor já veio em SET)
         if type(SET.FlyTilt) == "number" and V8.FlyTiltSlider then
-            pcall(V8.FlyTiltSlider, SET.FlyTilt, true)
+            Try("inclinação do Fly", V8.FlyTiltSlider, SET.FlyTilt, true)
         end
 
         -- keybinds
@@ -298,14 +312,9 @@ do
             return false
         end
         if quiet and json == C.LastJson then return true end   -- nada mudou
-        local ok, werr = pcall(function()
-            if typeof(makefolder) == "function" and typeof(isfolder) == "function" then
-                if not isfolder(C.Folder) then makefolder(C.Folder) end
-            elseif typeof(makefolder) == "function" then
-                pcall(function() makefolder(C.Folder) end)
-            end
-            writefile(C.Path, json)
-        end)
+        -- v9.1: temporário conferido -> backup da anterior -> principal
+        -- conferido. Falhou em qualquer passo = a última config boa fica.
+        local ok, werr = V8.Disk.SafeWrite(C.Path, json, JsonOk)
         if not ok then
             if quiet then return false end
             Say("Falha ao escrever " .. C.Path .. ": " .. tostring(werr), "error")
@@ -345,26 +354,40 @@ do
             end
             return false
         end
-        local exists = false
-        pcall(function() exists = isfile(C.Path) end)
-        if not exists then
+        -- v9.1: lê pela gravação segura — se o principal não presta, ela diz
+        -- o que sobrou (.tmp de uma gravação interrompida ou o backup)
+        local r = V8.Disk.SafeRead(C.Path, JsonOk)
+        C.Recoverable = r.recover
+        if r.state == "missing" then
             C.LoadState = C.LoadState or "missing"
             if not silent then Say("Nenhuma config salva ainda em " .. C.Path, "warn") end
             return false
         end
-        local ok, raw = pcall(function() return readfile(C.Path) end)
-        if not ok or type(raw) ~= "string" then
+        if r.state == "corrupt" then
             C.LoadState = "error"
-            Say("Falha ao ler " .. C.Path, "error")
+            local why = (r.raw == nil) and "não deu para ler" or (r.raw == "" and "está vazio"
+                or ("JSON inválido: " .. tostring(select(2, Decode(r.raw)))))
+            if #r.recover > 0 then
+                Say(C.Path .. " " .. why .. ". Dá para recuperar: " .. r.recover[1].label
+                    .. " — Configuração em disco › RECUPERAR (o salvamento automático fica "
+                    .. "parado até lá)", "error")
+                if silent then
+                    -- no boot: pergunta (depois que a janela abrir)
+                    task.delay(1.5, function()
+                        pcall(Confirm, "A config salva (" .. C.Path .. ") " .. why
+                            .. ". Recuperar do " .. r.recover[1].label .. "?", function()
+                                C.RecoverNow(1)
+                            end)
+                    end)
+                    Toast("Config estragada — dá para recuperar do backup", "error", 5)
+                end
+            else
+                Say(C.Path .. " " .. why .. " e não há backup válido — o salvamento "
+                    .. "automático fica parado até você SALVAR AGORA", "error")
+            end
             return false
         end
-        local d, derr = Decode(raw)
-        if not d then
-            C.LoadState = "error"
-            Say("JSON inválido em " .. C.Path .. ": " .. tostring(derr)
-                .. " — o salvamento automático fica parado até você SALVAR AGORA", "error")
-            return false
-        end
+        local d = Decode(r.text)
         local okR, rerr = pcall(C.Restore, d)
         if not okR then
             C.LoadState = "error"
@@ -374,6 +397,10 @@ do
         C.LoadState = "ok"
         C.LastJson = nil
         Say("Config carregada de " .. C.Path, "ok")
+        if C.LastRestoreErrors and #C.LastRestoreErrors > 0 then
+            Log("Config: " .. #C.LastRestoreErrors .. " passo(s) não aplicaram — "
+                .. table.concat(C.LastRestoreErrors, "; "), "warn")
+        end
         if not silent then Toast("Config carregada", "ok", 2) end
 
         if SET.SitOnLoad and C.LastSituation and V8.Sit then
@@ -382,11 +409,46 @@ do
         return true
     end
 
+    -- v9.1: recuperação. Com o principal estragado, as opções são as que o
+    -- SafeRead achou; com ele bom, RECUPERAR volta para o backup (desfaz o
+    -- último salvamento ou um RESETAR). O estragado vai para .corrupt.json.
+    C.Candidates = function()
+        if not C.Supported() then return {} end
+        local r = V8.Disk.SafeRead(C.Path, JsonOk)
+        if r.state ~= "ok" then return r.recover end
+        local bak = V8.Disk.Paths(C.Path)
+        local s = V8.Disk.Read(bak)
+        if s and s ~= r.text and JsonOk(s) then
+            return { { path = bak, text = s, label = "backup (anterior)" } }
+        end
+        return {}
+    end
+
+    C.RecoverNow = function(i)
+        local list = C.Candidates()
+        local c = list[i or 1]
+        if not c then
+            Say("Nada para recuperar: não há backup válido de " .. C.Path, "warn")
+            return false
+        end
+        local ok, err = V8.Disk.Recover(C.Path, c.text, JsonOk)
+        if not ok then
+            Say("Não deu para recuperar: " .. tostring(err), "error")
+            return false
+        end
+        Log("Config recuperada do " .. c.label, "ok")
+        C.LoadState = nil
+        return C.Load(false)
+    end
+
     C.Reset = function()
         local removed = false
         if C.Supported() then
             pcall(function()
                 if isfile(C.Path) and typeof(delfile) == "function" then
+                    -- v9.1: a config apagada vira o backup (RECUPERAR desfaz)
+                    local cur = V8.Disk.Read(C.Path)
+                    if cur and JsonOk(cur) then V8.Disk.Write((V8.Disk.Paths(C.Path)), cur) end
                     delfile(C.Path)
                     removed = true
                 end
@@ -468,7 +530,7 @@ do
         table.insert(Painted, { inst = status, prop = "TextColor3",
             key = C.Supported() and "Success" or "Warning" })
 
-        local g1 = Grid(card, 3, 32)
+        local g1 = Grid(card, 2, 32)   -- v9.1: 4 botões (era 3 colunas)
         g1.LayoutOrder = 1
 
         local bSave = CreateButton(g1, "SALVAR AGORA", "Success", 32)
@@ -482,7 +544,22 @@ do
         local bReset = CreateButton(g1, "RESETAR", "Danger", 32)
         bReset.LayoutOrder = 3
         bReset.MouseButton1Click:Connect(function()
-            Confirm("Apagar " .. C.Path .. " e voltar tudo ao padrão?", function() C.Reset() end)
+            Confirm("Apagar " .. C.Path .. " e voltar tudo ao padrão? (RECUPERAR desfaz)",
+                function() C.Reset() end)
+        end)
+
+        -- v9.1: volta para o backup (config estragada, ou desfazer o último
+        -- salvamento / um RESETAR)
+        local bRec = CreateButton(g1, "RECUPERAR BACKUP", "Warning", 32)
+        bRec.LayoutOrder = 4
+        bRec.MouseButton1Click:Connect(function()
+            local c = C.Candidates()[1]
+            if not c then
+                Say("Nada para recuperar: não há backup válido de " .. C.Path, "warn")
+                return
+            end
+            Confirm("Trocar a config atual pelo " .. c.label .. " (" .. #c.text .. " bytes)?",
+                function() C.RecoverNow(1) end)
         end)
 
         CheckRow(card, "Salvar automaticamente",

@@ -1,7 +1,7 @@
 -- =============================================================================
--- HYGE v9.0 — ARQUIVO GERADO, NÃO EDITE AQUI.
+-- HYGE v9.1 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: bb1c704c9ddc
+-- build: c01b15b8b296
 -- =============================================================================
 --[[
 ================================================================================
@@ -97,7 +97,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v9.0",
+    Version   = "v9.1",
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -360,7 +360,19 @@ do
     end
 end
 
--- Evita duas instâncias abertas ao mesmo tempo (em qualquer um dos parents)
+-- Evita duas instâncias abertas ao mesmo tempo (em qualquer um dos parents).
+-- v9.1: antes de destruir a GUI, descarrega a instância anterior de verdade
+-- (conexões, scheduler, funções ligadas; a config dela é salva) — antes só a
+-- GUI sumia e o resto continuava rodando junto com o painel novo
+do
+    local env = (typeof(getgenv) == "function" and getgenv()) or _G
+    local prevUnload = env.HYGE_UNLOAD
+    if type(prevUnload) == "function" then
+        env.HYGE_UNLOAD = nil
+        local ok, err = pcall(prevUnload)
+        if not ok then warn("[HYGE] não deu para descarregar a instância anterior: " .. tostring(err)) end
+    end
+end
 for _, holder in ipairs({ GuiParent, PlayerGui }) do
     if holder then
         local prev = holder:FindFirstChild("HYGE_PANEL")
@@ -419,6 +431,7 @@ local State = {
         Transparency = 0,
         Compact      = false,
         EspAuto      = true,
+        NoShiftLock  = true,   -- v9.0.1: Shift não liga o Shift Lock do Roblox
     },
     CmdHistory = {},
 }
@@ -519,6 +532,124 @@ end
 local function Track(inst) table.insert(Bin, inst) return inst end
 local function Drop(name)
     if Conn[name] then Conn[name]:Disconnect() Conn[name] = nil end
+end
+
+-- [conns:begin] (tests/diag.test.js roda este bloco)
+--------------------------------------------------------------------------------
+-- v9.1: CONTABILIDADE DE CONEXÕES E TAREFAS (Configurações › Diagnóstico)
+-- Conn continua igual para quem usa (Conn.Nome = sinal:Connect(...) / Drop),
+-- mas por baixo cada conexão é contada — criadas, encerradas, ativas — e
+-- anotada com a linha de onde veio (vira src/arquivo.lua no relatório).
+-- Trocar Conn.Nome sem Drop agora DESCONECTA a antiga (antes ela ficava viva
+-- para sempre, sem ninguém com a referência) e conta como "reaproveitada".
+-- Para listar: V8.Conns.live (pairs(Conn) não enxerga nada: é um proxy).
+--------------------------------------------------------------------------------
+do
+    local info = (type(debug) == "table" and type(debug.info) == "function") and debug.info or nil
+    -- linhas da pilha de quem chamou (o relatório pula as deste arquivo)
+    V8.CallSite = function()
+        if not info then return nil end
+        local out = {}
+        for lv = 2, 7 do
+            local ok, l = pcall(info, lv, "l")
+            if ok and type(l) == "number" and l > 0 then table.insert(out, l) end
+        end
+        return out
+    end
+
+    V8.Conns = { live = {}, meta = {}, created = 0, closed = 0, replaced = 0, respawns = {} }
+    local S = V8.Conns
+    local function Close(c)
+        local ok, alive = pcall(function() return c.Connected end)
+        if ok and alive == false then return false end
+        pcall(function() c:Disconnect() end)
+        return true
+    end
+    setmetatable(Conn, {
+        __index = S.live,
+        __newindex = function(_, k, v)
+            local old = S.live[k]
+            if old ~= nil and old ~= v then
+                -- ainda conectada e trocada por outra = era vazamento
+                if Close(old) and v ~= nil then S.replaced = S.replaced + 1 end
+                S.closed = S.closed + 1
+            end
+            S.live[k] = v
+            if v == nil then
+                S.meta[k] = nil
+            elseif v ~= old then
+                S.created = S.created + 1
+                S.meta[k] = { lines = V8.CallSite(), at = os.clock() }
+            end
+        end,
+    })
+end
+
+-- Tarefas: o task do painel é este (o global continua intacto para o resto
+-- do jogo). delay/defer/spawn são contados; depois do Unload, tarefa que
+-- ainda rodar é anotada em V8.Tasks.late (é algo que "ficou vivo").
+V8.Tasks = { scheduled = 0, ran = 0, running = 0, late = {}, lateSeen = {} }
+V8.RawTask = task
+local task = setmetatable({}, { __index = task })
+do
+    local real, T = V8.RawTask, V8.Tasks
+    local function Late(site)
+        if not V8.Unloaded then return end
+        local key = site and table.concat(site, ",") or "?"
+        if T.lateSeen[key] then return end
+        T.lateSeen[key] = true
+        table.insert(T.late, site or {})
+        local where = (site and site[1] and V8.SrcOf) and V8.SrcOf(site) or "?"
+        warn("[HYGE] tarefa rodou depois do unload: " .. tostring(where))
+    end
+    -- delay/defer: conta ao agendar e ao rodar
+    local function Wrap(fn)
+        if type(fn) ~= "function" then return fn end
+        local site = V8.CallSite()
+        T.scheduled = T.scheduled + 1
+        return function(...)
+            T.ran = T.ran + 1
+            Late(site)
+            return fn(...)
+        end
+    end
+    task.delay = function(t, fn, ...) return real.delay(t, Wrap(fn), ...) end
+    task.defer = function(fn, ...) return real.defer(Wrap(fn), ...) end
+    -- spawn: conta quantas estão rodando agora (as que esperam HTTP, wait...)
+    task.spawn = function(fn, ...)
+        if type(fn) ~= "function" then return real.spawn(fn, ...) end
+        local site = V8.CallSite()
+        T.scheduled = T.scheduled + 1
+        return real.spawn(function(...)
+            T.ran = T.ran + 1
+            T.running = T.running + 1
+            Late(site)
+            local r = table.pack(pcall(fn, ...))
+            T.running = T.running - 1
+            if not r[1] then error(r[2], 0) end
+            return table.unpack(r, 2, r.n)
+        end, ...)
+    end
+end
+V8.Pending = function() return V8.Tasks.scheduled - V8.Tasks.ran end
+-- [conns:end]
+
+-- linha do main.lua -> "src/arquivo.lua:linha" (aceita a lista do CallSite:
+-- usa a primeira que não for deste arquivo)
+V8.SrcOf = function(lines)
+    if type(lines) == "number" then lines = { lines } end
+    if type(lines) ~= "table" then return nil end
+    local first
+    for _, l in ipairs(lines) do
+        for _, m in ipairs(V8.SrcMap or {}) do
+            if l >= m[2] and l <= m[3] then
+                local w = m[1] .. ":" .. (l - m[2] + 1)
+                if m[1] ~= "src/00_core/04_state.lua" then return w end
+                first = first or w
+            end
+        end
+    end
+    return first
 end
 
 -- v8.0: catálogo ÚNICO dos Remotes. Aba Server, Ajustes › Sobre, comando
@@ -648,7 +779,7 @@ winShadow.SliceCenter = Rect.new(49, 49, 450, 450)
 winShadow.ZIndex = -1
 winShadow.Parent = Window
 
-V8.Mod("src/10_ui/01_toasts.lua", 651, 793, function() --------------------------------------------------------------------------------
+V8.Mod("src/10_ui/01_toasts.lua", 782, 924, function() --------------------------------------------------------------------------------
 -- TOASTS  (ícone, categoria, barra de duração, fechar, limite de 4)
 --------------------------------------------------------------------------------
 do
@@ -792,7 +923,7 @@ end
 end
 
 end)
-V8.Mod("src/10_ui/02_console.lua", 795, 1014, function() --------------------------------------------------------------------------------
+V8.Mod("src/10_ui/02_console.lua", 926, 1145, function() --------------------------------------------------------------------------------
 -- CONSOLE / LOG  (categorias, filtro, limpar, copiar — incremental)
 --------------------------------------------------------------------------------
 do
@@ -1723,7 +1854,7 @@ local function KeybindRow(parent, id, labelText)
         btn.Text = "aperte..."
         Toast("Aperte uma tecla para " .. labelText .. " (Backspace remove)", nil, 3)
 
-        captureConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        captureConn = UserInputService.InputBegan:Connect(function(input, gpe) -- conn:ok StopCapture desconecta (o Unload chama)
             if capturing ~= id then return end
             if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
             local kc = input.KeyCode
@@ -3169,7 +3300,7 @@ local function CycleSpectate(dir)
     StartSpectate(list[idx])
 end
 
-V8.Mod("src/20_features/08_spectate_hud.lua", 3172, 3245, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/08_spectate_hud.lua", 3303, 3376, function() --------------------------------------------------------------------------------
 -- HUD DE SPECTATE (fora da janela, funciona com o painel fechado)
 --------------------------------------------------------------------------------
 do
@@ -3244,7 +3375,7 @@ do
     SpectateHud = hud
 end
 end)
-V8.Mod("src/20_features/09_body.lua", 3247, 3392, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/09_body.lua", 3378, 3523, function() --------------------------------------------------------------------------------
 -- v8.1 — ANTI-FALL e ANTI-GRAVIDADE (seção Personagem)
 --
 -- Anti-Fall, três camadas, tudo no SEU personagem:
@@ -3391,7 +3522,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/20_features/10_wallwalk.lua", 3394, 3673, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/10_wallwalk.lua", 3525, 3804, function() --------------------------------------------------------------------------------
 -- v8.1 — WALK ON WALLS (seção Troll)
 --
 -- O Humanoid só sabe andar com o "para cima" do mundo, então aqui o painel
@@ -3672,7 +3803,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/20_features/11_clicktp.lua", 3675, 3728, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/11_clicktp.lua", 3806, 3859, function() --------------------------------------------------------------------------------
 -- v8.2 — CTRL + CLIQUE TELEPORTA (Personagem › Movimento › Teleporte)
 -- Com a função ligada, Ctrl + clique esquerdo leva o personagem até o ponto do
 -- mapa embaixo do mouse. Clique em cima de GUI (painel, chat) não conta: o
@@ -3921,7 +4052,8 @@ local function SliderRow(parent, o)
     reset.MouseEnter:Connect(function() Anim(reset, 0.12, { TextColor3 = THEME.Accent }) end)
     reset.MouseLeave:Connect(function() Anim(reset, 0.12, { TextColor3 = THEME.Dim }) end)
 
-    local moveConn, endConn
+    -- v9.1: o arrasto vai para Conn (um slider por vez): se o painel
+    -- descarregar no meio do arrasto, o Unload desconecta
     bar.MouseButton1Down:Connect(function()
         local function fromInput(input)
             local rel = math.clamp((input.Position.X - bar.AbsolutePosition.X)
@@ -3929,19 +4061,19 @@ local function SliderRow(parent, o)
             apply(minV + rel * (maxV - minV))
         end
         Anim(knob, 0.1, { Size = UDim2.new(0, 18, 0, 18) })
-        if moveConn then moveConn:Disconnect() end
-        if endConn then endConn:Disconnect() end
-        moveConn = UserInputService.InputChanged:Connect(function(input)
+        Drop("SliderMove")
+        Drop("SliderEnd")
+        Conn.SliderMove = UserInputService.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement
                 or input.UserInputType == Enum.UserInputType.Touch then
                 fromInput(input)
             end
         end)
-        endConn = UserInputService.InputEnded:Connect(function(input)
+        Conn.SliderEnd = UserInputService.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
                 or input.UserInputType == Enum.UserInputType.Touch then
-                if moveConn then moveConn:Disconnect() moveConn = nil end
-                if endConn then endConn:Disconnect() endConn = nil end
+                Drop("SliderMove")
+                Drop("SliderEnd")
                 Anim(knob, 0.1, { Size = UDim2.new(0, 14, 0, 14) })
             end
         end)
@@ -4184,7 +4316,7 @@ local function TagChip(parent, text, colorKey)
     return c
 end
 
-V8.Mod("src/30_kit/01_icons.lua", 4187, 4304, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/01_icons.lua", 4319, 4436, function() --------------------------------------------------------------------------------
 -- ÍCONES VETORIAIS
 -- Sem asset: cada ícone é um punhado de Frames posicionados numa grade 24x24 e
 -- escalados. shape = { x, y, w, h, rot, corner, outline }
@@ -4303,7 +4435,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/02_topbar_chips.lua", 4306, 4385, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/02_topbar_chips.lua", 4438, 4517, function() --------------------------------------------------------------------------------
 -- CHIPS DA TOP BAR
 -- Substitui a linha de texto "FPS ... • PING ..." por chips com ícone.
 -- Reaproveita o mesmo Every(0.5) que já existia (nenhum loop novo): o scheduler
@@ -4384,7 +4516,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/03_drone_hud.lua", 4387, 4774, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/03_drone_hud.lua", 4519, 4906, function() --------------------------------------------------------------------------------
 -- DRONE HUD (overlay de câmera de drone)
 --
 -- Incremental: NÃO toca no movimento do drone. O toggle existente só chama
@@ -4773,7 +4905,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/04_net.lua", 4776, 4889, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/04_net.lua", 4908, 5137, function() --------------------------------------------------------------------------------
 -- v8.1 — REDE E DISCO (helpers do executor)
 --
 -- O Roblox não deixa LocalScript fazer HTTP. Executores expõem request()
@@ -4886,9 +5018,125 @@ do
         if ok then return true end
         return false, tostring(err)
     end
+
+    D.Exists = function(path)
+        if not D.Ok() then return false end
+        local ok, has = pcall(function() return isfile(path) end)
+        return ok and has == true
+    end
+
+    -- sem delfile no executor, o arquivo fica (quem lê sabe lidar)
+    D.Delete = function(path)
+        if typeof(delfile) ~= "function" then return false end
+        return (pcall(function() delfile(path) end))
+    end
+
+    ----------------------------------------------------------------------------
+    -- v9.1 — GRAVAÇÃO SEGURA (config.json, profiles.json)
+    -- Executor não tem "renomear", então não dá para trocar o arquivo de forma
+    -- atômica. A estratégia é nunca ficar sem uma cópia boa:
+    --   1. a versão nova vai inteira para <nome>.tmp e é conferida (relida)
+    --   2. a versão atual, SE for válida, vira <nome>.backup.json (conferida);
+    --      um principal estragado nunca apaga um backup bom
+    --   3. a versão nova vai para o principal (conferida)
+    --   4. o .tmp é apagado
+    -- Caiu no meio? Sempre sobra o principal válido, ou o .tmp (a nova
+    -- completa), ou o backup (a anterior). D.SafeRead acha qual.
+    -- check(text) diz se o conteúdo é válido (ex.: decodifica o JSON).
+    ----------------------------------------------------------------------------
+    D.Paths = function(path)
+        local base = path:gsub("%.json$", "")
+        return base .. ".backup.json", base .. ".tmp", base .. ".corrupt.json"
+    end
+
+    local function Valid(text, check)
+        if type(text) ~= "string" or text == "" then return false end
+        if not check then return true end
+        local ok, good = pcall(check, text)
+        return ok and good == true
+    end
+
+    -- releu igual? (ou, se o executor mexer em algo, continua válido e inteiro)
+    local function Verify(path, text, check)
+        local back = D.Read(path)
+        if back == text then return true end
+        return check ~= nil and back ~= nil and #back >= #text and Valid(back, check)
+    end
+
+    D.SafeWrite = function(path, text, check)
+        if not D.Ok() then return false, "executor sem writefile" end
+        if not Valid(text, check) then return false, "conteúdo inválido (nada foi gravado)" end
+        local bak, tmp, bad = D.Paths(path)
+
+        local ok, err = D.Write(tmp, text)
+        if not ok or not Verify(tmp, text, check) then
+            D.Delete(tmp)
+            return false, "não deu para gravar o temporário (" .. tostring(err or "conferência falhou")
+                .. ") — nada foi trocado"
+        end
+
+        local cur = D.Exists(path) and D.Read(path) or nil
+        if cur ~= nil and cur ~= text then
+            if Valid(cur, check) then
+                local okB = D.Write(bak, cur)
+                if not okB or not Verify(bak, cur, check) then
+                    D.Delete(tmp)
+                    return false, "não deu para criar o backup — nada foi trocado"
+                end
+            elseif cur ~= "" then
+                -- o principal já estava estragado: guarda para análise, não
+                -- vira backup (o backup bom que existir continua lá)
+                D.Write(bad, cur)
+            end
+        end
+
+        local okM, errM = D.Write(path, text)
+        if not okM or not Verify(path, text, check) then
+            return false, "falhou ao gravar " .. path .. " (" .. tostring(errM or "conferência falhou")
+                .. ") — a versão nova ficou em " .. tmp .. " e a anterior em " .. bak
+        end
+        D.Delete(tmp)
+        return true
+    end
+
+    -- Lê o principal e diz o que sobrou para recuperar.
+    -- Devolve { state = "ok"|"missing"|"corrupt", text = principal válido,
+    --           raw = principal como veio, recover = { {path, text, label} } }
+    -- recover só vem preenchido quando o principal não presta: o .tmp primeiro
+    -- (versão nova que não terminou de ir para o principal), depois o backup.
+    D.SafeRead = function(path, check)
+        local r = { state = "missing", recover = {} }
+        if not D.Ok() then return r end
+        local bak, tmp = D.Paths(path)
+        if D.Exists(path) then
+            r.raw = D.Read(path)
+            if Valid(r.raw, check) then
+                r.state, r.text = "ok", r.raw
+                -- .tmp que sobrou de uma gravação que terminou (ou executor
+                -- sem delfile): não serve para nada
+                if D.Exists(tmp) then D.Delete(tmp) end
+                return r
+            end
+            r.state = "corrupt"
+        end
+        for _, c in ipairs({ { tmp, "gravação interrompida (mais nova)" }, { bak, "backup (anterior)" } }) do
+            local s = D.Exists(c[1]) and D.Read(c[1]) or nil
+            if Valid(s, check) and s ~= r.raw then
+                table.insert(r.recover, { path = c[1], text = s, label = c[2] })
+            end
+        end
+        return r
+    end
+
+    -- troca o principal pela cópia escolhida (o SafeWrite guarda o estragado
+    -- em .corrupt.json antes)
+    D.Recover = function(path, text, check)
+        if not Valid(text, check) then return false, "a cópia escolhida não é válida" end
+        return D.SafeWrite(path, text, check)
+    end
 end
 end)
-V8.Mod("src/30_kit/05_playtime.lua", 4891, 5373, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/05_playtime.lua", 5139, 5636, function() --------------------------------------------------------------------------------
 -- v8.1 — TEMPO DE JOGO + COSMÉTICOS (base da Playtime Shop)
 --
 -- Moeda da loja = tempo com o HYGE aberto: 1 ponto por minuto. O total vai em
@@ -5059,23 +5307,38 @@ do
                     quests = P.Quests })
             end)
             if not ok then return false end
-            local wrote, err = V8.Disk.Write(P.Path, json)
+            -- v9.1: gravação segura (temporário + backup), igual à config
+            local wrote, err = V8.Disk.SafeWrite(P.Path, json, P.JsonOk)
             if not wrote and not silent then
                 Log("Playtime não foi salvo: " .. tostring(err), "error")
             end
             return wrote
         end
 
+        P.JsonOk = function(s)
+            local ok, d = pcall(function() return V8.Net.Http:JSONDecode(s) end)
+            return ok and type(d) == "table"
+        end
+
         P.Load = function()
-            local raw, why = V8.Disk.Read(P.Path)
+            -- v9.1: estragado -> volta do .tmp/backup (antes: começava do zero)
+            local r = V8.Disk.SafeRead(P.Path, P.JsonOk)
+            local raw = r.text
+            if r.state == "corrupt" and r.recover[1] then
+                raw = r.recover[1].text
+                V8.Disk.Recover(P.Path, raw, P.JsonOk)
+                Log("playtime.json estragado — recuperado do " .. r.recover[1].label, "warn")
+            end
             if not raw then
-                P.Status = V8.Disk.Ok() and "Primeira sessão: o contador começa agora."
-                    or "Executor sem writefile/readfile: o tempo desta sessão se perde ao sair."
-                return false, why
+                P.Status = (r.state == "corrupt")
+                    and "playtime.json ilegível e sem backup — começando do zero (o antigo fica em playtime.corrupt.json)."
+                    or (V8.Disk.Ok() and "Primeira sessão: o contador começa agora."
+                    or "Executor sem writefile/readfile: o tempo desta sessão se perde ao sair.")
+                return false, r.state
             end
             local ok, d = pcall(function() return V8.Net.Http:JSONDecode(raw) end)
             if not ok or type(d) ~= "table" then
-                P.Status = "playtime.json ilegível — começando do zero (o arquivo antigo será sobrescrito)."
+                P.Status = "playtime.json ilegível — começando do zero."
                 return false
             end
             local total = tonumber(d.total)
@@ -5372,7 +5635,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/30_kit/06_animpack.lua", 5375, 5899, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/06_animpack.lua", 5638, 6162, function() --------------------------------------------------------------------------------
 -- v8.2 — PACOTES DE ANIMAÇÃO (motor; a UI fica em 40_tabs/02_movement_pack.lua)
 --
 -- Um pacote (bundle) do catálogo é uma lista de itens: Idle, Walk, Run, Jump,
@@ -5898,7 +6161,265 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/00_home.lua", 5901, 6235, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/07_sha256.lua", 6164, 6257, function() --------------------------------------------------------------------------------
+-- v9.1 — SHA-256 (integridade da atualização)
+-- A atualização do painel (50_v8/09_update.lua) confere o main.lua baixado
+-- contra o manifest.json do repositório antes de trocar qualquer coisa.
+-- Lua puro + bit32 (FIPS 180-4): não depende de criptografia do executor.
+-- O bloco entre os marcadores é CÓPIA EXATA do que está no loader.lua — o
+-- tests/integrity.test.js confere as duas cópias e compara com o SHA-256 do
+-- Node. Mudou aqui, mude lá.
+--------------------------------------------------------------------------------
+do
+-- [sha256:begin]
+local Sha256
+do
+    local band, bxor, bnot = bit32.band, bit32.bxor, bit32.bnot
+    local rrotate, rshift = bit32.rrotate, bit32.rshift
+    local byte, char, rep, fmt = string.byte, string.char, string.rep, string.format
+    local MOD = 4294967296
+    local K = {
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    }
+    local function be32(n)
+        return char(band(rshift(n, 24), 255), band(rshift(n, 16), 255), band(rshift(n, 8), 255), band(n, 255))
+    end
+    -- hex minúsculo do SHA-256 dos bytes de msg
+    Sha256 = function(msg)
+        local len = #msg
+        local hi = math.floor(len * 8 / MOD)
+        local lo = len * 8 - hi * MOD
+        msg = msg .. "\128" .. rep("\0", (55 - len) % 64) .. be32(hi) .. be32(lo)
+        local H1, H2, H3, H4 = 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a
+        local H5, H6, H7, H8 = 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+        local w = {}
+        for i = 1, #msg, 64 do
+            for j = 1, 16 do
+                local p = i + (j - 1) * 4
+                local a, b, c, d = byte(msg, p, p + 3)
+                w[j] = ((a * 256 + b) * 256 + c) * 256 + d
+            end
+            for j = 17, 64 do
+                local x, y = w[j - 15], w[j - 2]
+                local s0 = bxor(rrotate(x, 7), rrotate(x, 18), rshift(x, 3))
+                local s1 = bxor(rrotate(y, 17), rrotate(y, 19), rshift(y, 10))
+                w[j] = (w[j - 16] + s0 + w[j - 7] + s1) % MOD
+            end
+            local a, b, c, d, e, f, g, h = H1, H2, H3, H4, H5, H6, H7, H8
+            for j = 1, 64 do
+                local S1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))
+                local ch = bxor(band(e, f), band(bnot(e), g))
+                local t1 = (h + S1 + ch + K[j] + w[j]) % MOD
+                local S0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))
+                local maj = bxor(band(a, b), band(a, c), band(b, c))
+                h, g, f, e = g, f, e, (d + t1) % MOD
+                d, c, b, a = c, b, a, (t1 + S0 + maj) % MOD
+            end
+            H1, H2, H3, H4 = (H1 + a) % MOD, (H2 + b) % MOD, (H3 + c) % MOD, (H4 + d) % MOD
+            H5, H6, H7, H8 = (H5 + e) % MOD, (H6 + f) % MOD, (H7 + g) % MOD, (H8 + h) % MOD
+        end
+        -- em metades de 16 bits: "%08x" com número >= 2^31 quebra em Lua de
+        -- inteiro 32 bits (e assim o mesmo código roda em qualquer Lua)
+        local out = {}
+        for i, v in ipairs({ H1, H2, H3, H4, H5, H6, H7, H8 }) do
+            out[i] = fmt("%04x%04x", math.floor(v / 65536), v % 65536)
+        end
+        return table.concat(out)
+    end
+end
+-- [sha256:end]
+    V8.Sha256 = Sha256
+
+    -- confere um main.lua baixado contra o manifest.json do repositório.
+    -- Devolve true ou false + motivo. O hash é do texto com quebras LF (o
+    -- GitHub serve LF; o build calcula igual).
+    V8.VerifyBuild = function(src, man)
+        if type(src) ~= "string" or #src == 0 then return false, "arquivo vazio" end
+        if type(man) ~= "table" or type(man.sha256) ~= "string" or type(man.size) ~= "number" then
+            return false, "manifesto inválido"
+        end
+        local lf = src:gsub("\r\n", "\n")
+        if #lf ~= man.size then
+            return false, "incompleto (" .. #lf .. " de " .. tostring(man.size) .. " bytes)"
+        end
+        if Sha256(lf) ~= man.sha256:lower() then return false, "SHA-256 não confere" end
+        local build = src:match("%-%- build: (%x+)")
+        if man.build and build ~= man.build then return false, "build diferente do manifesto" end
+        return true
+    end
+end
+end)
+V8.Mod("src/30_kit/08_profile_tx.lua", 6259, 6420, function() --------------------------------------------------------------------------------
+-- v9.1 — TROCA SEGURA DE PERFIL (usado por 50_v8/10_profiles.lua)
+-- Um perfil nunca deixa o painel pela metade:
+--   1. VALIDA tudo antes de mexer em qualquer coisa (tipos, números finitos,
+--      faixas). Inválido = nada muda.
+--   2. copia o estado atual
+--   3. aplica as PREFERÊNCIAS (aparência, teclas, ajustes, velocidades) e
+--      confere se terminou certo. Deu erro no meio = volta para a cópia.
+--   4. só então liga/desliga as FUNÇÕES (as que mexem no personagem). Freecam
+--      e Drone nunca ligam sozinhos. Função que não ligou (ex.: sem
+--      personagem) não desfaz as preferências: vai para o relatório.
+-- Sem UI aqui: tests/profiles.test.js roda este arquivo de verdade.
+--------------------------------------------------------------------------------
+do
+    V8.ProfTx = {}
+    local T = V8.ProfTx
+
+    local function finite(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
+    local SPEED_MAX = 100000
+
+    -- ctx = { setKeys = {k=true}, toggles = {id=true}, noauto = {id=true},
+    --         themes = {nome=true}, keyOk = function(nome) -> bool }
+    -- devolve ok, erros, avisos (avisos não impedem: o item é ignorado)
+    T.Validate = function(d, ctx)
+        local errs, warns = {}, {}
+        local function E(s) table.insert(errs, s) end
+        local function W(s) table.insert(warns, s) end
+        if type(d) ~= "table" then return false, { "o perfil não tem dados" }, warns end
+        ctx = ctx or {}
+        local keyOk = ctx.keyOk or function() return true end
+
+        if type(d.set) ~= "table" then E("faltam os ajustes (set)") end
+        if d.on ~= nil and type(d.on) ~= "table" then E("lista de funções (on) inválida") end
+
+        if type(d.set) == "table" then
+            for k, v in pairs(d.set) do
+                local t = type(v)
+                if type(k) ~= "string" then
+                    E("ajuste com nome inválido")
+                elseif t == "number" and not finite(v) then
+                    E("ajuste " .. k .. " não é um número válido")
+                elseif t ~= "boolean" and t ~= "number" and t ~= "string" and t ~= "table" then
+                    E("ajuste " .. k .. " tem tipo " .. t)
+                elseif ctx.setKeys and not ctx.setKeys[k] then
+                    W("ajuste desconhecido " .. k .. " (ignorado)")
+                end
+            end
+        end
+        for _, k in ipairs({ "esp", "keys", "sitkeys", "speeds" }) do
+            if d[k] ~= nil and type(d[k]) ~= "table" then E(k .. " inválido") end
+        end
+        if d.theme ~= nil then
+            if type(d.theme) ~= "string" then E("tema inválido")
+            elseif ctx.themes and not ctx.themes[d.theme] then W("tema " .. d.theme .. " não existe (ignorado)") end
+        end
+        if d.scale ~= nil and not (finite(d.scale) and d.scale >= 50 and d.scale <= 200) then
+            E("tamanho da GUI fora de 50–200%")
+        end
+        if type(d.speeds) == "table" then
+            for k, v in pairs(d.speeds) do
+                if not (finite(v) and v >= 0 and v <= SPEED_MAX) then E("velocidade " .. tostring(k) .. " inválida") end
+            end
+        end
+        if type(d.keys) == "table" then
+            for id, name in pairs(d.keys) do
+                if type(id) ~= "string" or type(name) ~= "string" then
+                    E("tecla com formato inválido")
+                elseif not keyOk(name) then
+                    W("tecla " .. name .. " não existe (ignorada)")
+                elseif ctx.toggles and not ctx.toggles[id] then
+                    W("tecla de função desconhecida " .. id .. " (ignorada)")
+                end
+            end
+        end
+        if type(d.sitkeys) == "table" then
+            for n, name in pairs(d.sitkeys) do
+                if type(n) ~= "string" or type(name) ~= "string" then E("atalho de situação inválido") end
+            end
+        end
+        for _, k in ipairs({ "panelkey", "consolekey", "searchkey" }) do
+            if d[k] ~= nil then
+                if type(d[k]) ~= "string" then E(k .. " inválido")
+                elseif not keyOk(d[k]) then W(k .. " " .. d[k] .. " não existe (ignorada)") end
+            end
+        end
+        if d.searchctrl ~= nil and type(d.searchctrl) ~= "boolean" then E("searchctrl inválido") end
+        if type(d.on) == "table" then
+            for _, id in ipairs(d.on) do
+                if type(id) ~= "string" then
+                    E("função com nome inválido")
+                elseif ctx.noauto and ctx.noauto[id] then
+                    W(id .. " nunca liga pelo perfil (ignorado)")
+                elseif ctx.toggles and not ctx.toggles[id] then
+                    W("função desconhecida " .. id .. " (ignorada)")
+                end
+            end
+        end
+        return #errs == 0, errs, warns
+    end
+
+    -- deps = { ctx, snapshot(), restore(d), verify(d) -> ok, motivo,
+    --          clear(chave) (apaga um ajuste na volta), order = {ids},
+    --          isOn(id), setToggle(id, on) }
+    -- devolve ok, relatório { applied, rolledBack, errors, warnings, failed }
+    T.Apply = function(d, deps)
+        local rep = { applied = false, rolledBack = false, errors = {}, warnings = {}, failed = {} }
+        local ok, errs, warns = T.Validate(d, deps.ctx)
+        rep.warnings = warns
+        if not ok then
+            rep.errors = errs
+            return false, rep
+        end
+
+        local okS, prev = pcall(deps.snapshot)
+        if not okS or type(prev) ~= "table" then
+            rep.errors = { "não deu para copiar o estado atual: " .. tostring(prev) }
+            return false, rep
+        end
+
+        local okA, errA = pcall(deps.restore, d)
+        local okV, whyV = okA, nil
+        if okA and deps.verify then
+            local okC, a, b = pcall(deps.verify, d)
+            if okC then okV, whyV = a, b else okV, whyV = false, a end
+        end
+        if not okA or not okV then
+            rep.errors = { okA and ("não terminou certo: " .. tostring(whyV))
+                or ("falhou ao aplicar: " .. tostring(errA)) }
+            local okB, errB = pcall(deps.restore, prev)
+            -- o restore só escreve o que está na cópia: ajuste que o perfil
+            -- criou (antes era nil) tem que ser apagado à parte
+            if okB and deps.clear and type(d.set) == "table" then
+                local had = type(prev.set) == "table" and prev.set or {}
+                for k in pairs(d.set) do
+                    if had[k] == nil then pcall(deps.clear, k) end
+                end
+            end
+            rep.rolledBack = okB
+            if not okB then
+                table.insert(rep.errors, "e a volta ao estado anterior também falhou: " .. tostring(errB))
+            end
+            return false, rep
+        end
+        rep.applied = true
+
+        if type(d.on) == "table" then
+            local want = {}
+            for _, id in ipairs(d.on) do want[id] = true end
+            local noauto = (deps.ctx and deps.ctx.noauto) or {}
+            for _, id in ipairs(deps.order or {}) do
+                if not noauto[id] then
+                    local w = want[id] == true
+                    if deps.isOn(id) ~= w then
+                        pcall(deps.setToggle, id, w)
+                        if deps.isOn(id) ~= w then table.insert(rep.failed, id) end
+                    end
+                end
+            end
+        end
+        return true, rep
+    end
+end
+end)
+V8.Mod("src/40_tabs/00_home.lua", 6422, 6756, function() --------------------------------------------------------------------------------
 -- ABA HOME (dashboard)
 --------------------------------------------------------------------------------
 do
@@ -6234,7 +6755,7 @@ do
     end)
 end
 end)
-V8.Mod("src/40_tabs/01_home_dashboard.lua", 6237, 6804, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/01_home_dashboard.lua", 6758, 7325, function() --------------------------------------------------------------------------------
 -- v8.0 — DASHBOARD DA HOME (header + relogio, tira de status, card do jogador
 -- com chat rapido e Friend Activity). Tudo pendurado em V8.Dash: zero locais
 -- novos no chunk principal. Entra DEPOIS de 40_tabs/00_home.lua no build.
@@ -6803,7 +7324,7 @@ do
     pcall(D.Tick)
 end
 end)
-V8.Mod("src/40_tabs/01_home_server.lua", 6806, 7079, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/01_home_server.lua", 7327, 7600, function() --------------------------------------------------------------------------------
 -- v8.1 — INÍCIO: MAPA ATUAL + PERFIL
 -- Mapa: nome do jogo, Place ID, Job ID e jogadores, com os botões rápidos
 -- REJOIN (volta para este servidor), TROCAR SERVIDOR (outro servidor público
@@ -7078,7 +7599,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/02_movement.lua", 7081, 7413, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/02_movement.lua", 7602, 7934, function() --------------------------------------------------------------------------------
 -- ABA MOVEMENT
 --------------------------------------------------------------------------------
 do
@@ -7412,7 +7933,7 @@ do
     RenderWaypoints()
 end
 end)
-V8.Mod("src/40_tabs/02_movement_pack.lua", 7415, 7600, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/02_movement_pack.lua", 7936, 8121, function() --------------------------------------------------------------------------------
 -- v8.2 — CARTÃO "PACOTE DE ANIMAÇÃO" (Personagem › Movimento)
 -- Cole o ID ou o link de um pacote do catálogo; o painel lê as animações dele
 -- (V8.Pack, 30_kit/06_animpack.lua) e guarda na lista. Em cada pacote:
@@ -7599,7 +8120,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/03_visuals.lua", 7602, 7695, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/03_visuals.lua", 8123, 8216, function() --------------------------------------------------------------------------------
 -- ABA VISUALS
 --------------------------------------------------------------------------------
 do
@@ -7694,7 +8215,7 @@ do
         .. "a TeamColor tem prioridade.", 10)
 end
 end)
-V8.Mod("src/40_tabs/04_players.lua", 7697, 7941, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/04_players.lua", 8218, 8462, function() --------------------------------------------------------------------------------
 -- ABA PLAYERS
 --------------------------------------------------------------------------------
 do
@@ -7940,7 +8461,7 @@ do
     RebuildPlayerRows()
 end
 end)
-V8.Mod("src/40_tabs/05_moderation.lua", 7943, 8134, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/05_moderation.lua", 8464, 8655, function() --------------------------------------------------------------------------------
 -- ABA MODERATION
 --------------------------------------------------------------------------------
 do
@@ -8133,7 +8654,7 @@ do
     UpdateSelectedInfo()
 end
 end)
-V8.Mod("src/40_tabs/06_server.lua", 8136, 8269, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/06_server.lua", 8657, 8790, function() --------------------------------------------------------------------------------
 -- ABA SERVER
 --------------------------------------------------------------------------------
 do
@@ -8268,7 +8789,7 @@ do
     UpdateServerInfo()
 end
 end)
-V8.Mod("src/40_tabs/07_emotes.lua", 8271, 8863, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/07_emotes.lua", 8792, 9384, function() --------------------------------------------------------------------------------
 -- ABA EMOTES (catálogo pesquisável + tocar por ID + favoritos)
 --
 -- Limitação do Roblox, não do painel: o Animator só carrega animação cujo
@@ -8862,7 +9383,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/08_settings.lua", 8865, 9288, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/08_settings.lua", 9386, 9819, function() --------------------------------------------------------------------------------
 -- ABA SETTINGS
 --------------------------------------------------------------------------------
 do
@@ -9108,8 +9629,17 @@ do
         function() return SET.EspAuto end,
         function(v) SET.EspAuto = v end, 4)
 
+    -- v9.0.1: o Shift do Roblox prendia o mouse no centro (Shift Lock) — e o
+    -- Fly usa o Shift para acelerar. Quem aplica é o V8.ShiftLock (03_input).
+    CheckRow(beh, "Bloquear Shift Lock do Roblox", "O Shift não prende mais o mouse no centro da tela",
+        function() return SET.NoShiftLock ~= false end,
+        function(v)
+            SET.NoShiftLock = v
+            if V8.ShiftLock then V8.ShiftLock.Sync() end
+        end, 5)
+
     local maxLogSet = SliderRow(beh, {
-        label = "Linhas guardadas no log", min = 20, max = 300, def = SET.MaxLog, order = 5,
+        label = "Linhas guardadas no log", min = 20, max = 300, def = SET.MaxLog, order = 6,
         apply = function(v)
             SET.MaxLog = v
             CONFIG.MaxLog = v
@@ -9236,6 +9766,7 @@ do
             SET.ShowLogs = true
             SET.Confirm = true
             SET.EspAuto = true
+            SET.NoShiftLock = true
             SET.MaxLog = 60
             CONFIG.MaxLog = 60
             ApplyCompact(false)
@@ -9287,7 +9818,7 @@ do
     end)
 end
 end)
-V8.Mod("src/40_tabs/09_shop.lua", 9290, 9613, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/09_shop.lua", 9821, 10144, function() --------------------------------------------------------------------------------
 -- v8.1 — PLAYTIME SHOP (ícone de sacola do dock)
 -- Loja do próprio painel paga com tempo de jogo: 1 ponto por minuto com o HYGE
 -- aberto (V8.Play, 30_kit/05_playtime.lua). Categorias: All, Ranks, Icons,
@@ -9612,7 +10143,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/10_scripts.lua", 9615, 9689, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/10_scripts.lua", 10146, 10220, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA SCRIPTS (ícone de terminal do dock)
 -- O console de log sai do rodapé da janela e passa a morar aqui, ocupando a
 -- aba inteira, com uma linha de comando embaixo (Enter executa, ↑/↓ histórico).
@@ -9688,7 +10219,7 @@ do
     if V8.CompactRow then V8.CompactRow.Visible = false end
 end
 end)
-V8.Mod("src/40_tabs/11_chat.lua", 9691, 9820, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/11_chat.lua", 10222, 10351, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA CHAT (balão do dock)
 -- Feed do chat DESTE servidor + enviar no chat do jogo + privado pelo Remote.
 -- Mostra só o que o seu cliente já recebe do Roblox: nenhuma mensagem é
@@ -9819,7 +10350,7 @@ do
     status.Text = "Nenhuma mensagem ainda   ·   " .. mode
 end
 end)
-V8.Mod("src/40_tabs/12_troll.lua", 9822, 10010, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/12_troll.lua", 10353, 10541, function() --------------------------------------------------------------------------------
 -- v8.1 — SEÇÃO TROLL (ícone de máscara do dock)
 -- * Walk on Walls (20_features/10_wallwalk.lua): roda no SEU personagem, então
 --   funciona em qualquer jogo — e os outros veem você andando na parede.
@@ -10009,7 +10540,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/13_hychat.lua", 10012, 10392, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/13_hychat.lua", 10543, 10923, function() --------------------------------------------------------------------------------
 -- v8.1 — CHAT HYGE (Chat › HYGE)
 -- Conversa entre quem usa o HYGE: sala "Este servidor" (mesmo JobId) e sala
 -- "Global" (todos os servidores). Dois clientes Roblox não falam direto um
@@ -10391,7 +10922,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/00_dock.lua", 10394, 10860, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/00_dock.lua", 10925, 11391, function() --------------------------------------------------------------------------------
 -- v8.0 — DOCK (navegação principal)
 -- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
 -- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
@@ -10859,7 +11390,7 @@ do
     K.Apply(SET.Dock)
 end
 end)
-V8.Mod("src/50_v8/01_shell.lua", 10862, 11250, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/01_shell.lua", 11393, 11781, function() --------------------------------------------------------------------------------
 -- v8.0 — SHELL (layout novo)
 -- NAO recria a janela: reconfigura as instancias que o engine ja criou.
 -- Dois modos, escolhidos por SET.Dock (Ajustes › Navegação):
@@ -11249,7 +11780,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/02_situations.lua", 11252, 11591, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/02_situations.lua", 11783, 12122, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — SISTEMA DE SITUAÇÕES
 -- Um clique troca o modo de operação inteiro: liga o que pertence à situação
 -- e DESLIGA o que não pertence. Cards no Dashboard + keybind por situação.
@@ -11590,7 +12121,7 @@ do
     S.Render()
 end
 end)
-V8.Mod("src/50_v8/03_persist.lua", 11593, 12111, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/03_persist.lua", 12124, 12719, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — PERSISTÊNCIA (HYGE/config.json)
 -- Salva/carrega keybinds, aparência, comportamento, velocidades, opções de ESP,
 -- waypoints, favoritos de emote, notas e a última situação.
@@ -11642,6 +12173,9 @@ do
         if ok and type(res) == "table" then return res end
         return nil, tostring(res)
     end
+    -- v9.1: o que a gravação segura (V8.Disk.SafeWrite) aceita como válido
+    local function JsonOk(s) return Decode(s) ~= nil end
+    C.JsonOk = JsonOk
 
     ----------------------------------------------------------------------------
     -- snapshot / restauração
@@ -11662,7 +12196,9 @@ do
                        -- v9.0: favoritos, notificações, cor própria, macros,
                        -- tela de novidades
                        "Favs", "Dnd", "ToastDur", "CustomHue", "CustomSat",
-                       "Macros", "SeenVersion" }
+                       "Macros", "SeenVersion",
+                       -- v9.0.1: bloqueio do Shift Lock do Roblox
+                       "NoShiftLock" }
     C.SetKeys = SET_KEYS   -- v9.0: os perfis usam a mesma lista
 
     -- v8.2: waypoints POR JOGO. State.Waypoints é sempre a lista do jogo
@@ -11734,6 +12270,15 @@ do
     C.Restore = function(d)
         if type(d) ~= "table" then return false end
         local ui = V8.UI or {}
+        -- v9.1: cada passo que falhar fica anotado (antes o pcall engolia e
+        -- ninguém sabia). A troca de perfil confere C.LastRestoreErrors.
+        local errs = {}
+        C.LastRestoreErrors = errs
+        local function Try(what, fn, ...)
+            local ok, err = pcall(fn, ...)
+            if not ok then table.insert(errs, what .. ": " .. tostring(err)) end
+            return ok
+        end
 
         -- comportamento / aparência
         if type(d.set) == "table" then
@@ -11742,19 +12287,19 @@ do
             end
             CONFIG.MaxLog = SET.MaxLog or CONFIG.MaxLog
         end
-        if d.theme and PALETTES[d.theme] and ApplyTheme then pcall(ApplyTheme, d.theme) end
-        if ui.scale and d.scale then pcall(ui.scale, d.scale) end
-        if ui.alpha and SET.Transparency then pcall(ui.alpha, math.floor(SET.Transparency * 100 + 0.5)) end
-        if ui.maxlog and SET.MaxLog then pcall(ui.maxlog, SET.MaxLog, true) end
-        if ui.compact then pcall(ui.compact, SET.Compact == true) end
+        if d.theme and PALETTES[d.theme] and ApplyTheme then Try("tema", ApplyTheme, d.theme) end
+        if ui.scale and d.scale then Try("tamanho", ui.scale, d.scale) end
+        if ui.alpha and SET.Transparency then Try("transparência", ui.alpha, math.floor(SET.Transparency * 100 + 0.5)) end
+        if ui.maxlog and SET.MaxLog then Try("log", ui.maxlog, SET.MaxLog, true) end
+        if ui.compact then Try("modo compacto", ui.compact, SET.Compact == true) end
         if ui.compactRender then pcall(ui.compactRender) end
         -- sidebar x dock: o render do switch é visual, o Apply é que troca o layout
-        if V8.Dock then pcall(V8.Dock.Apply, SET.Dock == true) end
+        if V8.Dock then Try("dock", V8.Dock.Apply, SET.Dock == true) end
         -- v8.0: posição da janela (validada e presa dentro da tela)
         if V8.Win and type(SET.WinPos) == "table" then pcall(V8.Win.Restore, SET.WinPos) end
         -- os 3 cards de status da Home (string "fly noclip esp")
         if type(SET.Slots) == "string" and V8.Dash and V8.Dash.SetSlots then
-            pcall(V8.Dash.SetSlots, SET.Slots, true)
+            Try("cards da Home", V8.Dash.SetSlots, SET.Slots, true)
             if V8.Dock and V8.Dock.SlotBox then
                 V8.Dock.SlotBox.Text = table.concat(V8.Dash.Slots, " ")
             end
@@ -11773,16 +12318,16 @@ do
 
         -- velocidades (pelos sliders reais, então a UI acompanha)
         if type(d.speeds) == "table" then
-            if d.speeds.walk and WalkSlider then pcall(WalkSlider, d.speeds.walk) end
-            if d.speeds.fly and FlySlider then pcall(FlySlider, d.speeds.fly) end
-            if d.speeds.jump and JumpSlider then pcall(JumpSlider, d.speeds.jump) end
-            if d.speeds.drone and DroneSpeedSlider then pcall(DroneSpeedSlider, d.speeds.drone) end
+            if d.speeds.walk and WalkSlider then Try("velocidade", WalkSlider, d.speeds.walk) end
+            if d.speeds.fly and FlySlider then Try("velocidade do Fly", FlySlider, d.speeds.fly) end
+            if d.speeds.jump and JumpSlider then Try("pulo", JumpSlider, d.speeds.jump) end
+            if d.speeds.drone and DroneSpeedSlider then Try("velocidade do Drone", DroneSpeedSlider, d.speeds.drone) end
             if d.speeds.wall then State.WallAlpha = d.speeds.wall end
-            if d.speeds.grav and V8.GravSlider then pcall(V8.GravSlider, d.speeds.grav) end
+            if d.speeds.grav and V8.GravSlider then Try("gravidade", V8.GravSlider, d.speeds.grav) end
         end
         -- v8.1.1: o slider mostra a inclinação salva (o valor já veio em SET)
         if type(SET.FlyTilt) == "number" and V8.FlyTiltSlider then
-            pcall(V8.FlyTiltSlider, SET.FlyTilt, true)
+            Try("inclinação do Fly", V8.FlyTiltSlider, SET.FlyTilt, true)
         end
 
         -- keybinds
@@ -11890,14 +12435,9 @@ do
             return false
         end
         if quiet and json == C.LastJson then return true end   -- nada mudou
-        local ok, werr = pcall(function()
-            if typeof(makefolder) == "function" and typeof(isfolder) == "function" then
-                if not isfolder(C.Folder) then makefolder(C.Folder) end
-            elseif typeof(makefolder) == "function" then
-                pcall(function() makefolder(C.Folder) end)
-            end
-            writefile(C.Path, json)
-        end)
+        -- v9.1: temporário conferido -> backup da anterior -> principal
+        -- conferido. Falhou em qualquer passo = a última config boa fica.
+        local ok, werr = V8.Disk.SafeWrite(C.Path, json, JsonOk)
         if not ok then
             if quiet then return false end
             Say("Falha ao escrever " .. C.Path .. ": " .. tostring(werr), "error")
@@ -11937,26 +12477,40 @@ do
             end
             return false
         end
-        local exists = false
-        pcall(function() exists = isfile(C.Path) end)
-        if not exists then
+        -- v9.1: lê pela gravação segura — se o principal não presta, ela diz
+        -- o que sobrou (.tmp de uma gravação interrompida ou o backup)
+        local r = V8.Disk.SafeRead(C.Path, JsonOk)
+        C.Recoverable = r.recover
+        if r.state == "missing" then
             C.LoadState = C.LoadState or "missing"
             if not silent then Say("Nenhuma config salva ainda em " .. C.Path, "warn") end
             return false
         end
-        local ok, raw = pcall(function() return readfile(C.Path) end)
-        if not ok or type(raw) ~= "string" then
+        if r.state == "corrupt" then
             C.LoadState = "error"
-            Say("Falha ao ler " .. C.Path, "error")
+            local why = (r.raw == nil) and "não deu para ler" or (r.raw == "" and "está vazio"
+                or ("JSON inválido: " .. tostring(select(2, Decode(r.raw)))))
+            if #r.recover > 0 then
+                Say(C.Path .. " " .. why .. ". Dá para recuperar: " .. r.recover[1].label
+                    .. " — Configuração em disco › RECUPERAR (o salvamento automático fica "
+                    .. "parado até lá)", "error")
+                if silent then
+                    -- no boot: pergunta (depois que a janela abrir)
+                    task.delay(1.5, function()
+                        pcall(Confirm, "A config salva (" .. C.Path .. ") " .. why
+                            .. ". Recuperar do " .. r.recover[1].label .. "?", function()
+                                C.RecoverNow(1)
+                            end)
+                    end)
+                    Toast("Config estragada — dá para recuperar do backup", "error", 5)
+                end
+            else
+                Say(C.Path .. " " .. why .. " e não há backup válido — o salvamento "
+                    .. "automático fica parado até você SALVAR AGORA", "error")
+            end
             return false
         end
-        local d, derr = Decode(raw)
-        if not d then
-            C.LoadState = "error"
-            Say("JSON inválido em " .. C.Path .. ": " .. tostring(derr)
-                .. " — o salvamento automático fica parado até você SALVAR AGORA", "error")
-            return false
-        end
+        local d = Decode(r.text)
         local okR, rerr = pcall(C.Restore, d)
         if not okR then
             C.LoadState = "error"
@@ -11966,6 +12520,10 @@ do
         C.LoadState = "ok"
         C.LastJson = nil
         Say("Config carregada de " .. C.Path, "ok")
+        if C.LastRestoreErrors and #C.LastRestoreErrors > 0 then
+            Log("Config: " .. #C.LastRestoreErrors .. " passo(s) não aplicaram — "
+                .. table.concat(C.LastRestoreErrors, "; "), "warn")
+        end
         if not silent then Toast("Config carregada", "ok", 2) end
 
         if SET.SitOnLoad and C.LastSituation and V8.Sit then
@@ -11974,11 +12532,46 @@ do
         return true
     end
 
+    -- v9.1: recuperação. Com o principal estragado, as opções são as que o
+    -- SafeRead achou; com ele bom, RECUPERAR volta para o backup (desfaz o
+    -- último salvamento ou um RESETAR). O estragado vai para .corrupt.json.
+    C.Candidates = function()
+        if not C.Supported() then return {} end
+        local r = V8.Disk.SafeRead(C.Path, JsonOk)
+        if r.state ~= "ok" then return r.recover end
+        local bak = V8.Disk.Paths(C.Path)
+        local s = V8.Disk.Read(bak)
+        if s and s ~= r.text and JsonOk(s) then
+            return { { path = bak, text = s, label = "backup (anterior)" } }
+        end
+        return {}
+    end
+
+    C.RecoverNow = function(i)
+        local list = C.Candidates()
+        local c = list[i or 1]
+        if not c then
+            Say("Nada para recuperar: não há backup válido de " .. C.Path, "warn")
+            return false
+        end
+        local ok, err = V8.Disk.Recover(C.Path, c.text, JsonOk)
+        if not ok then
+            Say("Não deu para recuperar: " .. tostring(err), "error")
+            return false
+        end
+        Log("Config recuperada do " .. c.label, "ok")
+        C.LoadState = nil
+        return C.Load(false)
+    end
+
     C.Reset = function()
         local removed = false
         if C.Supported() then
             pcall(function()
                 if isfile(C.Path) and typeof(delfile) == "function" then
+                    -- v9.1: a config apagada vira o backup (RECUPERAR desfaz)
+                    local cur = V8.Disk.Read(C.Path)
+                    if cur and JsonOk(cur) then V8.Disk.Write((V8.Disk.Paths(C.Path)), cur) end
                     delfile(C.Path)
                     removed = true
                 end
@@ -12060,7 +12653,7 @@ do
         table.insert(Painted, { inst = status, prop = "TextColor3",
             key = C.Supported() and "Success" or "Warning" })
 
-        local g1 = Grid(card, 3, 32)
+        local g1 = Grid(card, 2, 32)   -- v9.1: 4 botões (era 3 colunas)
         g1.LayoutOrder = 1
 
         local bSave = CreateButton(g1, "SALVAR AGORA", "Success", 32)
@@ -12074,7 +12667,22 @@ do
         local bReset = CreateButton(g1, "RESETAR", "Danger", 32)
         bReset.LayoutOrder = 3
         bReset.MouseButton1Click:Connect(function()
-            Confirm("Apagar " .. C.Path .. " e voltar tudo ao padrão?", function() C.Reset() end)
+            Confirm("Apagar " .. C.Path .. " e voltar tudo ao padrão? (RECUPERAR desfaz)",
+                function() C.Reset() end)
+        end)
+
+        -- v9.1: volta para o backup (config estragada, ou desfazer o último
+        -- salvamento / um RESETAR)
+        local bRec = CreateButton(g1, "RECUPERAR BACKUP", "Warning", 32)
+        bRec.LayoutOrder = 4
+        bRec.MouseButton1Click:Connect(function()
+            local c = C.Candidates()[1]
+            if not c then
+                Say("Nada para recuperar: não há backup válido de " .. C.Path, "warn")
+                return
+            end
+            Confirm("Trocar a config atual pelo " .. c.label .. " (" .. #c.text .. " bytes)?",
+                function() C.RecoverNow(1) end)
         end)
 
         CheckRow(card, "Salvar automaticamente",
@@ -12110,7 +12718,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/04_search.lua", 12113, 12571, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/04_search.lua", 12721, 13179, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — BUSCA GLOBAL (Ctrl+K)
 -- Overlay único que pesquisa situações, funções, jogadores, waypoints e
 -- comandos. Enter executa o item selecionado; ↑/↓ navegam; Esc fecha.
@@ -12570,7 +13178,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/05_island.lua", 12573, 12707, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/05_island.lua", 13181, 13315, function() --------------------------------------------------------------------------------
 -- v8.0 — ILHA NO TOPO DA TELA
 -- Pílula fixa no alto, centralizada: logo, hora, FPS e ping — à vista mesmo
 -- com o painel fechado. Clicar abre/fecha o painel.
@@ -12706,7 +13314,7 @@ do
     pcall(I.Update, State.Fps, nil)
 end
 end)
-V8.Mod("src/50_v8/06_auto.lua", 12709, 12791, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/06_auto.lua", 13317, 13399, function() --------------------------------------------------------------------------------
 -- v8.1 — RECURSOS AUTOMÁTICOS (Configurações › Ajustes › Automático)
 -- * escolha quais funções ligam sozinhas toda vez que o painel carrega
 --   (SET.Auto, vai na config em disco). O BootStep "Automático" roda depois do
@@ -12790,7 +13398,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/07_mobile.lua", 12793, 13012, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/07_mobile.lua", 13401, 13620, function() --------------------------------------------------------------------------------
 -- v8.2 — CELULAR (botões na tela + janela que cabe)
 -- * Botões na tela (SET.TouchHud; padrão: ligado em aparelho com toque):
 --   FLY liga/desliga o voo; com ele ligado aparecem SUBIR, DESCER e 2x.
@@ -13011,7 +13619,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/08_quests.lua", 13014, 13278, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/08_quests.lua", 13622, 13886, function() --------------------------------------------------------------------------------
 -- v8.2 — MISSÕES E BÔNUS DIÁRIO (Playtime Shop › Missões de hoje)
 -- Mais um jeito de ganhar pontos além do 1/minuto:
 --   * bônus diário: na primeira vez que o painel abre no dia. Dias seguidos
@@ -13277,7 +13885,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/09_update.lua", 13280, 13500, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/09_update.lua", 13888, 14147, function() --------------------------------------------------------------------------------
 -- v8.2 — ATUALIZAÇÃO (Configurações › Ajustes › Atualização)
 -- Confere se existe um main.lua mais novo no endereço de atualização:
 --   * aberto pelo loader.lua: o loader conta qual build ele rodou
@@ -13287,6 +13895,10 @@ V8.Mod("src/50_v8/09_update.lua", 13280, 13500, function() ---------------------
 --     (só avisa se o de lá for MAIOR)
 -- Achou: avisa (toast + log + este cartão). ATUALIZAR AGORA baixa, confere se
 -- compila, descarrega este painel e roda o novo — sem sair do jogo.
+-- v9.1: quem diz se há versão nova é o manifest.json (versão, build, tamanho
+-- e SHA-256). O arquivo baixado só é usado se bater com ele (V8.VerifyBuild,
+-- 30_kit/07_sha256.lua) — download cortado ou adulterado é recusado e nada
+-- é trocado.
 -- Precisa de HTTP no executor (request ou game:HttpGet) e, para atualizar sem
 -- sair, de loadstring. Nada é baixado sem a opção ligada ou o botão.
 -- Tudo dentro de Build(): zero locais novos no chunk principal.
@@ -13336,21 +13948,46 @@ do
             return false
         end
 
-        -- baixa o main.lua de lá: { src, version, build } ou nil + motivo
-        U.Fetch = function()
+        -- v9.1: o manifest.json fica ao lado do main.lua no repositório
+        U.ManUrl = function()
+            local L = U.Loader
+            if L and type(L.manifest) == "string" and L.manifest ~= "" then return L.manifest end
             local url = U.Url()
+            if url == "" then return "" end
+            return (url:gsub("[?#].*$", ""):gsub("[^/]+$", "manifest.json"))
+        end
+
+        local function Bust(url)
+            return url .. (url:find("?", 1, true) and "&" or "?") .. "t=" .. os.time()
+        end
+
+        -- manifesto de lá: { version, build, size, sha256 } ou nil + motivo
+        U.Manifest = function()
+            local url = U.ManUrl()
             if url == "" then return nil, "sem endereço de atualização (CONFIG.UpdateUrl)" end
-            if not (V8.Net and V8.Net.Request) then return nil, "sem HTTP" end
-            local sep = url:find("?", 1, true) and "&" or "?"
-            local ok, body, code = V8.Net.Request("GET", url .. sep .. "t=" .. os.time())
+            if not (V8.Net and V8.Net.Json) then return nil, "sem HTTP" end
+            local man, err = V8.Net.Json("GET", Bust(url))
+            if not man then return nil, "manifesto: " .. tostring(err) end
+            if type(man.sha256) ~= "string" or type(man.size) ~= "number" then
+                return nil, "manifesto sem SHA-256/tamanho"
+            end
+            return man
+        end
+
+        -- v9.1: baixa o main.lua e CONFERE com o manifesto (tamanho, SHA-256,
+        -- build). { src, version, build, man } ou nil + motivo. Sem manifesto
+        -- não há como conferir — e comparar versão não é conferir integridade.
+        U.Fetch = function()
+            local man, merr = U.Manifest()
+            if not man then return nil, merr end
+            local ok, body, code = V8.Net.Request("GET", Bust(U.Url()))
             if not ok then
                 return nil, (code and code > 0) and ("HTTP " .. code) or tostring(body)
             end
-            if type(body) ~= "string" or #body < 1000 or not body:find("-- build:", 1, true) then
-                return nil, "o arquivo baixado não é o main.lua do painel"
-            end
+            local good, why = V8.VerifyBuild(body, man)
+            if not good then return nil, "download recusado: " .. tostring(why) end
             return {
-                src = body,
+                src = body, man = man,
                 version = body:match('Version%s*=%s*"([^"]+)"'),
                 build = body:match("%-%- build: (%x+)"),
             }
@@ -13366,7 +14003,14 @@ do
             U.state, U.msg = "checking", "Conferindo..."
             if U.Render then pcall(U.Render) end
             task.spawn(function()
-                local info, why = U.Fetch()
+                -- v9.1: para saber se há versão nova basta o manifesto (pequeno)
+                local info, why
+                local man, merr = U.Manifest()
+                if man then
+                    info = { version = man.version, build = man.build, man = man }
+                else
+                    why = merr
+                end
                 if not info then
                     U.state, U.msg = "error", "Não deu para conferir: " .. tostring(why)
                     if manual then
@@ -13426,13 +14070,16 @@ do
                 -- o painel novo fica sabendo de onde veio e qual build é
                 pcall(function()
                     local env = Env()
-                    env.HYGE_LOADER = { url = U.Url(), build = info.build, from = "atualização" }
+                    env.HYGE_LOADER = { url = U.Url(), manifest = U.ManUrl(), build = info.build,
+                        from = "atualização", sha256 = info.man and info.man.sha256, verified = true }
                 end)
                 Log("Atualizando para HYGE " .. tostring(info.version or "?") .. "...", "action")
                 Toast("Atualizando o HYGE...", "ok", 2)
                 task.wait(0.4)
                 pcall(Unload)
-                task.defer(function()
+                -- task do Roblox direto: esta é a ÚNICA tarefa que deve rodar
+                -- depois do unload (o task do painel anotaria como "ficou vivo")
+                V8.RawTask.defer(function()
                     local ok, e = pcall(fn)
                     if not ok then warn("[HYGE] a versão nova falhou ao iniciar: " .. tostring(e)) end
                 end)
@@ -13499,7 +14146,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/10_profiles.lua", 13502, 13833, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/10_profiles.lua", 14149, 14587, function() --------------------------------------------------------------------------------
 -- v9.0 — PERFIS (Configurações › Dados › Perfis)
 -- Um perfil é o painel inteiro guardado com um nome: tema, tamanho, teclas,
 -- macros, velocidades, opções de ESP, favoritos, ajustes e as funções que
@@ -13530,16 +14177,13 @@ do
         -- disco
         ----------------------------------------------------------------------------
         local function CanDisk() return V8.Disk and V8.Disk.Ok() and Http ~= nil end
+        local function JsonOk(s)
+            local ok, d = pcall(function() return Http:JSONDecode(s) end)
+            return ok and type(d) == "table"
+        end
 
-        local function Load()
-            if not CanDisk() then return end
-            local raw = V8.Disk.Read(P.Path)
-            if not raw then return end
-            local ok, d = pcall(function() return Http:JSONDecode(raw) end)
-            if not ok or type(d) ~= "table" then
-                Log("Perfis: " .. P.Path .. " ilegível — a lista começa vazia", "warn")
-                return
-            end
+        local function Parse(text)
+            local d = Http:JSONDecode(text)
             local list = {}
             if type(d.list) == "table" then
                 for _, r in ipairs(d.list) do
@@ -13552,11 +14196,64 @@ do
             P.Data.places = type(d.places) == "table" and d.places or {}
         end
 
+        -- v9.1: leitura segura. Arquivo estragado: os perfis voltam sozinhos do
+        -- .tmp/backup (lista vazia + o próximo salvamento apagaria tudo); o
+        -- estragado fica em profiles.corrupt.json
+        local function Load()
+            if not CanDisk() then return end
+            local r = V8.Disk.SafeRead(P.Path, JsonOk)
+            if r.state == "missing" then return end
+            local text = r.text
+            if r.state == "corrupt" then
+                local c = r.recover[1]
+                if not c then
+                    Log("Perfis: " .. P.Path .. " estragado e sem backup — a lista começa "
+                        .. "vazia (o arquivo estragado é guardado em profiles.corrupt.json)", "error")
+                    return
+                end
+                text = c.text
+                local ok, err = V8.Disk.Recover(P.Path, c.text, JsonOk)
+                Log("Perfis: " .. P.Path .. " estragado — recuperados do " .. c.label
+                    .. (ok and "" or ("  (não deu para regravar: " .. tostring(err) .. ")")), "warn")
+            end
+            local ok, err = pcall(Parse, text)
+            if not ok then Log("Perfis: " .. tostring(err), "error") end
+        end
+
         local function Save()
             if not CanDisk() then return false, "executor sem writefile (perfis só nesta sessão)" end
             local ok, json = pcall(function() return Http:JSONEncode(P.Data) end)
             if not ok then return false, "JSON: " .. tostring(json) end
-            return V8.Disk.Write(P.Path, json)
+            return V8.Disk.SafeWrite(P.Path, json, JsonOk)
+        end
+
+        -- comando "recover perfis": volta a lista para o backup (desfaz o
+        -- último salvar/apagar perfil)
+        P.Recover = function()
+            if not CanDisk() then
+                Log("Perfis: executor sem API de arquivos", "error")
+                return false
+            end
+            local r = V8.Disk.SafeRead(P.Path, JsonOk)
+            local c = r.recover[1]
+            if r.state == "ok" then
+                local bak = V8.Disk.Paths(P.Path)
+                local s = V8.Disk.Read(bak)
+                c = (s and s ~= r.text and JsonOk(s)) and { text = s, label = "backup (anterior)" } or nil
+            end
+            if not c then
+                Log("Perfis: não há backup válido para recuperar", "warn")
+                return false
+            end
+            local ok, err = V8.Disk.Recover(P.Path, c.text, JsonOk)
+            if not ok then
+                Log("Perfis: não deu para recuperar — " .. tostring(err), "error")
+                return false
+            end
+            pcall(Parse, c.text)
+            if P.Render then pcall(P.Render) end
+            Log("Perfis recuperados do " .. c.label .. " (" .. #P.Data.list .. " perfis)", "ok")
+            return true
         end
 
         Load()
@@ -13616,26 +14313,83 @@ do
             return true
         end
 
+        -- v9.1: troca segura (V8.ProfTx, 30_kit/08_profile_tx.lua): valida
+        -- antes, aplica as preferências tudo-ou-nada (com volta ao estado
+        -- anterior) e só depois liga as funções
+        local function KeyOk(n)
+            if type(n) ~= "string" then return false end
+            local ok, kc = pcall(function() return Enum.KeyCode[n] end)
+            return ok and kc ~= nil
+        end
+        local function Ctx()
+            local setKeys, toggles, themes = {}, {}, {}
+            for _, k in ipairs(C.SetKeys) do setKeys[k] = true end
+            for k in pairs(SKIP) do setKeys[k] = nil end
+            for id in pairs(Toggles) do toggles[id] = true end
+            for n in pairs(PALETTES) do themes[n] = true end
+            return { setKeys = setKeys, toggles = toggles, noauto = NOAUTO, themes = themes, keyOk = KeyOk }
+        end
+        -- terminou certo? (passos do Restore + tema + teclas)
+        local function Verify(d)
+            local errs = C.LastRestoreErrors or {}
+            if #errs > 0 then return false, table.concat(errs, "; ") end
+            if type(d.theme) == "string" and PALETTES[d.theme] and SET.Theme ~= d.theme then
+                return false, "o tema não ficou"
+            end
+            if type(d.keys) == "table" then
+                for id, n in pairs(d.keys) do
+                    if Toggles[id] and KeyOk(n) and not (Keybinds[id] and Keybinds[id].Name == n) then
+                        return false, "a tecla de " .. id .. " não ficou"
+                    end
+                end
+            end
+            return true
+        end
+
         P.Use = function(name, silent)
             local rec = P.Find(name)
             if not rec then return false, "perfil não encontrado: " .. tostring(name) end
-            local ok, err = pcall(C.Restore, rec.data)
-            if not ok then return false, "falhou ao aplicar: " .. tostring(err) end
-            if type(rec.data.on) == "table" then
-                local want = {}
-                for _, id in ipairs(rec.data.on) do want[id] = true end
-                for _, id in ipairs(ToggleOrder) do
-                    if not NOAUTO[id] and IsOn(id) ~= (want[id] == true) then
-                        pcall(SetToggle, id, want[id] == true, true)
-                    end
-                end
+            -- o que o perfil não pode mexer sai antes (mesmo editado à mão)
+            local data = rec.data
+            if type(data) == "table" and type(data.set) == "table" then
+                local clean = {}
+                for k, v in pairs(data) do clean[k] = v end
+                clean.set = {}
+                for k, v in pairs(data.set) do if not SKIP[k] then clean.set[k] = v end end
+                clean.waypoints, clean.wpplaces, clean.emotes, clean.notes = nil, nil, nil, nil
+                data = clean
+            end
+            local ok, rep = V8.ProfTx.Apply(data, {
+                ctx = Ctx(),
+                snapshot = P.Capture,
+                restore = C.Restore,
+                clear = function(k) SET[k] = nil end,
+                verify = Verify,
+                order = ToggleOrder,
+                isOn = IsOn,
+                setToggle = function(id, on) SetToggle(id, on, true) end,
+            })
+            P.LastResult = { name = rec.name, ok = ok, rep = rep, time = os.date("%H:%M:%S") }
+            for _, w in ipairs(rep.warnings) do Log("Perfil '" .. rec.name .. "': " .. w, "warn") end
+            if not ok then
+                local why = table.concat(rep.errors, "; ")
+                Log("Perfil '" .. rec.name .. "' NÃO aplicado: " .. why
+                    .. (rep.rolledBack and " — o painel voltou ao que estava" or ""), "error")
+                if not silent then Toast("Perfil inválido — nada mudou", "error", 3) end
+                if P.Render then pcall(P.Render) end
+                return false, why
             end
             P.Current = rec.name
             if RefreshStatus then pcall(RefreshStatus) end
             if P.Render then pcall(P.Render) end
+            if #rep.failed > 0 then
+                Log("Perfil '" .. rec.name .. "' aplicado, mas não ligou: " .. table.concat(rep.failed, ", ")
+                    .. " (personagem/jogo não deixou agora)", "warn")
+            end
             if not silent then
                 Log("Perfil '" .. rec.name .. "' aplicado", "ok")
-                Toast("Perfil: " .. rec.name, "ok", 2)
+                Toast("Perfil: " .. rec.name .. (#rep.failed > 0 and ("  (" .. #rep.failed .. " função(ões) não ligaram)") or ""),
+                    #rep.failed > 0 and "warn" or "ok", 2)
             end
             return true
         end
@@ -13832,7 +14586,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/11_notify.lua", 13835, 14155, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/11_notify.lua", 14589, 14909, function() --------------------------------------------------------------------------------
 -- v9.0 — CENTRAL DE NOTIFICAÇÕES
 -- Todo Toast passa a ficar guardado (os últimos 60). O sino na ilha do topo
 -- mostra quantos chegaram desde a última olhada; clicar abre a lista.
@@ -14154,7 +14908,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/12_colors.lua", 14157, 14319, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/12_colors.lua", 14911, 15073, function() --------------------------------------------------------------------------------
 -- v9.0 — COR PERSONALIZADA (Configurações › Visual)
 -- Tema "Personalizado": a base escura do Grafite levemente tingida + a cor de
 -- destaque que você escolher (matiz 0–360° e intensidade). USAR ESTA COR
@@ -14318,7 +15072,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/13_macros.lua", 14321, 14582, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/13_macros.lua", 15075, 15336, function() --------------------------------------------------------------------------------
 -- v9.0 — MACROS DE TECLADO (Configurações › Teclas › Macros de teclado)
 -- Uma tecla roda qualquer comando da barra (;) — "tp joao", "sit caça",
 -- "flyspeed 200", "theme rosa"... Vários de uma vez: separe com &&
@@ -14581,7 +15335,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/14_diag.lua", 14584, 14796, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/14_diag.lua", 15338, 15642, function() --------------------------------------------------------------------------------
 -- v9.0 — DIAGNÓSTICO (Configurações › Sistema › Diagnóstico)
 -- Num lugar só: o que este executor suporta, quanto o boot demorou, qual
 -- módulo falhou (e em que linha do src/), memória, FPS/ping e os últimos
@@ -14628,11 +15382,31 @@ do
             }
         end
 
+        -- v9.1: o Unload da sessão anterior (gravado em HYGE/unload.json)
+        pcall(function()
+            local raw = V8.Disk and V8.Disk.Read("HYGE/unload.json")
+            if raw and V8.Net and V8.Net.Http then
+                local d = V8.Net.Http:JSONDecode(raw)
+                if type(d) == "table" and type(d.status) == "string" then D.PrevUnload = d end
+            end
+        end)
+
+        -- pasta do src/ -> nome da seção "Modules"
+        local GROUPS = {
+            { "src/00_core/", "Core" }, { "src/10_ui/", "UI" }, { "src/20_features/", "Features" },
+            { "src/30_kit/", "Kit" }, { "src/40_tabs/", "Tabs" }, { "src/50_v8/", "Painel" },
+            { "src/90_runtime/", "Runtime" },
+        }
+
+        local function Count(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end
+
+        -- v9.1: relatório em seções (Runtime, Modules, Connections, Tasks,
+        -- Unload, Config, Erros) — o mesmo texto vai no COPIAR RELATÓRIO
         D.Lines = function()
             local out = {}
             local function add(s) table.insert(out, s) end
-            local mods, fails, total = 0, {}, 0
-            local slow = {}
+            local function head(s) if #out > 0 then add("") end add(s) end
+            local mods, fails, total, slow = 0, {}, 0, {}
             for _, m in ipairs(V8.Mods) do
                 mods = mods + 1
                 total = total + (m.ms or 0)
@@ -14641,17 +15415,41 @@ do
             end
             table.sort(slow, function(a, b) return (a.ms or 0) > (b.ms or 0) end)
 
-            local build = (V8.Update and V8.Update.MyBuild ~= "" and V8.Update.MyBuild) or "?"
-            add("HYGE " .. CONFIG.Version .. "  ·  build " .. build
-                .. "  ·  " .. ((V8.Update and V8.Update.Loader) and "loader" or "colado direto"))
-            add("Executor: " .. D.Executor())
-            add("Jogo: PlaceId " .. tostring(game.PlaceId) .. "  ·  JobId "
+            add("HYGE DIAGNOSTICS")
+            head("Runtime")
+            local U = V8.Update
+            local build = (U and U.MyBuild ~= "" and U.MyBuild) or "?"
+            local how = "colado direto"
+            if U and U.Loader then
+                how = "loader" .. (U.Loader.verified and " (SHA-256 conferido)"
+                    or (U.Loader.from and (" (" .. tostring(U.Loader.from) .. ")") or ""))
+            end
+            add("  Versão: HYGE " .. CONFIG.Version .. "  ·  build " .. build .. "  ·  " .. how)
+            add("  Executor: " .. D.Executor())
+            add("  Jogo: PlaceId " .. tostring(game.PlaceId) .. "  ·  JobId "
                 .. (game.JobId ~= "" and game.JobId:sub(1, 8) .. "…" or "estúdio")
                 .. "  ·  " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers .. " jogadores")
-            add(string.format("Boot: %d ms  ·  %d módulos isolados (%d ms)  ·  %d falha(s)",
-                math.floor(V8.BootMs or 0), mods, math.floor(total + 0.5), #fails))
-            for _, m in ipairs(fails) do
-                add("  FALHOU " .. m.name .. ": " .. tostring(m.err))
+            add(string.format("  Boot: %.2f s  ·  %d módulos isolados (%d ms)",
+                (V8.BootMs or 0) / 1000, mods, math.floor(total + 0.5)))
+            local lua, mem, ping = 0, 0, 0
+            pcall(function() lua = gcinfo() / 1024 end)
+            pcall(function() mem = Stats:GetTotalMemoryUsageMb() end)
+            pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 2000) end)
+            add(string.format("  Memória: Lua %.1f MB  ·  total %d MB  ·  FPS %d  ·  ping %d ms",
+                lua, math.floor(mem), State.Fps or 0, ping))
+
+            head("Modules")
+            for _, g in ipairs(GROUPS) do
+                local bad = {}
+                for _, m in ipairs(fails) do
+                    if m.name:sub(1, #g[1]) == g[1] then table.insert(bad, m) end
+                end
+                if #bad == 0 then
+                    add("  " .. g[2] .. ": OK")
+                else
+                    add("  " .. g[2] .. ": " .. #bad .. " FALHOU")
+                    for _, m in ipairs(bad) do add("    " .. m.name .. ": " .. tostring(m.err)) end
+                end
             end
             if #slow > 0 then
                 local t = {}
@@ -14659,45 +15457,93 @@ do
                     local nm = slow[i].name:gsub("^src/", ""):gsub("%.lua$", "")
                     table.insert(t, nm .. " " .. math.floor(slow[i].ms + 0.5) .. " ms")
                 end
-                add("Mais lentos: " .. table.concat(t, ", "))
+                add("  Mais lentos: " .. table.concat(t, ", "))
             end
 
-            local lua = 0
-            pcall(function() lua = gcinfo() / 1024 end)
-            local mem = 0
-            pcall(function() mem = Stats:GetTotalMemoryUsageMb() end)
-            local ping = 0
-            pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 2000) end)
-            add(string.format("FPS %d  ·  ping %d ms  ·  memória Lua %.1f MB  ·  total %d MB",
-                State.Fps or 0, ping, lua, math.floor(mem)))
+            head("Connections")
+            local S = V8.Conns
+            local active = Count(S.live)
+            add(string.format("  Created: %d  ·  Active: %d  ·  Disconnected: %d", S.created, active, S.closed))
+            if S.replaced > 0 then
+                add("  Reaproveitadas sem Drop: " .. S.replaced .. " (eram vazamento; já desconectadas)")
+            end
+            local byMod = {}
+            for _, meta in pairs(S.meta) do
+                local w = V8.SrcOf(meta.lines)
+                local mod = w and w:gsub("^src/", ""):gsub("%.lua:%d+$", "") or "?"
+                byMod[mod] = (byMod[mod] or 0) + 1
+            end
+            local list = {}
+            for mod, n in pairs(byMod) do table.insert(list, { mod, n }) end
+            table.sort(list, function(a, b) return a[2] > b[2] end)
+            if #list > 0 then
+                local t = {}
+                for i = 1, math.min(6, #list) do table.insert(t, list[i][1] .. " " .. list[i][2]) end
+                add("  Ativas por módulo: " .. table.concat(t, " · "))
+            end
+            local r = S.respawns
+            if #r == 0 then
+                add("  Respawn: nenhum ainda (morra/renasça e confira de novo)")
+            else
+                local grow = #r >= 3 and r[#r] > r[#r - 1] and r[#r - 1] > r[#r - 2]
+                add("  Respawn: boot " .. tostring(S.boot or "?") .. " → " .. table.concat(r, " → ")
+                    .. (grow and "  << cresce a cada respawn: possível vazamento" or "  (estável)"))
+            end
 
-            local conns, on = 0, 0
-            for _ in pairs(Conn) do conns = conns + 1 end
-            for _, id in ipairs(ToggleOrder) do if IsOn(id) then on = on + 1 end end
-            add("Conexões " .. conns .. "  ·  registry de tema " .. #Painted
-                .. "  ·  funções ligadas " .. on .. "/" .. #ToggleOrder
-                .. "  ·  Remotes " .. (select(1, V8.RemoteStatus())) .. "/" .. #V8.RemoteInfo)
+            head("Tasks")
+            local T = V8.Tasks
+            add(string.format("  Agendadas: %d  ·  pendentes: %d  ·  rodando agora: %d",
+                T.scheduled, V8.Pending(), T.running))
 
+            head("Unload")
+            local P = D.PrevUnload
+            if P then
+                add(string.format("  Último (%s): %s — %d criadas, %d encerradas, %d ativas, %d rodando",
+                    os.date("%d/%m %H:%M", tonumber(P.time) or 0), P.status, tonumber(P.created) or 0,
+                    tonumber(P.closed) or 0, tonumber(P.active) or 0, tonumber(P.running) or 0))
+                if type(P.left) == "table" and #P.left > 0 then
+                    add("    sobrou: " .. table.concat(P.left, ", "))
+                end
+            else
+                add("  Ainda sem registro (aparece depois do primeiro DESCARREGAR PAINEL)")
+            end
+            add("  Agora: o Unload encerraria " .. active .. " conexão(ões)")
+
+            head("Config")
             local cfg = V8.Cfg and V8.Cfg.LoadState or nil
-            add("Config: " .. (V8.Cfg and V8.Cfg.Supported() and "em disco" or "sem disco")
+            add("  " .. (V8.Cfg and V8.Cfg.Supported() and "Em disco" or "Sem disco")
                 .. (cfg and ("  ·  carregamento: " .. cfg) or "")
                 .. "  ·  salvar sozinho " .. (SET.AutoSave and "ligado" or "desligado")
-                .. ((V8.Prof and V8.Prof.Current) and ("  ·  perfil " .. V8.Prof.Current) or ""))
+                .. ((V8.Cfg and V8.Cfg.Recoverable and #V8.Cfg.Recoverable > 0)
+                    and ("  ·  dá para recuperar: " .. V8.Cfg.Recoverable[1].label) or ""))
+            local PR = V8.Prof and V8.Prof.LastResult
+            if PR then
+                add("  Último perfil: " .. PR.name .. " (" .. PR.time .. ") — "
+                    .. (PR.ok and ("aplicado" .. (#PR.rep.failed > 0 and (", não ligou: "
+                        .. table.concat(PR.rep.failed, ", ")) or ""))
+                        or ("RECUSADO: " .. table.concat(PR.rep.errors, "; ")
+                            .. (PR.rep.rolledBack and " (voltou ao anterior)" or ""))))
+            end
+            local on = 0
+            for _, id in ipairs(ToggleOrder) do if IsOn(id) then on = on + 1 end end
+            add("  Funções ligadas " .. on .. "/" .. #ToggleOrder .. "  ·  registry de tema " .. #Painted
+                .. "  ·  Remotes " .. (select(1, V8.RemoteStatus())) .. "/" .. #V8.RemoteInfo)
 
+            head("Executor")
             local caps = {}
             for _, c in ipairs(D.Caps()) do
                 table.insert(caps, c[1] .. (c[2] and " sim" or " NÃO"))
             end
-            add("Executor tem: " .. table.concat(caps, " · "))
+            add("  " .. table.concat(caps, " · "))
 
+            head("Erros")
             if #V8.Errors > 0 then
-                add("Últimos erros (" .. #V8.Errors .. "):")
                 for i = math.max(1, #V8.Errors - 4), #V8.Errors do
                     local e = V8.Errors[i]
                     add("  [" .. e.time .. "] " .. e.msg)
                 end
             else
-                add("Nenhum erro registrado nesta sessão.")
+                add("  Nenhum erro registrado nesta sessão.")
             end
             return out
         end
@@ -14795,7 +15641,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/15_news.lua", 14798, 14996, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/15_news.lua", 15644, 15841, function() --------------------------------------------------------------------------------
 -- v9.0 — NOVIDADES / BOAS-VINDAS
 -- Na primeira vez que uma versão nova abre, aparece um cartão com o que
 -- mudou. Quem nunca usou o HYGE (sem config salva) vê os primeiros passos.
@@ -14814,15 +15660,14 @@ do
             if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
         end)
 
+        -- v9.1: estabilidade
         W.Items = {
-            { "grid",     "Ajustes organizados", "Categorias (Geral, Teclas, Visual, Dados, Sistema) e busca dentro de Configurações." },
-            { "star",     "Favoritos", "Estrela em qualquer função: ela vira uma ação rápida na Home." },
-            { "layers",   "Perfis", "Guarde o painel inteiro com um nome e deixe um perfil abrir sozinho em cada jogo." },
-            { "bell",     "Notificações", "Todo aviso fica no sino da ilha do topo. Tem modo Não perturbe." },
-            { "keyboard", "Macros", "Uma tecla roda qualquer comando (ex.: H = tp amigo)." },
-            { "sun",      "Temas", "Rosa, Laranja, Meia-noite e uma cor só sua." },
-            { "check",    "Salva sozinho", "A config vai para o disco a cada 30 s — sair do jogo não perde mais nada." },
-            { "shield",   "Mais estável", "Um módulo com erro não derruba o painel; o Diagnóstico mostra onde foi." },
+            { "check",    "Backup da config", "Config, perfis e tempo de jogo têm backup. Arquivo estragado? RECUPERAR BACKUP (ou o comando recover)." },
+            { "shield",   "Atualização conferida", "O loader e o ATUALIZAR AGORA só trocam a versão se o arquivo bater com o SHA-256 do manifesto. Download ruim abre a última que funcionava." },
+            { "layers",   "Perfis seguros", "Perfil inválido não muda nada; se algo falhar no meio, o painel volta ao que estava." },
+            { "signal",   "Diagnóstico novo", "Conexões por módulo, tarefas, respawn e se o último Unload ficou limpo." },
+            { "power",    "Rodar de novo sem duplicar", "Executar o script outra vez descarrega o painel anterior de verdade." },
+            { "keyboard", "Shift Lock bloqueado", "O Shift não prende mais o mouse no centro (o Fly usa o Shift para acelerar). Dá para religar em Comportamento." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou
         W.Tips = function()
@@ -14995,7 +15840,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/19_settings_nav.lua", 14998, 15179, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/19_settings_nav.lua", 15843, 16024, function() --------------------------------------------------------------------------------
 -- v9.0 — AJUSTES ORGANIZADOS (Configurações › Ajustes)
 -- A aba tinha ~20 cartões numa rolagem só. Agora, no topo:
 --   * categorias em pílula: Tudo · Geral · Teclas · Visual · Dados · Sistema
@@ -15213,7 +16058,7 @@ AddNav("Scripts", 11)
 AddNav("HyChat", 12)      -- v8.1
 AddNav("Chat", 13)
 
-V8.Mod("src/90_runtime/01_commands.lua", 15216, 15948, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/01_commands.lua", 16061, 16802, function() --------------------------------------------------------------------------------
 -- BARRA DE COMANDOS (histórico, autocomplete, aliases)
 --------------------------------------------------------------------------------
 do
@@ -15895,6 +16740,15 @@ do
         if V8.Cfg then V8.Cfg.Load() else Log("Persistência indisponível", "error") end
     end)
 
+    -- v9.1: config (ou perfis) de volta do backup
+    DefCmd("recover", "recover [perfis]", "recupera a config (ou os perfis) do backup", function(args)
+        if (args[1] or ""):lower():sub(1, 4) == "perf" then
+            if V8.Prof and V8.Prof.Recover then V8.Prof.Recover() else Log("Perfis indisponíveis", "error") end
+            return
+        end
+        if V8.Cfg then V8.Cfg.RecoverNow(1) else Log("Persistência indisponível", "error") end
+    end)
+
     ----------------------------------------------------------------------------
     -- abrir / fechar a barra
     ----------------------------------------------------------------------------
@@ -15947,7 +16801,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/02_window_ctl.lua", 15950, 16166, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/02_window_ctl.lua", 16804, 17020, function() --------------------------------------------------------------------------------
 -- ORB FLUTUANTE
 --------------------------------------------------------------------------------
 do
@@ -16165,7 +17019,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/03_input.lua", 16168, 16248, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/03_input.lua", 17022, 17171, function() --------------------------------------------------------------------------------
 -- INPUT GLOBAL (teclas)
 --------------------------------------------------------------------------------
 -- v8.0: teclas que cada modo usa para se mover. Com o modo ligado, um atalho
@@ -16246,8 +17100,77 @@ Conn.Input = UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
+--------------------------------------------------------------------------------
+-- v9.0.1: SHIFT LOCK DO ROBLOX
+-- Em jogo que libera o Shift Lock, o Shift prende o mouse no centro da tela —
+-- inclusive no Fly, que usa o Shift para acelerar. (Freecam e Drone não sofrem:
+-- a câmera deles é Scriptable e o próprio HYGE manda no mouse.)
+-- Com SET.NoShiftLock (Configurações › Comportamento, padrão ligado) o painel
+-- desliga LocalPlayer.DevEnableMouseLock: o PlayerModule solta o mouse na hora
+-- e para de ouvir o Shift. Se o jogo religar, desliga de novo. Desligando a
+-- opção ou descarregando o painel, volta o valor que o jogo queria.
+-- (Shift Lock feito pelo próprio jogo, fora do PlayerModule, não é coberto.)
+--------------------------------------------------------------------------------
+do
+    local SL = { held = false, saved = false, warned = false }
+    V8.ShiftLock = SL
+
+    local function Get()
+        local ok, v = pcall(function() return LocalPlayer.DevEnableMouseLock end)
+        if ok then return v end
+        return nil
+    end
+    local function Set(v)
+        return pcall(function() LocalPlayer.DevEnableMouseLock = v end)
+    end
+
+    -- devolve o Shift Lock como o jogo deixou (opção desligada / unload)
+    SL.Release = function()
+        if not SL.held then return end
+        SL.held = false
+        if SL.saved then Set(true) end
+        SL.saved = false
+    end
+
+    SL.Sync = function()
+        if SL.dead then return end
+        if SET.NoShiftLock == false then
+            SL.Release()
+            return
+        end
+        local cur = Get()
+        if cur == nil then return end
+        if not SL.held then SL.held, SL.saved = true, cur end
+        if cur then
+            -- ligado (pelo jogo no começo ou religado depois): guarda e desliga
+            SL.saved = true
+            if not Set(false) and not SL.warned then
+                SL.warned = true
+                Log("Não deu para bloquear o Shift Lock neste executor", "warn")
+            end
+        end
+    end
+
+    -- o jogo mexeu na propriedade: confere de novo (Set(false) aqui dentro
+    -- dispara o sinal outra vez, mas aí já está false e não faz nada)
+    pcall(function()
+        Conn.ShiftLock = LocalPlayer:GetPropertyChangedSignal("DevEnableMouseLock")
+            :Connect(function() pcall(SL.Sync) end)
+    end)
+    -- unload: para de vigiar ANTES de devolver (senão o sinal desligaria de novo)
+    SL.Stop = function()
+        SL.dead = true
+        Drop("ShiftLock")
+        SL.Release()
+    end
+    -- config / perfil carregado ou "restaurar padrões" mudaram SET.NoShiftLock
+    V8.Renders = V8.Renders or {}
+    table.insert(V8.Renders, function() pcall(SL.Sync) end)
+    SL.Sync()
+end
+
 end)
-V8.Mod("src/90_runtime/04_scheduler.lua", 16250, 16356, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/04_scheduler.lua", 17173, 17279, function() --------------------------------------------------------------------------------
 -- SCHEDULER ÚNICO (um Heartbeat para todo o painel)
 --------------------------------------------------------------------------------
 do
@@ -16355,7 +17278,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/05_events.lua", 16358, 16464, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/05_events.lua", 17281, 17399, function() --------------------------------------------------------------------------------
 -- RESPAWN: reaplica o que estava ligado (e avisa o que não deu)
 --------------------------------------------------------------------------------
 Conn.CharAdded = LocalPlayer.CharacterAdded:Connect(function(char)
@@ -16408,6 +17331,18 @@ Conn.CharAdded = LocalPlayer.CharacterAdded:Connect(function(char)
         Log("Personagem recarregado — funções reaplicadas", "ok")
     end
     RefreshStatus()
+
+    -- v9.1: conexões vivas depois de cada respawn (Diagnóstico). Se o número
+    -- sobe a cada vez, alguma função conecta no personagem novo sem largar a
+    -- do antigo.
+    task.delay(3, function()
+        if V8.Unloaded then return end
+        local n = 0
+        for _ in pairs(V8.Conns.live) do n = n + 1 end
+        local r = V8.Conns.respawns
+        table.insert(r, n)
+        while #r > 8 do table.remove(r, 1) end
+    end)
 end)
 
 --------------------------------------------------------------------------------
@@ -16463,7 +17398,7 @@ if Remotes.Announce then
 end
 
 end)
-V8.Mod("src/90_runtime/06_unload.lua", 16466, 16518, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/06_unload.lua", 17401, 17497, function() --------------------------------------------------------------------------------
 -- UNLOAD (desfaz tudo)
 --------------------------------------------------------------------------------
 Unload = function()
@@ -16482,6 +17417,8 @@ Unload = function()
     for _, id in ipairs(ToggleOrder) do
         if IsOn(id) then pcall(Toggles[id].disable) end
     end
+    -- v9.0.1: Shift Lock do Roblox volta como o jogo deixou
+    pcall(function() if V8.ShiftLock then V8.ShiftLock.Stop() end end)
     pcall(StopSpectate)
     pcall(ClearEsp)
     pcall(function() Emote.Stop(true) end)
@@ -16489,7 +17426,10 @@ Unload = function()
     -- v8.2: animações originais de volta (SET.PackOn já foi salvo acima)
     pcall(function() if V8.Pack then V8.Pack.Restore() end end)
 
-    for name in pairs(Conn) do pcall(Drop, name) end
+    -- v9.1: Conn é um proxy — a lista de verdade fica em V8.Conns.live
+    local names = {}
+    for name in pairs(V8.Conns.live) do table.insert(names, name) end
+    for _, name in ipairs(names) do pcall(Drop, name) end
     for _, inst in ipairs(Bin) do pcall(function() inst:Destroy() end) end
 
     pcall(function()
@@ -16513,11 +17453,50 @@ Unload = function()
     State.SelectedPlayer = nil
     State.SpectateTarget = nil
 
+    -- v9.1: CONFERÊNCIA DO UNLOAD. Sobrou conexão? Tarefa agendada que ainda
+    -- vai rodar, ou rodando (esperando HTTP/wait)? Vai para o console e para
+    -- HYGE/unload.json (o Diagnóstico da próxima sessão mostra).
+    pcall(function()
+        local left = {}
+        for name in pairs(V8.Conns.live) do table.insert(left, name) end
+        local pending, running = V8.Pending(), V8.Tasks.running
+        local clean = (#left == 0 and running == 0)
+        local status = clean and "CLEAN" or "SOBROU"
+        local msg = string.format("[HYGE] Unload: %s — %d conexões criadas, %d encerradas, %d ativas"
+            .. "; tarefas: %d pendentes, %d rodando", status, V8.Conns.created, V8.Conns.closed,
+            #left, pending, running)
+        if clean then print(msg) else warn(msg .. (#left > 0 and (" (" .. table.concat(left, ", ") .. ")") or "")) end
+        if pending > 0 then
+            print("[HYGE] " .. pending .. " tarefa(s) agendada(s) ainda vão rodar (toasts/animações;"
+                .. " se alguma fizer algo, aparece como 'tarefa rodou depois do unload')")
+        end
+        V8.LastUnload = { status = status, created = V8.Conns.created, closed = V8.Conns.closed,
+            active = #left, left = left, pending = pending, running = running, time = os.time() }
+        if V8.Disk and V8.Disk.Ok() and V8.Net and V8.Net.Http then
+            V8.Disk.Write("HYGE/unload.json", V8.Net.Http:JSONEncode(V8.LastUnload))
+        end
+    end)
+    V8.Unloaded = true
+    -- a próxima instância não precisa mais chamar este Unload
+    pcall(function()
+        local env = (typeof(getgenv) == "function" and getgenv()) or _G
+        if env.HYGE_UNLOAD == Unload then env.HYGE_UNLOAD = nil end
+    end)
+
     print("[HYGE] painel descarregado.")
 end
 
+-- v9.1: rodar o script de novo SEM descarregar deixava a instância anterior
+-- viva (só a GUI dela era destruída: conexões, scheduler e teclas continuavam
+-- e as duas reagiam juntas). A próxima instância chama este Unload primeiro
+-- (00_core/03_bootstrap.lua).
+pcall(function()
+    local env = (typeof(getgenv) == "function" and getgenv()) or _G
+    env.HYGE_UNLOAD = Unload
 end)
-V8.Mod("src/90_runtime/07_boot.lua", 16520, 16597, function() --------------------------------------------------------------------------------
+
+end)
+V8.Mod("src/90_runtime/07_boot.lua", 17499, 17582, function() --------------------------------------------------------------------------------
 -- BOOT
 --------------------------------------------------------------------------------
 do
@@ -16572,6 +17551,12 @@ do
         table.insert(falhas, #modFails .. " módulo(s): " .. table.concat(modFails, ", "))
     end
     V8.BootMs = (os.clock() - (V8.BootT0 or os.clock())) * 1000
+    -- v9.1: conexões vivas logo depois do boot (base para o monitor de respawn)
+    pcall(function()
+        local n = 0
+        for _ in pairs(V8.Conns.live) do n = n + 1 end
+        V8.Conns.boot = n
+    end)
 
     -- garante que sempre existe um jeito de abrir, mesmo se algo acima falhar:
     -- o dock (padrão) ou, no modo sidebar, a bolinha H
@@ -16596,4 +17581,4 @@ do
     end
 end
 end)
-V8.SrcMap = { { "src/00_core/00_header.lua", 6, 81 }, { "src/00_core/01_config.lua", 82, 190 }, { "src/00_core/02_theme.lua", 191, 304 }, { "src/00_core/03_bootstrap.lua", 305, 370 }, { "src/00_core/04_state.lua", 371, 559 }, { "src/00_core/05_helpers.lua", 560, 601 }, { "src/10_ui/00_window.lua", 602, 650 }, { "src/10_ui/01_toasts.lua", 651, 794 }, { "src/10_ui/02_console.lua", 795, 1015 }, { "src/10_ui/03_topbar_sidebar.lua", 1016, 1161 }, { "src/10_ui/04_factory.lua", 1162, 1466 }, { "src/10_ui/05_toggles_keybinds.lua", 1467, 1779 }, { "src/20_features/00_fly.lua", 1780, 2208 }, { "src/20_features/01_character.lua", 2209, 2340 }, { "src/20_features/02_esp.lua", 2341, 2667 }, { "src/20_features/03_world.lua", 2668, 2739 }, { "src/20_features/04_freecam.lua", 2740, 2821 }, { "src/20_features/05_drone.lua", 2822, 2938 }, { "src/20_features/06_actions.lua", 2939, 3121 }, { "src/20_features/07_spectate.lua", 3122, 3171 }, { "src/20_features/08_spectate_hud.lua", 3172, 3246 }, { "src/20_features/09_body.lua", 3247, 3393 }, { "src/20_features/10_wallwalk.lua", 3394, 3674 }, { "src/20_features/11_clicktp.lua", 3675, 3729 }, { "src/30_kit/00_widgets.lua", 3730, 4186 }, { "src/30_kit/01_icons.lua", 4187, 4305 }, { "src/30_kit/02_topbar_chips.lua", 4306, 4386 }, { "src/30_kit/03_drone_hud.lua", 4387, 4775 }, { "src/30_kit/04_net.lua", 4776, 4890 }, { "src/30_kit/05_playtime.lua", 4891, 5374 }, { "src/30_kit/06_animpack.lua", 5375, 5900 }, { "src/40_tabs/00_home.lua", 5901, 6236 }, { "src/40_tabs/01_home_dashboard.lua", 6237, 6805 }, { "src/40_tabs/01_home_server.lua", 6806, 7080 }, { "src/40_tabs/02_movement.lua", 7081, 7414 }, { "src/40_tabs/02_movement_pack.lua", 7415, 7601 }, { "src/40_tabs/03_visuals.lua", 7602, 7696 }, { "src/40_tabs/04_players.lua", 7697, 7942 }, { "src/40_tabs/05_moderation.lua", 7943, 8135 }, { "src/40_tabs/06_server.lua", 8136, 8270 }, { "src/40_tabs/07_emotes.lua", 8271, 8864 }, { "src/40_tabs/08_settings.lua", 8865, 9289 }, { "src/40_tabs/09_shop.lua", 9290, 9614 }, { "src/40_tabs/10_scripts.lua", 9615, 9690 }, { "src/40_tabs/11_chat.lua", 9691, 9821 }, { "src/40_tabs/12_troll.lua", 9822, 10011 }, { "src/40_tabs/13_hychat.lua", 10012, 10393 }, { "src/50_v8/00_dock.lua", 10394, 10861 }, { "src/50_v8/01_shell.lua", 10862, 11251 }, { "src/50_v8/02_situations.lua", 11252, 11592 }, { "src/50_v8/03_persist.lua", 11593, 12112 }, { "src/50_v8/04_search.lua", 12113, 12572 }, { "src/50_v8/05_island.lua", 12573, 12708 }, { "src/50_v8/06_auto.lua", 12709, 12792 }, { "src/50_v8/07_mobile.lua", 12793, 13013 }, { "src/50_v8/08_quests.lua", 13014, 13279 }, { "src/50_v8/09_update.lua", 13280, 13501 }, { "src/50_v8/10_profiles.lua", 13502, 13834 }, { "src/50_v8/11_notify.lua", 13835, 14156 }, { "src/50_v8/12_colors.lua", 14157, 14320 }, { "src/50_v8/13_macros.lua", 14321, 14583 }, { "src/50_v8/14_diag.lua", 14584, 14797 }, { "src/50_v8/15_news.lua", 14798, 14997 }, { "src/50_v8/19_settings_nav.lua", 14998, 15180 }, { "src/90_runtime/00_status_nav.lua", 15181, 15215 }, { "src/90_runtime/01_commands.lua", 15216, 15949 }, { "src/90_runtime/02_window_ctl.lua", 15950, 16167 }, { "src/90_runtime/03_input.lua", 16168, 16249 }, { "src/90_runtime/04_scheduler.lua", 16250, 16357 }, { "src/90_runtime/05_events.lua", 16358, 16465 }, { "src/90_runtime/06_unload.lua", 16466, 16519 }, { "src/90_runtime/07_boot.lua", 16520, 16598 } }
+V8.SrcMap = { { "src/00_core/00_header.lua", 6, 81 }, { "src/00_core/01_config.lua", 82, 190 }, { "src/00_core/02_theme.lua", 191, 304 }, { "src/00_core/03_bootstrap.lua", 305, 382 }, { "src/00_core/04_state.lua", 383, 690 }, { "src/00_core/05_helpers.lua", 691, 732 }, { "src/10_ui/00_window.lua", 733, 781 }, { "src/10_ui/01_toasts.lua", 782, 925 }, { "src/10_ui/02_console.lua", 926, 1146 }, { "src/10_ui/03_topbar_sidebar.lua", 1147, 1292 }, { "src/10_ui/04_factory.lua", 1293, 1597 }, { "src/10_ui/05_toggles_keybinds.lua", 1598, 1910 }, { "src/20_features/00_fly.lua", 1911, 2339 }, { "src/20_features/01_character.lua", 2340, 2471 }, { "src/20_features/02_esp.lua", 2472, 2798 }, { "src/20_features/03_world.lua", 2799, 2870 }, { "src/20_features/04_freecam.lua", 2871, 2952 }, { "src/20_features/05_drone.lua", 2953, 3069 }, { "src/20_features/06_actions.lua", 3070, 3252 }, { "src/20_features/07_spectate.lua", 3253, 3302 }, { "src/20_features/08_spectate_hud.lua", 3303, 3377 }, { "src/20_features/09_body.lua", 3378, 3524 }, { "src/20_features/10_wallwalk.lua", 3525, 3805 }, { "src/20_features/11_clicktp.lua", 3806, 3860 }, { "src/30_kit/00_widgets.lua", 3861, 4318 }, { "src/30_kit/01_icons.lua", 4319, 4437 }, { "src/30_kit/02_topbar_chips.lua", 4438, 4518 }, { "src/30_kit/03_drone_hud.lua", 4519, 4907 }, { "src/30_kit/04_net.lua", 4908, 5138 }, { "src/30_kit/05_playtime.lua", 5139, 5637 }, { "src/30_kit/06_animpack.lua", 5638, 6163 }, { "src/30_kit/07_sha256.lua", 6164, 6258 }, { "src/30_kit/08_profile_tx.lua", 6259, 6421 }, { "src/40_tabs/00_home.lua", 6422, 6757 }, { "src/40_tabs/01_home_dashboard.lua", 6758, 7326 }, { "src/40_tabs/01_home_server.lua", 7327, 7601 }, { "src/40_tabs/02_movement.lua", 7602, 7935 }, { "src/40_tabs/02_movement_pack.lua", 7936, 8122 }, { "src/40_tabs/03_visuals.lua", 8123, 8217 }, { "src/40_tabs/04_players.lua", 8218, 8463 }, { "src/40_tabs/05_moderation.lua", 8464, 8656 }, { "src/40_tabs/06_server.lua", 8657, 8791 }, { "src/40_tabs/07_emotes.lua", 8792, 9385 }, { "src/40_tabs/08_settings.lua", 9386, 9820 }, { "src/40_tabs/09_shop.lua", 9821, 10145 }, { "src/40_tabs/10_scripts.lua", 10146, 10221 }, { "src/40_tabs/11_chat.lua", 10222, 10352 }, { "src/40_tabs/12_troll.lua", 10353, 10542 }, { "src/40_tabs/13_hychat.lua", 10543, 10924 }, { "src/50_v8/00_dock.lua", 10925, 11392 }, { "src/50_v8/01_shell.lua", 11393, 11782 }, { "src/50_v8/02_situations.lua", 11783, 12123 }, { "src/50_v8/03_persist.lua", 12124, 12720 }, { "src/50_v8/04_search.lua", 12721, 13180 }, { "src/50_v8/05_island.lua", 13181, 13316 }, { "src/50_v8/06_auto.lua", 13317, 13400 }, { "src/50_v8/07_mobile.lua", 13401, 13621 }, { "src/50_v8/08_quests.lua", 13622, 13887 }, { "src/50_v8/09_update.lua", 13888, 14148 }, { "src/50_v8/10_profiles.lua", 14149, 14588 }, { "src/50_v8/11_notify.lua", 14589, 14910 }, { "src/50_v8/12_colors.lua", 14911, 15074 }, { "src/50_v8/13_macros.lua", 15075, 15337 }, { "src/50_v8/14_diag.lua", 15338, 15643 }, { "src/50_v8/15_news.lua", 15644, 15842 }, { "src/50_v8/19_settings_nav.lua", 15843, 16025 }, { "src/90_runtime/00_status_nav.lua", 16026, 16060 }, { "src/90_runtime/01_commands.lua", 16061, 16803 }, { "src/90_runtime/02_window_ctl.lua", 16804, 17021 }, { "src/90_runtime/03_input.lua", 17022, 17172 }, { "src/90_runtime/04_scheduler.lua", 17173, 17280 }, { "src/90_runtime/05_events.lua", 17281, 17400 }, { "src/90_runtime/06_unload.lua", 17401, 17498 }, { "src/90_runtime/07_boot.lua", 17499, 17583 } }

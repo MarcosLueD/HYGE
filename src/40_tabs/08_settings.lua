@@ -244,8 +244,17 @@ do
         function() return SET.EspAuto end,
         function(v) SET.EspAuto = v end, 4)
 
+    -- v9.0.1: o Shift do Roblox prendia o mouse no centro (Shift Lock) — e o
+    -- Fly usa o Shift para acelerar. Quem aplica é o V8.ShiftLock (03_input).
+    CheckRow(beh, "Bloquear Shift Lock do Roblox", "O Shift não prende mais o mouse no centro da tela",
+        function() return SET.NoShiftLock ~= false end,
+        function(v)
+            SET.NoShiftLock = v
+            if V8.ShiftLock then V8.ShiftLock.Sync() end
+        end, 5)
+
     local maxLogSet = SliderRow(beh, {
-        label = "Linhas guardadas no log", min = 20, max = 300, def = SET.MaxLog, order = 5,
+        label = "Linhas guardadas no log", min = 20, max = 300, def = SET.MaxLog, order = 6,
         apply = function(v)
             SET.MaxLog = v
             CONFIG.MaxLog = v
@@ -372,6 +381,7 @@ do
             SET.ShowLogs = true
             SET.Confirm = true
             SET.EspAuto = true
+            SET.NoShiftLock = true
             SET.MaxLog = 60
             CONFIG.MaxLog = 60
             ApplyCompact(false)

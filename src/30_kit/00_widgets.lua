@@ -192,7 +192,8 @@ local function SliderRow(parent, o)
     reset.MouseEnter:Connect(function() Anim(reset, 0.12, { TextColor3 = THEME.Accent }) end)
     reset.MouseLeave:Connect(function() Anim(reset, 0.12, { TextColor3 = THEME.Dim }) end)
 
-    local moveConn, endConn
+    -- v9.1: o arrasto vai para Conn (um slider por vez): se o painel
+    -- descarregar no meio do arrasto, o Unload desconecta
     bar.MouseButton1Down:Connect(function()
         local function fromInput(input)
             local rel = math.clamp((input.Position.X - bar.AbsolutePosition.X)
@@ -200,19 +201,19 @@ local function SliderRow(parent, o)
             apply(minV + rel * (maxV - minV))
         end
         Anim(knob, 0.1, { Size = UDim2.new(0, 18, 0, 18) })
-        if moveConn then moveConn:Disconnect() end
-        if endConn then endConn:Disconnect() end
-        moveConn = UserInputService.InputChanged:Connect(function(input)
+        Drop("SliderMove")
+        Drop("SliderEnd")
+        Conn.SliderMove = UserInputService.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseMovement
                 or input.UserInputType == Enum.UserInputType.Touch then
                 fromInput(input)
             end
         end)
-        endConn = UserInputService.InputEnded:Connect(function(input)
+        Conn.SliderEnd = UserInputService.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
                 or input.UserInputType == Enum.UserInputType.Touch then
-                if moveConn then moveConn:Disconnect() moveConn = nil end
-                if endConn then endConn:Disconnect() endConn = nil end
+                Drop("SliderMove")
+                Drop("SliderEnd")
                 Anim(knob, 0.1, { Size = UDim2.new(0, 14, 0, 14) })
             end
         end)

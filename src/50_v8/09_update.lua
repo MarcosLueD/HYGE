@@ -8,6 +8,10 @@
 --     (só avisa se o de lá for MAIOR)
 -- Achou: avisa (toast + log + este cartão). ATUALIZAR AGORA baixa, confere se
 -- compila, descarrega este painel e roda o novo — sem sair do jogo.
+-- v9.1: quem diz se há versão nova é o manifest.json (versão, build, tamanho
+-- e SHA-256). O arquivo baixado só é usado se bater com ele (V8.VerifyBuild,
+-- 30_kit/07_sha256.lua) — download cortado ou adulterado é recusado e nada
+-- é trocado.
 -- Precisa de HTTP no executor (request ou game:HttpGet) e, para atualizar sem
 -- sair, de loadstring. Nada é baixado sem a opção ligada ou o botão.
 -- Tudo dentro de Build(): zero locais novos no chunk principal.
@@ -57,21 +61,46 @@ do
             return false
         end
 
-        -- baixa o main.lua de lá: { src, version, build } ou nil + motivo
-        U.Fetch = function()
+        -- v9.1: o manifest.json fica ao lado do main.lua no repositório
+        U.ManUrl = function()
+            local L = U.Loader
+            if L and type(L.manifest) == "string" and L.manifest ~= "" then return L.manifest end
             local url = U.Url()
+            if url == "" then return "" end
+            return (url:gsub("[?#].*$", ""):gsub("[^/]+$", "manifest.json"))
+        end
+
+        local function Bust(url)
+            return url .. (url:find("?", 1, true) and "&" or "?") .. "t=" .. os.time()
+        end
+
+        -- manifesto de lá: { version, build, size, sha256 } ou nil + motivo
+        U.Manifest = function()
+            local url = U.ManUrl()
             if url == "" then return nil, "sem endereço de atualização (CONFIG.UpdateUrl)" end
-            if not (V8.Net and V8.Net.Request) then return nil, "sem HTTP" end
-            local sep = url:find("?", 1, true) and "&" or "?"
-            local ok, body, code = V8.Net.Request("GET", url .. sep .. "t=" .. os.time())
+            if not (V8.Net and V8.Net.Json) then return nil, "sem HTTP" end
+            local man, err = V8.Net.Json("GET", Bust(url))
+            if not man then return nil, "manifesto: " .. tostring(err) end
+            if type(man.sha256) ~= "string" or type(man.size) ~= "number" then
+                return nil, "manifesto sem SHA-256/tamanho"
+            end
+            return man
+        end
+
+        -- v9.1: baixa o main.lua e CONFERE com o manifesto (tamanho, SHA-256,
+        -- build). { src, version, build, man } ou nil + motivo. Sem manifesto
+        -- não há como conferir — e comparar versão não é conferir integridade.
+        U.Fetch = function()
+            local man, merr = U.Manifest()
+            if not man then return nil, merr end
+            local ok, body, code = V8.Net.Request("GET", Bust(U.Url()))
             if not ok then
                 return nil, (code and code > 0) and ("HTTP " .. code) or tostring(body)
             end
-            if type(body) ~= "string" or #body < 1000 or not body:find("-- build:", 1, true) then
-                return nil, "o arquivo baixado não é o main.lua do painel"
-            end
+            local good, why = V8.VerifyBuild(body, man)
+            if not good then return nil, "download recusado: " .. tostring(why) end
             return {
-                src = body,
+                src = body, man = man,
                 version = body:match('Version%s*=%s*"([^"]+)"'),
                 build = body:match("%-%- build: (%x+)"),
             }
@@ -87,7 +116,14 @@ do
             U.state, U.msg = "checking", "Conferindo..."
             if U.Render then pcall(U.Render) end
             task.spawn(function()
-                local info, why = U.Fetch()
+                -- v9.1: para saber se há versão nova basta o manifesto (pequeno)
+                local info, why
+                local man, merr = U.Manifest()
+                if man then
+                    info = { version = man.version, build = man.build, man = man }
+                else
+                    why = merr
+                end
                 if not info then
                     U.state, U.msg = "error", "Não deu para conferir: " .. tostring(why)
                     if manual then
@@ -147,13 +183,16 @@ do
                 -- o painel novo fica sabendo de onde veio e qual build é
                 pcall(function()
                     local env = Env()
-                    env.HYGE_LOADER = { url = U.Url(), build = info.build, from = "atualização" }
+                    env.HYGE_LOADER = { url = U.Url(), manifest = U.ManUrl(), build = info.build,
+                        from = "atualização", sha256 = info.man and info.man.sha256, verified = true }
                 end)
                 Log("Atualizando para HYGE " .. tostring(info.version or "?") .. "...", "action")
                 Toast("Atualizando o HYGE...", "ok", 2)
                 task.wait(0.4)
                 pcall(Unload)
-                task.defer(function()
+                -- task do Roblox direto: esta é a ÚNICA tarefa que deve rodar
+                -- depois do unload (o task do painel anotaria como "ficou vivo")
+                V8.RawTask.defer(function()
                     local ok, e = pcall(fn)
                     if not ok then warn("[HYGE] a versão nova falhou ao iniciar: " .. tostring(e)) end
                 end)

@@ -257,7 +257,7 @@ local function KeybindRow(parent, id, labelText)
         btn.Text = "aperte..."
         Toast("Aperte uma tecla para " .. labelText .. " (Backspace remove)", nil, 3)
 
-        captureConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        captureConn = UserInputService.InputBegan:Connect(function(input, gpe) -- conn:ok StopCapture desconecta (o Unload chama)
             if capturing ~= id then return end
             if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
             local kc = input.KeyCode

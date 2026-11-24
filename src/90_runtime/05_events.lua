@@ -51,6 +51,18 @@ Conn.CharAdded = LocalPlayer.CharacterAdded:Connect(function(char)
         Log("Personagem recarregado — funções reaplicadas", "ok")
     end
     RefreshStatus()
+
+    -- v9.1: conexões vivas depois de cada respawn (Diagnóstico). Se o número
+    -- sobe a cada vez, alguma função conecta no personagem novo sem largar a
+    -- do antigo.
+    task.delay(3, function()
+        if V8.Unloaded then return end
+        local n = 0
+        for _ in pairs(V8.Conns.live) do n = n + 1 end
+        local r = V8.Conns.respawns
+        table.insert(r, n)
+        while #r > 8 do table.remove(r, 1) end
+    end)
 end)
 
 --------------------------------------------------------------------------------

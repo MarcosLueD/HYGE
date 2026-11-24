@@ -1,20 +1,32 @@
-# HYGE Admin Panel v9.0
+# HYGE Admin Panel v9.1
 
 Painel admin client-side para Roblox (executor ou LocalScript) + script de
 servidor opcional para as ações que afetam outros jogadores.
 
 ## Rodar sempre a versão mais nova (loader)
 
-Cole o **`loader.lua`** no executor em vez do `main.lua`. Toda vez que roda, ele
-baixa o `main.lua` do GitHub (`raw.githubusercontent.com/MarcosLueD/HYGE/main/main.lua`),
-guarda uma cópia em `HYGE/main.lua` na pasta do executor e abre o painel. Sem
-internet, abre a cópia guardada. Precisa de `game:HttpGet` (ou `request`) e
-`loadstring`.
+Cole o **`loader.lua`** no executor em vez do `main.lua`. Toda vez que roda, ele:
+
+1. lê o **`manifest.json`** do GitHub (versão, build, tamanho e SHA-256 do `main.lua`);
+2. se a cópia local (`HYGE/main.lua`) já é esse build, abre ela — nada a baixar;
+3. senão baixa o `main.lua` e **confere**: tamanho, SHA-256, build e se compila;
+4. só então a cópia anterior vira `HYGE/main.backup.lua` e a nova é guardada;
+5. se qualquer passo falhar (sem internet, download cortado ou adulterado, build
+   que não compila), abre **a última versão que funcionava** — a cópia local
+   ou, se ela também não servir, o backup.
+
+O SHA-256 é calculado no próprio loader (Lua puro), então não depende de
+criptografia do executor. O hash é do texto com quebras de linha LF (o Git
+guarda LF e o GitHub serve LF, mesmo que no Windows o arquivo fique com CRLF).
+Precisa de `game:HttpGet` (ou `request`) e `loadstring`; `writefile`/`readfile`
+são opcionais (cópia offline e backup).
 
 Isso só funciona com o `main.lua` **publicado**: depois de `npm run build`,
-faça commit e push do `main.lua`. O painel aberto confere a cada 15 minutos
+faça commit e push do `main.lua` **e do `manifest.json`** (o build gera os
+dois juntos). O painel aberto confere o manifesto a cada 15 minutos
 (Configurações › Ajustes › Atualização) e avisa quando sai um build novo;
-**ATUALIZAR AGORA** troca sem sair do jogo.
+**ATUALIZAR AGORA** baixa, confere com o manifesto e troca sem sair do jogo —
+arquivo que não bate é recusado e nada é trocado.
 
 ## Estrutura
 
@@ -22,6 +34,7 @@ faça commit e push do `main.lua`. O painel aberto confere a cada 15 minutos
 HYGE/
 ├── loader.lua          ← cole ESTE no executor (baixa o main.lua mais novo)
 ├── main.lua            ← GERADO pelo build. É o arquivo que o loader baixa.
+├── manifest.json       ← GERADO junto (versão, build, tamanho, SHA-256) — v9.1
 ├── src/                ← código-fonte, dividido por assunto (edite aqui)
 │   ├── 00_core/        config, temas, checagem de admin, estado, helpers
 │   ├── 10_ui/          janela, toasts, console, topbar/sidebar, fábrica de UI, toggles/keybinds
@@ -29,8 +42,9 @@ HYGE/
 │   │                   freecam, drone, ações de moderação/troll, spectate,
 │   │                   anti-fall/anti-gravidade, walk on walls, Ctrl + clique TP
 │   ├── 30_kit/         widgets v7 (sliders, switches, confirmação), ícones, chips, HUD do drone,
-│   │                   rede/disco do executor, tempo de jogo + cosméticos (Playtime Shop),
-│   │                   pacotes de animação
+│   │                   rede/disco do executor (v9.1: gravação segura), tempo de jogo +
+│   │                   cosméticos (Playtime Shop), pacotes de animação; v9.1: SHA-256,
+│   │                   troca segura de perfil
 │   ├── 40_tabs/        uma aba por arquivo: home (+ mapa/perfil), dashboard, movement, visuals,
 │   │                   players, moderation, server, emotes, settings, shop, scripts, chat,
 │   │                   troll, chat HYGE
@@ -43,8 +57,11 @@ HYGE/
 │   ├── HYGE_AdminServer.server.lua   (no SEU jogo: ServerScriptService)
 │   ├── HYGE_AdminClient.client.lua   (no SEU jogo: StarterPlayer › StarterPlayerScripts)
 │   └── chat-relay/server.js          (relay do Chat HYGE: roda num servidor Node seu)
+├── tests/              ← npm test (v9.1) — veja "Testes"
+├── docs/TESTES.md      roteiro dos testes que só dá para fazer no Roblox
 ├── tools/check.js      validador estático (usado pelo build)
-└── build.js            junta src/ → main.lua
+├── tools/leaks.js      procura conexões que o Unload não desconectaria (v9.1)
+└── build.js            junta src/ → main.lua + manifest.json
 ```
 
 A ordem do build é a ordem alfabética do caminho — por isso os prefixos
@@ -71,7 +88,7 @@ O build **não grava** o `main.lua` se encontrar:
 - variável global desconhecida (quase sempre erro de digitação ou local fora
   de escopo) — no Roblox isso só explodiria em jogo
 - mais de **200 locais** no chunk principal (limite do Luau: o script nem
-  carrega). O painel está em ~168. Código novo vai dentro de `do ... end` ou
+  carrega). O painel está em ~169. Código novo vai dentro de `do ... end` ou
   pendurado na tabela `V8` — nunca como `local` solto no topo de um módulo.
   Os módulos da v8.1 usam `do local function Build() ... end Build() end`:
   as locais ficam dentro da função e não contam no chunk.
@@ -90,6 +107,29 @@ isolados. No fim do `main.lua` vai `V8.SrcMap`, que o log usa para trocar
 
 Se o `main.lua` for editado à mão, o build se recusa a sobrescrever (para não
 apagar sua mudança). Leve a mudança para `src/` ou use `node build.js --force`.
+
+## Testes (v9.1)
+
+```
+npm test
+```
+
+Roda `tests/*.test.js` com o test runner do Node (sem dependência extra além do
+`fengari`, uma VM Lua em JS que executa o código Lua de verdade):
+
+| Arquivo | O que garante |
+|---|---|
+| `build.test.js` | o projeto real compila; o `main.lua` e o `manifest.json` do repositório estão atualizados com o `src/`; `main.lua` editado à mão não é sobrescrito |
+| `modules.test.js` | todos os `.lua` são achados, a ordem é a do caminho (byte a byte), quem é/não é isolado e as linhas do `main.lua` batem com o `src/` |
+| `syntax.test.js` | erro de sintaxe ou global desconhecida numa **cópia** do projeto cancela o build sem tocar no `main.lua` |
+| `limits.test.js` | 200 locais / 200 upvalues por função (chunk principal e módulos isolados) |
+| `disk.test.js` | gravação segura: queda simulada em **cada** gravação nunca perde a config anterior |
+| `integrity.test.js` | SHA-256 em Lua = SHA-256 do Node; o loader recusa download cortado/adulterado/que não compila e abre a versão anterior |
+| `profiles.test.js` | perfil inválido não muda nada; erro no meio volta ao estado anterior; Freecam/Drone nunca ligam |
+| `server.test.js` | servidor com o Roblox imitado: a matriz admin / comum / alvo inexistente / argumento inválido / limite / filtro |
+| `diag.test.js` | contabilidade de conexões e tarefas; nenhuma conexão persistente fora do `Conn` (`tools/leaks.js`) |
+
+O que só dá para conferir dentro do Roblox está em [`docs/TESTES.md`](docs/TESTES.md).
 
 ## Servidor (opcional, só em jogo seu)
 
@@ -111,8 +151,19 @@ anúncios e mensagens pelo filtro de texto do Roblox (se o filtro falhar, nada
 (`[ADMIN HYGE] ✓ Kick: Fulano`). A aba **Server** mostra quantos dos 13
 Remotes foram encontrados.
 
-> Esses scripts não foram testados dentro de um jogo — teste no Studio
-> (Play com 2 jogadores em *Test › Clients and Servers*) antes de publicar.
+**v9.1 (auditoria):** cada RemoteEvent tem os argumentos validados (tipo, faixa,
+valores aceitos — o resto é recusado); o UserId do alvo precisa ser um inteiro
+de alguém no servidor; cada ação tem o seu limite
+(`CONFIG.Cooldowns`: kick 1 s, anúncio 5 s, ...); mensagem que o filtro
+censurou inteira (`#####`) não é enviada; e **tudo vai para o registro** —
+ações aceitas e recusas (quem, o quê, por quê) no Output do servidor e em
+`shared.HYGE_AUDIT` (últimas 200; no Studio: `print(#shared.HYGE_AUDIT)` na
+barra de comandos do servidor).
+
+> A lógica do servidor tem testes automáticos (`tests/server.test.js`, com o
+> Roblox imitado), mas ele **ainda não foi testado dentro de um jogo**. Antes
+> de publicar, siga o roteiro de [`docs/TESTES.md`](docs/TESTES.md) no Studio
+> (*Test › Clients and Servers*, 2+ jogadores).
 
 ## Navegação (dock)
 
@@ -137,6 +188,26 @@ No alto da tela fica a **ilha** (hora, FPS e ping; clique abre/fecha o painel)
 
 Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
 desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
+
+### O que a v9.1 trouxe (estabilidade)
+
+- **Config sem perda**: gravação com temporário + backup; arquivo estragado é
+  detectado ao abrir e dá para recuperar (veja *Config em disco*).
+- **Atualização conferida**: `manifest.json` com SHA-256; o loader e o
+  ATUALIZAR AGORA recusam download cortado/adulterado/que não compila e abrem
+  a última versão que funcionava.
+- **Troca de perfil segura**: o perfil é validado antes; se algo falhar no
+  meio, o painel volta ao que estava. As preferências são aplicadas antes e
+  separadas das funções; Freecam e Drone nunca ligam pelo perfil.
+- **Servidor auditado**: argumentos validados por ação, limite por ação,
+  registro de ações e recusas, filtro obrigatório.
+- **Diagnóstico de memória e conexões**: conexões criadas/encerradas/ativas por
+  módulo, tarefas pendentes, monitor de respawn e conferência do Unload
+  (`CLEAN` ou o que sobrou). Rodar o script de novo agora descarrega o painel
+  anterior de verdade (antes ele ficava rodando junto).
+- **Shift Lock do Roblox bloqueado** (opção em Comportamento): o Shift não
+  prende mais o mouse no centro.
+- **Testes automáticos** (`npm test`).
 
 ### O que a v9.0 trouxe
 
@@ -265,6 +336,8 @@ Hospede onde quiser (VPS, Render, Railway, Fly.io — atrás de proxy use
 
 Tudo remapeável em **Ajustes**. Com freecam/drone/fly ligados, as teclas que
 eles usam para se mover (WASD, E/Q, Space, Ctrl, Shift) não disparam atalhos.
+v9.0.1: o **Shift Lock do Roblox** fica bloqueado (o Shift não prende mais o
+mouse no centro) — dá para religar em Configurações › Comportamento.
 v9.0: **Macros** (Configurações › Teclas) ligam qualquer tecla livre a um
 comando da barra.
 
@@ -284,6 +357,25 @@ ilegível, o automático espera você salvar na mão. Os perfis ficam em
 `HYGE/profiles.json`. O tempo de jogo, os itens da Playtime Shop e o progresso das
 missões ficam à parte, em `HYGE/playtime.json`. Executor sem `writefile`/`readfile`: use
 **Exportar/Importar** pelo clipboard em Ajustes.
+
+**v9.1 — backup e recuperação.** Executor não tem "renomear", então não dá
+para trocar o arquivo de forma atômica; a estratégia é nunca ficar sem uma
+cópia boa. Cada gravação (config, perfis e tempo de jogo):
+
+1. grava a versão nova inteira em `<nome>.tmp` e relê para conferir;
+2. se a versão atual for válida, ela vira `<nome>.backup.json` (conferida) — um
+   arquivo estragado nunca apaga um backup bom;
+3. grava o principal e confere;
+4. apaga o `.tmp`.
+
+Caiu no meio de qualquer passo? Sempre sobra o principal válido, ou o `.tmp`
+(a versão nova completa), ou o backup (a anterior). Ao abrir, a config
+estragada é detectada: o painel **pergunta se quer recuperar** (e o salvamento
+automático fica parado até lá, para não gravar por cima). Também dá para
+voltar ao backup quando quiser — desfaz o último salvamento ou um RESETAR —
+em **Configuração em disco › RECUPERAR BACKUP** ou com o comando `recover`
+(`recover perfis` para os perfis). Perfis e tempo de jogo estragados voltam
+sozinhos do backup. O arquivo estragado fica em `<nome>.corrupt.json`.
 
 ## Versão anterior
 

@@ -161,30 +161,30 @@ function analyze(code) {
 }
 
 // Imprime o relatório. 'where(line)' traduz linha do arquivo final -> origem.
-function report(r, where = l => 'linha ' + l) {
-  if (r.skipped) { console.log('  (validação pulada: ' + r.skipped + ')'); return true; }
-  if (r.syntax) { console.log('  ERRO DE SINTAXE em ' + where(r.syntax.line) + '\n    ' + r.syntax.message); return false; }
+function report(r, where = l => 'linha ' + l, log = console.log) {
+  if (r.skipped) { log('  (validação pulada: ' + r.skipped + ')'); return true; }
+  if (r.syntax) { log('  ERRO DE SINTAXE em ' + where(r.syntax.line) + '\n    ' + r.syntax.message); return false; }
 
   let ok = true;
   const m = r.main;
-  console.log(`  sintaxe ............ ok`);
-  console.log(`  locais no chunk .... ${m.locals}/${LIMIT_LOCALS}` + (m.locals >= WARN_LOCALS ? '  << perto do limite!' : ''));
+  log(`  sintaxe ............ ok`);
+  log(`  locais no chunk .... ${m.locals}/${LIMIT_LOCALS}` + (m.locals >= WARN_LOCALS ? '  << perto do limite!' : ''));
   if (r.overLocals.length) {
     ok = false;
-    r.overLocals.forEach(f => console.log(`  ESTOUROU 200 LOCAIS: ${f.name} (${f.value}) — pico em ${where(f.at)}`));
+    r.overLocals.forEach(f => log(`  ESTOUROU 200 LOCAIS: ${f.name} (${f.value}) — pico em ${where(f.at)}`));
   }
   if (r.overUpvals.length) {
     ok = false;
-    r.overUpvals.forEach(f => console.log(`  ESTOUROU 200 UPVALUES: ${f.name} (${f.value}) em ${where(f.line)}`));
+    r.overUpvals.forEach(f => log(`  ESTOUROU 200 UPVALUES: ${f.name} (${f.value}) em ${where(f.line)}`));
   }
   const u = r.topUpvals[0];
-  if (u) console.log(`  maior nº upvalues .. ${u.value} (${u.name}, ${where(u.line)})`);
+  if (u) log(`  maior nº upvalues .. ${u.value} (${u.name}, ${where(u.line)})`);
   if (r.unknownGlobals.length) {
     ok = false;
-    console.log('  GLOBAIS DESCONHECIDAS (erro de digitação? local fora de escopo?):');
-    r.unknownGlobals.forEach(g => console.log(`    ${g.name}  — ${where(g.line)}`));
+    log('  GLOBAIS DESCONHECIDAS (erro de digitação? local fora de escopo?):');
+    r.unknownGlobals.forEach(g => log(`    ${g.name}  — ${where(g.line)}`));
   } else {
-    console.log('  globais ............ ok');
+    log('  globais ............ ok');
   }
   return ok;
 }

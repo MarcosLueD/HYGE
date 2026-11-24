@@ -1,14 +1,16 @@
 {
   "name": "hyge-panel",
-  "version": "9.0.0",
+  "version": "9.1.0",
   "private": true,
   "description": "HYGE Admin Panel — build (src/ -> main.lua) e validação estática",
   "scripts": {
     "build": "node build.js",
     "check": "node build.js --check",
+    "test": "node --test \"tests/*.test.js\"",
     "chat": "node server/chat-relay/server.js"
   },
   "devDependencies": {
+    "fengari": "0.1.5",
     "luaparse": "0.3.1"
   }
 }

@@ -1,6 +1,6 @@
 --[[
 ================================================================================
-    HYGE ADMIN — SERVIDOR (v8.0)
+    HYGE ADMIN — SERVIDOR (v9.1)
 
     Onde colocar:  ServerScriptService  >  Script (comum, não LocalScript)
     Par dele:      server/HYGE_AdminClient.client.lua em StarterPlayerScripts
@@ -18,6 +18,18 @@
       * devolve confirmação real para o painel do admin ("✓ Kick: Fulano"),
         que aparece no console do painel.
 
+    v9.1 (auditoria):
+      * cada RemoteEvent tem os argumentos validados (tipo, faixa, lista de
+        valores aceitos). Argumento errado = recusado, nada acontece.
+      * UserId do alvo precisa ser um inteiro de alguém NO servidor
+      * limite por ação (CONFIG.Cooldowns): kick, anúncio etc. têm o seu
+      * tudo vai para o registro: ações aceitas E recusas (quem, o quê, por
+        quê). Output do servidor + shared.HYGE_AUDIT (últimas 200 entradas)
+      * texto: tamanho conferido antes de processar, corte sem quebrar
+        caractere UTF-8, e mensagem que o filtro censurou inteira não é enviada
+
+    Testes: tests/server.test.js (Roblox imitado, roda com npm test) e o
+    roteiro para o Studio em docs/TESTES.md (Test › Clients and Servers).
     Só funciona em jogo seu (ou do seu grupo) — é um script de servidor.
 ================================================================================
 ]]
@@ -39,8 +51,17 @@ local CONFIG = {
     GroupMinRank  = 255,    -- ...com rank >= este valor (255 = dono do grupo)
 
     ProtectAdmins = true,   -- admin não pode kickar/trollar outro admin
-    Cooldown      = 0.25,   -- segundos mínimos entre ações do mesmo admin
+    Cooldown      = 0.25,   -- segundos entre ações iguais do mesmo admin (padrão)
+    Cooldowns     = {       -- v9.1: por ação (o que não está aqui usa Cooldown)
+        AdminKick     = 1,
+        AdminAnnounce = 5,
+        AdminWhisper  = 1,
+        AdminScale    = 1,
+        AdminFling    = 1,
+        AdminLaunch   = 1,
+    },
     MaxText       = 200,    -- limite de caracteres de anúncio/mensagem/motivo
+    AuditSize     = 200,    -- quantas entradas o registro guarda
 
     FlingPower    = 160,
     LaunchPower   = 220,
@@ -76,11 +97,42 @@ for _, name in ipairs(NAMES) do
 end
 
 --------------------------------------------------------------------------------
+-- REGISTRO (auditoria): aceitas e recusas, no Output e em shared.HYGE_AUDIT
+--------------------------------------------------------------------------------
+local AuditLog = {}
+shared.HYGE_AUDIT = AuditLog
+local refusedWarn = {}   -- [Player] = { [motivo] = os.clock() } — sem spam no Output
+
+local function Record(entry)
+    entry.time = os.time()
+    table.insert(AuditLog, entry)
+    while #AuditLog > CONFIG.AuditSize do table.remove(AuditLog, 1) end
+end
+
+local function Audit(admin, action, target, extra)
+    Record({ ok = true, by = admin.UserId, name = admin.Name, action = action,
+             target = target and target.UserId or nil, extra = extra })
+    print(("[HYGE] %s -> %s%s%s"):format(admin.Name, action,
+        target and (" " .. target.Name) or "", extra and (" " .. extra) or ""))
+end
+
+-- recusa: sempre no registro; no Output no máximo 1x a cada 10 s por motivo
+local function Refuse(player, remoteName, reason)
+    Record({ ok = false, by = player.UserId, name = player.Name, action = remoteName, reason = reason })
+    local now = os.clock()
+    local seen = refusedWarn[player] or {}
+    refusedWarn[player] = seen
+    if not seen[reason] or now - seen[reason] > 10 then
+        seen[reason] = now
+        warn(("[HYGE] RECUSADO %s (%d) %s: %s"):format(player.Name, player.UserId, remoteName, reason))
+    end
+end
+
+--------------------------------------------------------------------------------
 -- QUEM É ADMIN (calculado no servidor, com cache por jogador)
 --------------------------------------------------------------------------------
 local adminCache = {}   -- [Player] = true/false
-local lastAction = {}   -- [Player] = os.clock() da última ação aceita
-local deniedWarn = {}   -- [Player] = os.clock() do último warn (sem spam no output)
+local lastAction = {}   -- [Player] = { [remote] = os.clock() da última ação }
 
 local function ComputeAdmin(player)
     for _, id in ipairs(CONFIG.AdminIds) do
@@ -91,6 +143,7 @@ local function ComputeAdmin(player)
         return true
     end
     if CONFIG.GroupId and CONFIG.GroupId > 0 then
+        -- falhou a consulta (Roblox fora do ar) = NÃO é admin
         local ok, rank = pcall(function() return player:GetRankInGroup(CONFIG.GroupId) end)
         if ok and type(rank) == "number" and rank >= CONFIG.GroupMinRank then return true end
     end
@@ -106,7 +159,7 @@ Players.PlayerAdded:Connect(function(p) adminCache[p] = ComputeAdmin(p) end)
 Players.PlayerRemoving:Connect(function(p)
     adminCache[p] = nil
     lastAction[p] = nil
-    deniedWarn[p] = nil
+    refusedWarn[p] = nil
 end)
 
 --------------------------------------------------------------------------------
@@ -130,17 +183,26 @@ local function Notify(admin, text)
     end
 end
 
+-- UserId: número inteiro de alguém que está NESTE servidor (quem garante é o
+-- GetPlayerByUserId; no Studio os jogadores de teste têm UserId negativo)
 local function Target(userId)
-    if type(userId) ~= "number" or userId ~= userId then return nil end
+    if type(userId) ~= "number" or userId ~= userId or userId == 0
+        or userId ~= math.floor(userId) or math.abs(userId) > 2^53 then
+        return nil
+    end
     return Players:GetPlayerByUserId(userId)
 end
 
--- texto do cliente: string, sem caracteres de controle, tamanho limitado
+-- texto do cliente: string UTF-8 válida, sem caracteres de controle, até
+-- CONFIG.MaxText caracteres (cortado sem partir caractere). nil = inválido
 local function CleanText(s)
     if type(s) ~= "string" then return nil end
-    s = s:gsub("[%c]", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    if #s > CONFIG.MaxText * 4 then return nil end      -- nem processa lixo enorme
+    if utf8.len(s) == nil then return nil end           -- bytes que não são texto
+    s = s:gsub("%c", " "):gsub("^%s+", ""):gsub("%s+$", "")
     if s == "" then return nil end
-    if #s > CONFIG.MaxText then s = s:sub(1, CONFIG.MaxText) end
+    local cut = utf8.offset(s, CONFIG.MaxText + 1)
+    if cut then s = s:sub(1, cut - 1) end
     return s
 end
 
@@ -155,6 +217,11 @@ local function FilterFor(text, fromUserId, toPlayer)
     end)
     if ok and type(out) == "string" then return out end
     return nil
+end
+
+-- o filtro trocou TUDO por #: não manda "#####" para ninguém
+local function FullyCensored(s)
+    return s:gsub("[#%s]", "") == ""
 end
 
 -- o servidor assume a física do alvo por um instante (velocidade aplicada
@@ -173,52 +240,93 @@ local function WithServerPhysics(target, seconds, fn)
     return true
 end
 
-local function Audit(admin, action, target, extra)
-    print(("[HYGE] %s -> %s%s%s"):format(admin.Name, action,
-        target and (" " .. target.Name) or "", extra and (" " .. extra) or ""))
+--------------------------------------------------------------------------------
+-- VALIDAÇÃO DE ARGUMENTOS (v9.1). Cada validador devolve ok, valor limpo.
+--------------------------------------------------------------------------------
+local Arg = {}
+Arg.text = function(v)             -- texto obrigatório
+    local s = CleanText(v)
+    return s ~= nil, s
+end
+Arg.optText = function(v)          -- texto opcional (nil ou só espaços = sem texto)
+    if v == nil then return true, nil end
+    if type(v) ~= "string" then return false end
+    if #v <= CONFIG.MaxText * 4 and v:match("^%s*$") then return true, nil end
+    local s = CleanText(v)
+    return s ~= nil, s
+end
+Arg.optBool = function(v)          -- liga/desliga (nil = padrão de cada ação)
+    return v == nil or type(v) == "boolean", v
+end
+Arg.oneOf = function(set)          -- um dos valores da tabela (chave)
+    return function(v)
+        return type(v) == "string" and set[v] ~= nil, v
+    end
 end
 
 --------------------------------------------------------------------------------
 -- PORTEIRO: toda chamada passa por aqui
 --   opts.target  = o 1º argumento é UserId de um jogador alvo
 --   opts.protect = alvo admin é recusado (se CONFIG.ProtectAdmins)
+--   opts.args    = validadores dos argumentos seguintes (na ordem)
+-- Ordem: admin? -> limite da ação -> alvo -> argumentos -> ação. Qualquer
+-- "não" para tudo, vai para o registro e (se for admin) avisa o painel.
 --------------------------------------------------------------------------------
 local function Handle(remoteName, opts, fn)
     local remote = R[remoteName]
     if not remote then return end
+    local validators = opts.args or {}
+    local cooldown = CONFIG.Cooldowns[remoteName] or CONFIG.Cooldown
+
     remote.OnServerEvent:Connect(function(player, ...)
         if not IsAdmin(player) then
-            local now = os.clock()
-            if not deniedWarn[player] or now - deniedWarn[player] > 10 then
-                deniedWarn[player] = now
-                warn(("[HYGE] %s (%d) chamou %s sem ser admin — ignorado")
-                    :format(player.Name, player.UserId, remoteName))
-            end
+            Refuse(player, remoteName, "não é admin")
             return
         end
 
         local now = os.clock()
-        if lastAction[player] and now - lastAction[player] < CONFIG.Cooldown then return end
-        lastAction[player] = now
+        local mine = lastAction[player] or {}
+        lastAction[player] = mine
+        if mine[remoteName] and now - mine[remoteName] < cooldown then
+            Refuse(player, remoteName, "limite da ação (" .. cooldown .. "s)")
+            Notify(player, ("✗ %s: espere %.1fs"):format(remoteName, cooldown - (now - mine[remoteName])))
+            return
+        end
+        mine[remoteName] = now   -- conta a tentativa (pedido inválido também gasta)
 
-        local args = { ... }
+        local args = table.pack(...)
+        local i = 1
         local target
         if opts.target then
             target = Target(args[1])
             if not target then
+                Refuse(player, remoteName, "alvo inválido ou fora do servidor")
                 Notify(player, "✗ " .. remoteName .. ": jogador não está no servidor")
                 return
             end
             if opts.protect and CONFIG.ProtectAdmins and target ~= player and IsAdmin(target) then
+                Refuse(player, remoteName, "alvo é admin")
                 Notify(player, "✗ " .. remoteName .. ": " .. target.Name .. " também é admin")
                 return
             end
+            i = 2
         end
 
-        local ok, err = pcall(fn, player, target, table.unpack(args, opts.target and 2 or 1))
+        local clean = {}
+        for n, check in ipairs(validators) do
+            local ok, v = check(args[i + n - 1])
+            if not ok then
+                Refuse(player, remoteName, "argumento " .. n .. " inválido")
+                Notify(player, "✗ " .. remoteName .. ": argumento inválido")
+                return
+            end
+            clean[n] = v
+        end
+
+        local ok, err = pcall(fn, player, target, table.unpack(clean, 1, #validators))
         if not ok then
+            Refuse(player, remoteName, "falhou: " .. tostring(err))
             Notify(player, "✗ " .. remoteName .. ": " .. tostring(err))
-            warn("[HYGE] " .. remoteName .. " falhou: " .. tostring(err))
         end
     end)
 end
@@ -226,9 +334,10 @@ end
 --------------------------------------------------------------------------------
 -- MODERAÇÃO
 --------------------------------------------------------------------------------
-Handle("AdminKick", { target = true, protect = true }, function(admin, target, reason)
-    local text = CleanText(reason) or "Removido por um admin"
+Handle("AdminKick", { target = true, protect = true, args = { Arg.optText } }, function(admin, target, reason)
+    local text = reason or "Removido por um admin"
     text = FilterFor(text, admin.UserId, target) or "Removido por um admin"
+    if FullyCensored(text) then text = "Removido por um admin" end
     Audit(admin, "kick", target)
     Notify(admin, "✓ Kick: " .. target.Name)
     target:Kick(text)
@@ -250,8 +359,8 @@ Handle("AdminTeleport", { target = true }, function(admin, target)
     Notify(admin, "✓ Goto: " .. target.Name)
 end)
 
-Handle("AdminFreeze", { target = true, protect = true }, function(admin, target, on)
-    if type(on) ~= "boolean" then on = true end
+Handle("AdminFreeze", { target = true, protect = true, args = { Arg.optBool } }, function(admin, target, on)
+    if on == nil then on = true end
     local root = Root(target)
     if not root then error("alvo sem personagem", 0) end
     root.Anchored = on
@@ -262,21 +371,18 @@ end)
 --------------------------------------------------------------------------------
 -- COMUNICAÇÃO (sempre filtrada)
 --------------------------------------------------------------------------------
-Handle("AdminAnnounce", {}, function(admin, _, msg)
-    -- sem alvo: o 1º argumento já é a mensagem
-    local text = CleanText(msg)
-    if not text then error("mensagem vazia", 0) end
+Handle("AdminAnnounce", { args = { Arg.text } }, function(admin, _, text)
     local safe = FilterFor(text, admin.UserId, nil)
     if not safe then error("o filtro do Roblox não respondeu — nada foi enviado", 0) end
+    if FullyCensored(safe) then error("o filtro do Roblox bloqueou a mensagem — nada foi enviado", 0) end
     Audit(admin, "announce", nil, safe)
     R.AdminAnnounce:FireAllClients(admin.Name, safe)
 end)
 
-Handle("AdminWhisper", { target = true }, function(admin, target, msg)
-    local text = CleanText(msg)
-    if not text then error("mensagem vazia", 0) end
+Handle("AdminWhisper", { target = true, args = { Arg.text } }, function(admin, target, text)
     local safe = FilterFor(text, admin.UserId, target)
     if not safe then error("o filtro do Roblox não respondeu — nada foi enviado", 0) end
+    if FullyCensored(safe) then error("o filtro do Roblox bloqueou a mensagem — nada foi enviado", 0) end
     Audit(admin, "whisper", target)
     R.AdminWhisper:FireClient(target, admin.Name, safe)
     Notify(admin, "✓ Mensagem entregue para " .. target.Name)
@@ -325,9 +431,8 @@ Handle("AdminSit", { target = true, protect = true }, function(admin, target)
     Notify(admin, "✓ Sit: " .. target.Name)
 end)
 
-Handle("AdminScale", { target = true, protect = true }, function(admin, target, mode)
+Handle("AdminScale", { target = true, protect = true, args = { Arg.oneOf(CONFIG.Scale) } }, function(admin, target, mode)
     local factor = CONFIG.Scale[mode]
-    if not factor then error("modo inválido (tiny|normal|giant)", 0) end
     if not target.Character then error("alvo sem personagem", 0) end
     target.Character:ScaleTo(factor)
     Audit(admin, "scale", target, mode)
@@ -343,7 +448,7 @@ local function ClearConstraint(root, name)
     end
 end
 
-Handle("AdminSpin", { target = true, protect = true }, function(admin, target, on)
+Handle("AdminSpin", { target = true, protect = true, args = { Arg.optBool } }, function(admin, target, on)
     local root = Root(target)
     if not root then error("alvo sem personagem", 0) end
     ClearConstraint(root, "HYGE_Spin")
@@ -363,7 +468,7 @@ Handle("AdminSpin", { target = true, protect = true }, function(admin, target, o
     Notify(admin, (on ~= false and "✓ Spin ON: " or "✓ Spin OFF: ") .. target.Name)
 end)
 
-Handle("AdminBalloon", { target = true, protect = true }, function(admin, target, on)
+Handle("AdminBalloon", { target = true, protect = true, args = { Arg.optBool } }, function(admin, target, on)
     local root = Root(target)
     if not root then error("alvo sem personagem", 0) end
     ClearConstraint(root, "HYGE_Balloon")

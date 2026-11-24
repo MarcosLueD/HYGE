@@ -1,5 +1,70 @@
 # Changelog
 
+## v9.1
+
+Versão de estabilidade: não perder configuração, não instalar build ruim,
+perfil nunca pela metade, servidor auditado e vazamentos à vista.
+
+### Testes automáticos (`npm test`)
+- `tests/` com o test runner do Node: build (módulos, ordem, isolamento,
+  sintaxe, globais, limite de 200 locais/upvalues, `main.lua` editado à mão),
+  gravação segura, SHA-256 e loader, troca de perfil, servidor e conexões.
+- O código Lua roda de verdade nos testes (`fengari`, devDependency).
+- `build.js` agora exporta as funções (a linha de comando continua igual).
+
+### Backup e recuperação
+- Config, perfis e tempo de jogo gravam assim: `.tmp` conferido → backup da
+  versão anterior (só se ela for válida) → principal conferido → apaga o `.tmp`.
+  Uma queda em qualquer passo não perde a última config boa (testado com queda
+  simulada em cada gravação).
+- Config estragada ao abrir: o painel pergunta se quer recuperar; o
+  salvamento automático fica parado até lá. **RECUPERAR BACKUP** e o comando
+  `recover` (`recover perfis`) também desfazem o último salvamento ou um RESETAR.
+- Perfis e tempo de jogo estragados voltam sozinhos do backup (antes a lista
+  começava vazia e o próximo salvamento apagava tudo).
+
+### Integridade do loader e da atualização
+- O build gera `manifest.json` (versão, build, tamanho e SHA-256 do texto LF).
+- O loader lê o manifesto primeiro; se a cópia local já é esse build, nem
+  baixa. Download é conferido (tamanho, SHA-256, build, compila) antes de
+  qualquer arquivo ser trocado; a versão anterior vira `main.backup.lua`.
+  Qualquer falha abre a última versão que funcionava.
+- SHA-256 em Lua puro (sem depender do executor), o mesmo bloco no loader e no
+  painel. ATUALIZAR AGORA também confere com o manifesto.
+
+### Troca segura de perfis
+- Validação completa antes de mexer em qualquer coisa (tipos, números finitos,
+  faixas). Perfil inválido não muda nada.
+- Preferências aplicadas tudo-ou-nada, com conferência no fim; deu erro no
+  meio, volta ao estado anterior. As funções só ligam depois, separadas; a que
+  não ligar vai para o relatório. Freecam e Drone continuam nunca ligando.
+- O resultado vai para o log e para o Diagnóstico.
+
+### Servidor auditado
+- Argumentos validados por RemoteEvent; UserId do alvo inteiro e de alguém no
+  servidor (funciona com os UserIds negativos do Studio).
+- Limite por ação (`CONFIG.Cooldowns`) em vez de um único para tudo.
+- Registro de ações aceitas **e** recusas (`shared.HYGE_AUDIT` + Output, sem spam).
+- Texto conferido antes de processar, corte sem partir UTF-8, mensagem
+  censurada inteira pelo filtro não é enviada.
+- Roteiro de teste no Studio em `docs/TESTES.md` (o servidor ainda precisa
+  ser testado lá antes de publicar).
+
+### Diagnóstico de memória e conexões
+- Conexões criadas / ativas / encerradas, ativas por módulo e monitor de
+  respawn; tarefas agendadas, pendentes e rodando.
+- Trocar `Conn.X` sem `Drop` agora desconecta a antiga (antes vazava).
+- Unload confere se ficou limpo (`CLEAN` ou o que sobrou), avisa tarefa que
+  rodar depois dele e grava o resultado para a próxima sessão.
+- Rodar o script de novo descarrega a instância anterior de verdade (antes só
+  a GUI sumia e as conexões dela continuavam rodando).
+- Slider arrastado durante o unload não deixa mais conexão para trás.
+- `tools/leaks.js`: acusa conexão em serviço/jogador que não esteja no `Conn`.
+
+### Outros
+- Shift Lock do Roblox bloqueado (Configurações › Comportamento): o Shift não
+  prende mais o mouse no centro — o Fly usa o Shift para acelerar.
+
 ## v9.0
 
 A maior atualização até agora: o painel ficou mais organizado, mais seu e

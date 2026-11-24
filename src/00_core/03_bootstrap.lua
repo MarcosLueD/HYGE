@@ -56,7 +56,19 @@ do
     end
 end
 
--- Evita duas instâncias abertas ao mesmo tempo (em qualquer um dos parents)
+-- Evita duas instâncias abertas ao mesmo tempo (em qualquer um dos parents).
+-- v9.1: antes de destruir a GUI, descarrega a instância anterior de verdade
+-- (conexões, scheduler, funções ligadas; a config dela é salva) — antes só a
+-- GUI sumia e o resto continuava rodando junto com o painel novo
+do
+    local env = (typeof(getgenv) == "function" and getgenv()) or _G
+    local prevUnload = env.HYGE_UNLOAD
+    if type(prevUnload) == "function" then
+        env.HYGE_UNLOAD = nil
+        local ok, err = pcall(prevUnload)
+        if not ok then warn("[HYGE] não deu para descarregar a instância anterior: " .. tostring(err)) end
+    end
+end
 for _, holder in ipairs({ GuiParent, PlayerGui }) do
     if holder then
         local prev = holder:FindFirstChild("HYGE_PANEL")

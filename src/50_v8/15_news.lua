@@ -17,15 +17,14 @@ do
             if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
         end)
 
+        -- v9.1: estabilidade
         W.Items = {
-            { "grid",     "Ajustes organizados", "Categorias (Geral, Teclas, Visual, Dados, Sistema) e busca dentro de Configurações." },
-            { "star",     "Favoritos", "Estrela em qualquer função: ela vira uma ação rápida na Home." },
-            { "layers",   "Perfis", "Guarde o painel inteiro com um nome e deixe um perfil abrir sozinho em cada jogo." },
-            { "bell",     "Notificações", "Todo aviso fica no sino da ilha do topo. Tem modo Não perturbe." },
-            { "keyboard", "Macros", "Uma tecla roda qualquer comando (ex.: H = tp amigo)." },
-            { "sun",      "Temas", "Rosa, Laranja, Meia-noite e uma cor só sua." },
-            { "check",    "Salva sozinho", "A config vai para o disco a cada 30 s — sair do jogo não perde mais nada." },
-            { "shield",   "Mais estável", "Um módulo com erro não derruba o painel; o Diagnóstico mostra onde foi." },
+            { "check",    "Backup da config", "Config, perfis e tempo de jogo têm backup. Arquivo estragado? RECUPERAR BACKUP (ou o comando recover)." },
+            { "shield",   "Atualização conferida", "O loader e o ATUALIZAR AGORA só trocam a versão se o arquivo bater com o SHA-256 do manifesto. Download ruim abre a última que funcionava." },
+            { "layers",   "Perfis seguros", "Perfil inválido não muda nada; se algo falhar no meio, o painel volta ao que estava." },
+            { "signal",   "Diagnóstico novo", "Conexões por módulo, tarefas, respawn e se o último Unload ficou limpo." },
+            { "power",    "Rodar de novo sem duplicar", "Executar o script outra vez descarrega o painel anterior de verdade." },
+            { "keyboard", "Shift Lock bloqueado", "O Shift não prende mais o mouse no centro (o Fly usa o Shift para acelerar). Dá para religar em Comportamento." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou
         W.Tips = function()

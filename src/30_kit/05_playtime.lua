@@ -169,23 +169,38 @@ do
                     quests = P.Quests })
             end)
             if not ok then return false end
-            local wrote, err = V8.Disk.Write(P.Path, json)
+            -- v9.1: gravação segura (temporário + backup), igual à config
+            local wrote, err = V8.Disk.SafeWrite(P.Path, json, P.JsonOk)
             if not wrote and not silent then
                 Log("Playtime não foi salvo: " .. tostring(err), "error")
             end
             return wrote
         end
 
+        P.JsonOk = function(s)
+            local ok, d = pcall(function() return V8.Net.Http:JSONDecode(s) end)
+            return ok and type(d) == "table"
+        end
+
         P.Load = function()
-            local raw, why = V8.Disk.Read(P.Path)
+            -- v9.1: estragado -> volta do .tmp/backup (antes: começava do zero)
+            local r = V8.Disk.SafeRead(P.Path, P.JsonOk)
+            local raw = r.text
+            if r.state == "corrupt" and r.recover[1] then
+                raw = r.recover[1].text
+                V8.Disk.Recover(P.Path, raw, P.JsonOk)
+                Log("playtime.json estragado — recuperado do " .. r.recover[1].label, "warn")
+            end
             if not raw then
-                P.Status = V8.Disk.Ok() and "Primeira sessão: o contador começa agora."
-                    or "Executor sem writefile/readfile: o tempo desta sessão se perde ao sair."
-                return false, why
+                P.Status = (r.state == "corrupt")
+                    and "playtime.json ilegível e sem backup — começando do zero (o antigo fica em playtime.corrupt.json)."
+                    or (V8.Disk.Ok() and "Primeira sessão: o contador começa agora."
+                    or "Executor sem writefile/readfile: o tempo desta sessão se perde ao sair.")
+                return false, r.state
             end
             local ok, d = pcall(function() return V8.Net.Http:JSONDecode(raw) end)
             if not ok or type(d) ~= "table" then
-                P.Status = "playtime.json ilegível — começando do zero (o arquivo antigo será sobrescrito)."
+                P.Status = "playtime.json ilegível — começando do zero."
                 return false
             end
             local total = tonumber(d.total)

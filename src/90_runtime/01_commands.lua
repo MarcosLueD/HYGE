@@ -680,6 +680,15 @@ do
         if V8.Cfg then V8.Cfg.Load() else Log("Persistência indisponível", "error") end
     end)
 
+    -- v9.1: config (ou perfis) de volta do backup
+    DefCmd("recover", "recover [perfis]", "recupera a config (ou os perfis) do backup", function(args)
+        if (args[1] or ""):lower():sub(1, 4) == "perf" then
+            if V8.Prof and V8.Prof.Recover then V8.Prof.Recover() else Log("Perfis indisponíveis", "error") end
+            return
+        end
+        if V8.Cfg then V8.Cfg.RecoverNow(1) else Log("Persistência indisponível", "error") end
+    end)
+
     ----------------------------------------------------------------------------
     -- abrir / fechar a barra
     ----------------------------------------------------------------------------

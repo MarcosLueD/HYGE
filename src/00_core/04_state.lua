@@ -49,6 +49,7 @@ local State = {
         Transparency = 0,
         Compact      = false,
         EspAuto      = true,
+        NoShiftLock  = true,   -- v9.0.1: Shift não liga o Shift Lock do Roblox
     },
     CmdHistory = {},
 }
@@ -149,6 +150,124 @@ end
 local function Track(inst) table.insert(Bin, inst) return inst end
 local function Drop(name)
     if Conn[name] then Conn[name]:Disconnect() Conn[name] = nil end
+end
+
+-- [conns:begin] (tests/diag.test.js roda este bloco)
+--------------------------------------------------------------------------------
+-- v9.1: CONTABILIDADE DE CONEXÕES E TAREFAS (Configurações › Diagnóstico)
+-- Conn continua igual para quem usa (Conn.Nome = sinal:Connect(...) / Drop),
+-- mas por baixo cada conexão é contada — criadas, encerradas, ativas — e
+-- anotada com a linha de onde veio (vira src/arquivo.lua no relatório).
+-- Trocar Conn.Nome sem Drop agora DESCONECTA a antiga (antes ela ficava viva
+-- para sempre, sem ninguém com a referência) e conta como "reaproveitada".
+-- Para listar: V8.Conns.live (pairs(Conn) não enxerga nada: é um proxy).
+--------------------------------------------------------------------------------
+do
+    local info = (type(debug) == "table" and type(debug.info) == "function") and debug.info or nil
+    -- linhas da pilha de quem chamou (o relatório pula as deste arquivo)
+    V8.CallSite = function()
+        if not info then return nil end
+        local out = {}
+        for lv = 2, 7 do
+            local ok, l = pcall(info, lv, "l")
+            if ok and type(l) == "number" and l > 0 then table.insert(out, l) end
+        end
+        return out
+    end
+
+    V8.Conns = { live = {}, meta = {}, created = 0, closed = 0, replaced = 0, respawns = {} }
+    local S = V8.Conns
+    local function Close(c)
+        local ok, alive = pcall(function() return c.Connected end)
+        if ok and alive == false then return false end
+        pcall(function() c:Disconnect() end)
+        return true
+    end
+    setmetatable(Conn, {
+        __index = S.live,
+        __newindex = function(_, k, v)
+            local old = S.live[k]
+            if old ~= nil and old ~= v then
+                -- ainda conectada e trocada por outra = era vazamento
+                if Close(old) and v ~= nil then S.replaced = S.replaced + 1 end
+                S.closed = S.closed + 1
+            end
+            S.live[k] = v
+            if v == nil then
+                S.meta[k] = nil
+            elseif v ~= old then
+                S.created = S.created + 1
+                S.meta[k] = { lines = V8.CallSite(), at = os.clock() }
+            end
+        end,
+    })
+end
+
+-- Tarefas: o task do painel é este (o global continua intacto para o resto
+-- do jogo). delay/defer/spawn são contados; depois do Unload, tarefa que
+-- ainda rodar é anotada em V8.Tasks.late (é algo que "ficou vivo").
+V8.Tasks = { scheduled = 0, ran = 0, running = 0, late = {}, lateSeen = {} }
+V8.RawTask = task
+local task = setmetatable({}, { __index = task })
+do
+    local real, T = V8.RawTask, V8.Tasks
+    local function Late(site)
+        if not V8.Unloaded then return end
+        local key = site and table.concat(site, ",") or "?"
+        if T.lateSeen[key] then return end
+        T.lateSeen[key] = true
+        table.insert(T.late, site or {})
+        local where = (site and site[1] and V8.SrcOf) and V8.SrcOf(site) or "?"
+        warn("[HYGE] tarefa rodou depois do unload: " .. tostring(where))
+    end
+    -- delay/defer: conta ao agendar e ao rodar
+    local function Wrap(fn)
+        if type(fn) ~= "function" then return fn end
+        local site = V8.CallSite()
+        T.scheduled = T.scheduled + 1
+        return function(...)
+            T.ran = T.ran + 1
+            Late(site)
+            return fn(...)
+        end
+    end
+    task.delay = function(t, fn, ...) return real.delay(t, Wrap(fn), ...) end
+    task.defer = function(fn, ...) return real.defer(Wrap(fn), ...) end
+    -- spawn: conta quantas estão rodando agora (as que esperam HTTP, wait...)
+    task.spawn = function(fn, ...)
+        if type(fn) ~= "function" then return real.spawn(fn, ...) end
+        local site = V8.CallSite()
+        T.scheduled = T.scheduled + 1
+        return real.spawn(function(...)
+            T.ran = T.ran + 1
+            T.running = T.running + 1
+            Late(site)
+            local r = table.pack(pcall(fn, ...))
+            T.running = T.running - 1
+            if not r[1] then error(r[2], 0) end
+            return table.unpack(r, 2, r.n)
+        end, ...)
+    end
+end
+V8.Pending = function() return V8.Tasks.scheduled - V8.Tasks.ran end
+-- [conns:end]
+
+-- linha do main.lua -> "src/arquivo.lua:linha" (aceita a lista do CallSite:
+-- usa a primeira que não for deste arquivo)
+V8.SrcOf = function(lines)
+    if type(lines) == "number" then lines = { lines } end
+    if type(lines) ~= "table" then return nil end
+    local first
+    for _, l in ipairs(lines) do
+        for _, m in ipairs(V8.SrcMap or {}) do
+            if l >= m[2] and l <= m[3] then
+                local w = m[1] .. ":" .. (l - m[2] + 1)
+                if m[1] ~= "src/00_core/04_state.lua" then return w end
+                first = first or w
+            end
+        end
+    end
+    return first
 end
 
 -- v8.0: catálogo ÚNICO dos Remotes. Aba Server, Ajustes › Sobre, comando

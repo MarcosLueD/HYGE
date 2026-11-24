@@ -111,4 +111,120 @@ do
         if ok then return true end
         return false, tostring(err)
     end
+
+    D.Exists = function(path)
+        if not D.Ok() then return false end
+        local ok, has = pcall(function() return isfile(path) end)
+        return ok and has == true
+    end
+
+    -- sem delfile no executor, o arquivo fica (quem lê sabe lidar)
+    D.Delete = function(path)
+        if typeof(delfile) ~= "function" then return false end
+        return (pcall(function() delfile(path) end))
+    end
+
+    ----------------------------------------------------------------------------
+    -- v9.1 — GRAVAÇÃO SEGURA (config.json, profiles.json)
+    -- Executor não tem "renomear", então não dá para trocar o arquivo de forma
+    -- atômica. A estratégia é nunca ficar sem uma cópia boa:
+    --   1. a versão nova vai inteira para <nome>.tmp e é conferida (relida)
+    --   2. a versão atual, SE for válida, vira <nome>.backup.json (conferida);
+    --      um principal estragado nunca apaga um backup bom
+    --   3. a versão nova vai para o principal (conferida)
+    --   4. o .tmp é apagado
+    -- Caiu no meio? Sempre sobra o principal válido, ou o .tmp (a nova
+    -- completa), ou o backup (a anterior). D.SafeRead acha qual.
+    -- check(text) diz se o conteúdo é válido (ex.: decodifica o JSON).
+    ----------------------------------------------------------------------------
+    D.Paths = function(path)
+        local base = path:gsub("%.json$", "")
+        return base .. ".backup.json", base .. ".tmp", base .. ".corrupt.json"
+    end
+
+    local function Valid(text, check)
+        if type(text) ~= "string" or text == "" then return false end
+        if not check then return true end
+        local ok, good = pcall(check, text)
+        return ok and good == true
+    end
+
+    -- releu igual? (ou, se o executor mexer em algo, continua válido e inteiro)
+    local function Verify(path, text, check)
+        local back = D.Read(path)
+        if back == text then return true end
+        return check ~= nil and back ~= nil and #back >= #text and Valid(back, check)
+    end
+
+    D.SafeWrite = function(path, text, check)
+        if not D.Ok() then return false, "executor sem writefile" end
+        if not Valid(text, check) then return false, "conteúdo inválido (nada foi gravado)" end
+        local bak, tmp, bad = D.Paths(path)
+
+        local ok, err = D.Write(tmp, text)
+        if not ok or not Verify(tmp, text, check) then
+            D.Delete(tmp)
+            return false, "não deu para gravar o temporário (" .. tostring(err or "conferência falhou")
+                .. ") — nada foi trocado"
+        end
+
+        local cur = D.Exists(path) and D.Read(path) or nil
+        if cur ~= nil and cur ~= text then
+            if Valid(cur, check) then
+                local okB = D.Write(bak, cur)
+                if not okB or not Verify(bak, cur, check) then
+                    D.Delete(tmp)
+                    return false, "não deu para criar o backup — nada foi trocado"
+                end
+            elseif cur ~= "" then
+                -- o principal já estava estragado: guarda para análise, não
+                -- vira backup (o backup bom que existir continua lá)
+                D.Write(bad, cur)
+            end
+        end
+
+        local okM, errM = D.Write(path, text)
+        if not okM or not Verify(path, text, check) then
+            return false, "falhou ao gravar " .. path .. " (" .. tostring(errM or "conferência falhou")
+                .. ") — a versão nova ficou em " .. tmp .. " e a anterior em " .. bak
+        end
+        D.Delete(tmp)
+        return true
+    end
+
+    -- Lê o principal e diz o que sobrou para recuperar.
+    -- Devolve { state = "ok"|"missing"|"corrupt", text = principal válido,
+    --           raw = principal como veio, recover = { {path, text, label} } }
+    -- recover só vem preenchido quando o principal não presta: o .tmp primeiro
+    -- (versão nova que não terminou de ir para o principal), depois o backup.
+    D.SafeRead = function(path, check)
+        local r = { state = "missing", recover = {} }
+        if not D.Ok() then return r end
+        local bak, tmp = D.Paths(path)
+        if D.Exists(path) then
+            r.raw = D.Read(path)
+            if Valid(r.raw, check) then
+                r.state, r.text = "ok", r.raw
+                -- .tmp que sobrou de uma gravação que terminou (ou executor
+                -- sem delfile): não serve para nada
+                if D.Exists(tmp) then D.Delete(tmp) end
+                return r
+            end
+            r.state = "corrupt"
+        end
+        for _, c in ipairs({ { tmp, "gravação interrompida (mais nova)" }, { bak, "backup (anterior)" } }) do
+            local s = D.Exists(c[1]) and D.Read(c[1]) or nil
+            if Valid(s, check) and s ~= r.raw then
+                table.insert(r.recover, { path = c[1], text = s, label = c[2] })
+            end
+        end
+        return r
+    end
+
+    -- troca o principal pela cópia escolhida (o SafeWrite guarda o estragado
+    -- em .corrupt.json antes)
+    D.Recover = function(path, text, check)
+        if not Valid(text, check) then return false, "a cópia escolhida não é válida" end
+        return D.SafeWrite(path, text, check)
+    end
 end

@@ -29,16 +29,13 @@ do
         -- disco
         ----------------------------------------------------------------------------
         local function CanDisk() return V8.Disk and V8.Disk.Ok() and Http ~= nil end
+        local function JsonOk(s)
+            local ok, d = pcall(function() return Http:JSONDecode(s) end)
+            return ok and type(d) == "table"
+        end
 
-        local function Load()
-            if not CanDisk() then return end
-            local raw = V8.Disk.Read(P.Path)
-            if not raw then return end
-            local ok, d = pcall(function() return Http:JSONDecode(raw) end)
-            if not ok or type(d) ~= "table" then
-                Log("Perfis: " .. P.Path .. " ilegível — a lista começa vazia", "warn")
-                return
-            end
+        local function Parse(text)
+            local d = Http:JSONDecode(text)
             local list = {}
             if type(d.list) == "table" then
                 for _, r in ipairs(d.list) do
@@ -51,11 +48,64 @@ do
             P.Data.places = type(d.places) == "table" and d.places or {}
         end
 
+        -- v9.1: leitura segura. Arquivo estragado: os perfis voltam sozinhos do
+        -- .tmp/backup (lista vazia + o próximo salvamento apagaria tudo); o
+        -- estragado fica em profiles.corrupt.json
+        local function Load()
+            if not CanDisk() then return end
+            local r = V8.Disk.SafeRead(P.Path, JsonOk)
+            if r.state == "missing" then return end
+            local text = r.text
+            if r.state == "corrupt" then
+                local c = r.recover[1]
+                if not c then
+                    Log("Perfis: " .. P.Path .. " estragado e sem backup — a lista começa "
+                        .. "vazia (o arquivo estragado é guardado em profiles.corrupt.json)", "error")
+                    return
+                end
+                text = c.text
+                local ok, err = V8.Disk.Recover(P.Path, c.text, JsonOk)
+                Log("Perfis: " .. P.Path .. " estragado — recuperados do " .. c.label
+                    .. (ok and "" or ("  (não deu para regravar: " .. tostring(err) .. ")")), "warn")
+            end
+            local ok, err = pcall(Parse, text)
+            if not ok then Log("Perfis: " .. tostring(err), "error") end
+        end
+
         local function Save()
             if not CanDisk() then return false, "executor sem writefile (perfis só nesta sessão)" end
             local ok, json = pcall(function() return Http:JSONEncode(P.Data) end)
             if not ok then return false, "JSON: " .. tostring(json) end
-            return V8.Disk.Write(P.Path, json)
+            return V8.Disk.SafeWrite(P.Path, json, JsonOk)
+        end
+
+        -- comando "recover perfis": volta a lista para o backup (desfaz o
+        -- último salvar/apagar perfil)
+        P.Recover = function()
+            if not CanDisk() then
+                Log("Perfis: executor sem API de arquivos", "error")
+                return false
+            end
+            local r = V8.Disk.SafeRead(P.Path, JsonOk)
+            local c = r.recover[1]
+            if r.state == "ok" then
+                local bak = V8.Disk.Paths(P.Path)
+                local s = V8.Disk.Read(bak)
+                c = (s and s ~= r.text and JsonOk(s)) and { text = s, label = "backup (anterior)" } or nil
+            end
+            if not c then
+                Log("Perfis: não há backup válido para recuperar", "warn")
+                return false
+            end
+            local ok, err = V8.Disk.Recover(P.Path, c.text, JsonOk)
+            if not ok then
+                Log("Perfis: não deu para recuperar — " .. tostring(err), "error")
+                return false
+            end
+            pcall(Parse, c.text)
+            if P.Render then pcall(P.Render) end
+            Log("Perfis recuperados do " .. c.label .. " (" .. #P.Data.list .. " perfis)", "ok")
+            return true
         end
 
         Load()
@@ -115,26 +165,83 @@ do
             return true
         end
 
+        -- v9.1: troca segura (V8.ProfTx, 30_kit/08_profile_tx.lua): valida
+        -- antes, aplica as preferências tudo-ou-nada (com volta ao estado
+        -- anterior) e só depois liga as funções
+        local function KeyOk(n)
+            if type(n) ~= "string" then return false end
+            local ok, kc = pcall(function() return Enum.KeyCode[n] end)
+            return ok and kc ~= nil
+        end
+        local function Ctx()
+            local setKeys, toggles, themes = {}, {}, {}
+            for _, k in ipairs(C.SetKeys) do setKeys[k] = true end
+            for k in pairs(SKIP) do setKeys[k] = nil end
+            for id in pairs(Toggles) do toggles[id] = true end
+            for n in pairs(PALETTES) do themes[n] = true end
+            return { setKeys = setKeys, toggles = toggles, noauto = NOAUTO, themes = themes, keyOk = KeyOk }
+        end
+        -- terminou certo? (passos do Restore + tema + teclas)
+        local function Verify(d)
+            local errs = C.LastRestoreErrors or {}
+            if #errs > 0 then return false, table.concat(errs, "; ") end
+            if type(d.theme) == "string" and PALETTES[d.theme] and SET.Theme ~= d.theme then
+                return false, "o tema não ficou"
+            end
+            if type(d.keys) == "table" then
+                for id, n in pairs(d.keys) do
+                    if Toggles[id] and KeyOk(n) and not (Keybinds[id] and Keybinds[id].Name == n) then
+                        return false, "a tecla de " .. id .. " não ficou"
+                    end
+                end
+            end
+            return true
+        end
+
         P.Use = function(name, silent)
             local rec = P.Find(name)
             if not rec then return false, "perfil não encontrado: " .. tostring(name) end
-            local ok, err = pcall(C.Restore, rec.data)
-            if not ok then return false, "falhou ao aplicar: " .. tostring(err) end
-            if type(rec.data.on) == "table" then
-                local want = {}
-                for _, id in ipairs(rec.data.on) do want[id] = true end
-                for _, id in ipairs(ToggleOrder) do
-                    if not NOAUTO[id] and IsOn(id) ~= (want[id] == true) then
-                        pcall(SetToggle, id, want[id] == true, true)
-                    end
-                end
+            -- o que o perfil não pode mexer sai antes (mesmo editado à mão)
+            local data = rec.data
+            if type(data) == "table" and type(data.set) == "table" then
+                local clean = {}
+                for k, v in pairs(data) do clean[k] = v end
+                clean.set = {}
+                for k, v in pairs(data.set) do if not SKIP[k] then clean.set[k] = v end end
+                clean.waypoints, clean.wpplaces, clean.emotes, clean.notes = nil, nil, nil, nil
+                data = clean
+            end
+            local ok, rep = V8.ProfTx.Apply(data, {
+                ctx = Ctx(),
+                snapshot = P.Capture,
+                restore = C.Restore,
+                clear = function(k) SET[k] = nil end,
+                verify = Verify,
+                order = ToggleOrder,
+                isOn = IsOn,
+                setToggle = function(id, on) SetToggle(id, on, true) end,
+            })
+            P.LastResult = { name = rec.name, ok = ok, rep = rep, time = os.date("%H:%M:%S") }
+            for _, w in ipairs(rep.warnings) do Log("Perfil '" .. rec.name .. "': " .. w, "warn") end
+            if not ok then
+                local why = table.concat(rep.errors, "; ")
+                Log("Perfil '" .. rec.name .. "' NÃO aplicado: " .. why
+                    .. (rep.rolledBack and " — o painel voltou ao que estava" or ""), "error")
+                if not silent then Toast("Perfil inválido — nada mudou", "error", 3) end
+                if P.Render then pcall(P.Render) end
+                return false, why
             end
             P.Current = rec.name
             if RefreshStatus then pcall(RefreshStatus) end
             if P.Render then pcall(P.Render) end
+            if #rep.failed > 0 then
+                Log("Perfil '" .. rec.name .. "' aplicado, mas não ligou: " .. table.concat(rep.failed, ", ")
+                    .. " (personagem/jogo não deixou agora)", "warn")
+            end
             if not silent then
                 Log("Perfil '" .. rec.name .. "' aplicado", "ok")
-                Toast("Perfil: " .. rec.name, "ok", 2)
+                Toast("Perfil: " .. rec.name .. (#rep.failed > 0 and ("  (" .. #rep.failed .. " função(ões) não ligaram)") or ""),
+                    #rep.failed > 0 and "warn" or "ok", 2)
             end
             return true
         end

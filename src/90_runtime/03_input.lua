@@ -79,3 +79,72 @@ Conn.Input = UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
+--------------------------------------------------------------------------------
+-- v9.0.1: SHIFT LOCK DO ROBLOX
+-- Em jogo que libera o Shift Lock, o Shift prende o mouse no centro da tela —
+-- inclusive no Fly, que usa o Shift para acelerar. (Freecam e Drone não sofrem:
+-- a câmera deles é Scriptable e o próprio HYGE manda no mouse.)
+-- Com SET.NoShiftLock (Configurações › Comportamento, padrão ligado) o painel
+-- desliga LocalPlayer.DevEnableMouseLock: o PlayerModule solta o mouse na hora
+-- e para de ouvir o Shift. Se o jogo religar, desliga de novo. Desligando a
+-- opção ou descarregando o painel, volta o valor que o jogo queria.
+-- (Shift Lock feito pelo próprio jogo, fora do PlayerModule, não é coberto.)
+--------------------------------------------------------------------------------
+do
+    local SL = { held = false, saved = false, warned = false }
+    V8.ShiftLock = SL
+
+    local function Get()
+        local ok, v = pcall(function() return LocalPlayer.DevEnableMouseLock end)
+        if ok then return v end
+        return nil
+    end
+    local function Set(v)
+        return pcall(function() LocalPlayer.DevEnableMouseLock = v end)
+    end
+
+    -- devolve o Shift Lock como o jogo deixou (opção desligada / unload)
+    SL.Release = function()
+        if not SL.held then return end
+        SL.held = false
+        if SL.saved then Set(true) end
+        SL.saved = false
+    end
+
+    SL.Sync = function()
+        if SL.dead then return end
+        if SET.NoShiftLock == false then
+            SL.Release()
+            return
+        end
+        local cur = Get()
+        if cur == nil then return end
+        if not SL.held then SL.held, SL.saved = true, cur end
+        if cur then
+            -- ligado (pelo jogo no começo ou religado depois): guarda e desliga
+            SL.saved = true
+            if not Set(false) and not SL.warned then
+                SL.warned = true
+                Log("Não deu para bloquear o Shift Lock neste executor", "warn")
+            end
+        end
+    end
+
+    -- o jogo mexeu na propriedade: confere de novo (Set(false) aqui dentro
+    -- dispara o sinal outra vez, mas aí já está false e não faz nada)
+    pcall(function()
+        Conn.ShiftLock = LocalPlayer:GetPropertyChangedSignal("DevEnableMouseLock")
+            :Connect(function() pcall(SL.Sync) end)
+    end)
+    -- unload: para de vigiar ANTES de devolver (senão o sinal desligaria de novo)
+    SL.Stop = function()
+        SL.dead = true
+        Drop("ShiftLock")
+        SL.Release()
+    end
+    -- config / perfil carregado ou "restaurar padrões" mudaram SET.NoShiftLock
+    V8.Renders = V8.Renders or {}
+    table.insert(V8.Renders, function() pcall(SL.Sync) end)
+    SL.Sync()
+end
+

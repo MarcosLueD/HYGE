@@ -53,6 +53,12 @@ do
         table.insert(falhas, #modFails .. " módulo(s): " .. table.concat(modFails, ", "))
     end
     V8.BootMs = (os.clock() - (V8.BootT0 or os.clock())) * 1000
+    -- v9.1: conexões vivas logo depois do boot (base para o monitor de respawn)
+    pcall(function()
+        local n = 0
+        for _ in pairs(V8.Conns.live) do n = n + 1 end
+        V8.Conns.boot = n
+    end)
 
     -- garante que sempre existe um jeito de abrir, mesmo se algo acima falhar:
     -- o dock (padrão) ou, no modo sidebar, a bolinha H
