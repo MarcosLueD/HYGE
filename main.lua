@@ -1,14 +1,29 @@
 -- =============================================================================
--- HYGE v9.1 — ARQUIVO GERADO, NÃO EDITE AQUI.
+-- HYGE v9.2 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: c01b15b8b296
+-- build: d18671d63ac3
 -- =============================================================================
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v9.0
+    HYGE ADMIN PANEL v9.2
     Evolucao direta da v7.0 — nada foi reescrito do zero.
 
-    O que a v9.0 trouxe (a maior atualizacao ate agora):
+    O que a v9.2 trouxe (integracao com o servidor do SEU jogo):
+      * Acoes em outros jogadores sao PEDIDAS ao script de servidor (server/)
+        por RemoteEvents; o servidor confere cargo, permissao, alvo,
+        argumentos e limite, executa e responde (HYGE_Result)
+      * Cargos no servidor (moderador / admin / dono) e permissao por acao;
+        o painel pergunta o seu cargo (HYGE_Status) e mostra o que pode
+      * Cada cartao diz se e LOCAL ou SERVIDOR; sem servidor o botao explica
+        o motivo (sem servidor / nao e admin / sem permissao)
+      * Fim das simulacoes: Bring, Freeze e Anuncio nao "funcionam" mais so
+        na sua tela quando o servidor nao esta instalado
+      * Opcional: o servidor entrega o painel so para quem tem cargo
+
+    O que a v9.1 trouxe: testes automaticos, backup da config, loader com
+    SHA-256, perfis seguros, servidor auditado e diagnostico de conexoes.
+
+    O que a v9.0 trouxe:
       * Ajustes organizados: categorias + busca dentro de Configuracoes
       * Favoritos: estrela em qualquer funcao vira acao rapida da Home
       * Perfis: o painel inteiro salvo com um nome; um perfil por jogo
@@ -97,7 +112,9 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v9.1",
+    Version   = "v9.2",
+    -- quem ABRE o painel neste cliente. Quem pode agir nos outros jogadores é
+    -- decidido só pelo servidor (CONFIG.AdminIds do server/HYGE_AdminServer)
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
     DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
     PanelKey  = Enum.KeyCode.B,
@@ -779,7 +796,7 @@ winShadow.SliceCenter = Rect.new(49, 49, 450, 450)
 winShadow.ZIndex = -1
 winShadow.Parent = Window
 
-V8.Mod("src/10_ui/01_toasts.lua", 782, 924, function() --------------------------------------------------------------------------------
+V8.Mod("src/10_ui/01_toasts.lua", 799, 941, function() --------------------------------------------------------------------------------
 -- TOASTS  (ícone, categoria, barra de duração, fechar, limite de 4)
 --------------------------------------------------------------------------------
 do
@@ -923,7 +940,7 @@ end
 end
 
 end)
-V8.Mod("src/10_ui/02_console.lua", 926, 1145, function() --------------------------------------------------------------------------------
+V8.Mod("src/10_ui/02_console.lua", 943, 1162, function() --------------------------------------------------------------------------------
 -- CONSOLE / LOG  (categorias, filtro, limpar, copiar — incremental)
 --------------------------------------------------------------------------------
 do
@@ -3085,133 +3102,353 @@ local function TeleportTo(cframe)
     root.CFrame = cframe
 end
 
+-- liga/desliga (Spin/Balloon) por UserId do alvo. v9.2: só muda quando o
+-- SERVIDOR confirma (HYGE_Result) — antes mudava no clique, mesmo recusado
+local TrollState = { Spin = {}, Balloon = {} }
+
+-- [srv:begin] (tests/bridge.test.js roda este bloco)
+--------------------------------------------------------------------------------
+-- v9.2: PONTE COM O SERVIDOR (server/HYGE_AdminServer.server.lua)
+-- O painel nunca decide nada que vale para os outros jogadores: ele PEDE pelo
+-- RemoteEvent e o servidor valida (cargo, permissão, alvo, argumentos,
+-- limite) e responde pelo HYGE_Result. Aqui fica:
+--   * Scan: acha os Remotes de novo (o servidor pode criá-los depois do painel)
+--   * Hello: pergunta ao servidor (HYGE_Status) o seu cargo e as ações
+--     liberadas — só para MOSTRAR; o servidor confere cada pedido de novo
+--   * Can/Send: explica por que uma ação não pode ir (sem servidor, sem cargo,
+--     sem permissão) em vez de fingir que foi
+--   * a resposta do servidor vai para o console/toast e para os botões
+-- Estados: "none" (nenhum Remote: servidor não instalado), "legacy" (Remotes
+-- sem HYGE_Status: servidor v9.1 ou de outro sistema — os pedidos vão, mas
+-- sem confirmação estruturada), "checking", "noresponse", "ok".
+--------------------------------------------------------------------------------
+do
+    V8.Srv = { State = "none", Info = nil, Pending = {}, Hooks = {}, Watch = {} }
+    local S = V8.Srv
+    local TIMEOUT, HELLO_TIMEOUT = 6, 8
+
+    -- { chave, nome no ReplicatedStorage, o que faz, grupo } (catálogo único)
+    S.Entry = function(key)
+        for _, r in ipairs(V8.RemoteInfo) do
+            if r[1] == key then return r end
+        end
+        return nil
+    end
+
+    -- quem quer saber quando o estado muda (botões, etiquetas, aba Servidor)
+    S.OnChange = function(fn) table.insert(S.Watch, fn) end
+    S.Changed = function()
+        for _, fn in ipairs(S.Watch) do pcall(fn) end
+    end
+
+    ----------------------------------------------------------------------------
+    -- mensagens do servidor para todo mundo / para você (antes em 05_events)
+    ----------------------------------------------------------------------------
+    local function OnWhisper(fromName, message)
+        fromName, message = tostring(fromName), tostring(message)
+        if fromName == "HYGE" then
+            -- servidor v9.1: a confirmação das ações vinha por aqui
+            Log("[SERVIDOR] " .. message, message:find("✗", 1, true) and "error" or "ok")
+            return
+        end
+        Log("[ADMIN " .. fromName .. "] " .. message, "action")
+        Toast("ADMIN " .. fromName .. ": " .. message, nil, 6)
+    end
+    -- o anúncio volta para todos (já filtrado pelo Roblox): é a confirmação real
+    local function OnAnnounce(fromName, message)
+        Log("[ANÚNCIO " .. tostring(fromName) .. "] " .. tostring(message), "action")
+    end
+
+    -- resposta de um pedido seu (só você recebe)
+    S.OnResult = function(r)
+        if type(r) ~= "table" or type(r.action) ~= "string" or type(r.message) ~= "string" then return end
+        S.Pending[r.action] = nil
+        local text = (r.ok == true and "✓ " or "✗ ") .. r.message:sub(1, 300)
+        Log("[SERVIDOR] " .. text, r.ok == true and "ok" or "error")
+        Toast(text, r.ok == true and "ok" or "warn", r.ok == true and 2 or 3.5)
+        if r.ok == true and type(r.target) == "number" and type(r.state) == "boolean" then
+            if r.action == "AdminSpin" then TrollState.Spin[r.target] = r.state
+            elseif r.action == "AdminBalloon" then TrollState.Balloon[r.target] = r.state end
+        end
+        for _, fn in ipairs(S.Hooks) do pcall(fn, r) end
+    end
+
+    -- (re)liga a escuta de um Remote só quando ele mudou; Conn[nome] é o que o
+    -- Unload desconecta
+    local hooked = {}
+    local function Hook(name, remote, signal, fn)
+        if hooked[name] == remote then return end
+        hooked[name] = remote
+        if remote then
+            Conn[name] = remote[signal]:Connect(fn)
+        else
+            Conn[name] = nil
+        end
+    end
+
+    ----------------------------------------------------------------------------
+    -- Scan: Remotes de novo + estado
+    ----------------------------------------------------------------------------
+    S.Scan = function()
+        local have = 0
+        for _, r in ipairs(V8.RemoteInfo) do
+            local o = ReplicatedStorage:FindFirstChild(r[2])
+            Remotes[r[1]] = (o and o:IsA("RemoteEvent")) and o or nil
+            if Remotes[r[1]] then have = have + 1 end
+        end
+        local st = ReplicatedStorage:FindFirstChild("HYGE_Status")
+        S.StatusFn = (st and st:IsA("RemoteFunction")) and st or nil
+        local res = ReplicatedStorage:FindFirstChild("HYGE_Result")
+        Hook("SrvResult", (res and res:IsA("RemoteEvent")) and res or nil, "OnClientEvent", S.OnResult)
+        Hook("Whisper", Remotes.Whisper, "OnClientEvent", OnWhisper)
+        Hook("Announce", Remotes.Announce, "OnClientEvent", OnAnnounce)
+
+        if S.StatusFn then
+            if S.State ~= "ok" and S.State ~= "noresponse" then S.State = "checking" end
+        elseif have > 0 then
+            S.State, S.Info = "legacy", nil
+        else
+            S.State, S.Info = "none", nil
+        end
+        return have
+    end
+
+    -- resposta do HYGE_Status, conferida campo a campo (nada de confiar no formato)
+    S.Clean = function(r)
+        if type(r) ~= "table" or type(r.hyge) ~= "string" or type(r.level) ~= "number"
+            or r.level ~= r.level then
+            return nil
+        end
+        local info = {
+            hyge = r.hyge:sub(1, 16),
+            level = math.max(0, math.min(3, math.floor(r.level))),
+            role = type(r.role) == "string" and r.role:sub(1, 24) or "?",
+            actions = {}, cooldowns = {},
+            maxText = type(r.maxText) == "number" and r.maxText or nil,
+        }
+        if type(r.actions) == "table" then
+            for k, v in pairs(r.actions) do
+                if type(k) == "string" and v == true then info.actions[k] = true end
+            end
+        end
+        if type(r.cooldowns) == "table" then
+            for k, v in pairs(r.cooldowns) do
+                if type(k) == "string" and type(v) == "number" then info.cooldowns[k] = v end
+            end
+        end
+        return info
+    end
+
+    -- Hello: pergunta o cargo. Usa o task do Roblox direto (não o contado em
+    -- V8.Tasks): se o servidor nunca responder, isso não pode deixar o Unload
+    -- em "SOBROU"; resposta que chegar depois do Unload é ignorada.
+    S.Hello = function()
+        local fn = S.StatusFn
+        if not fn then return false end
+        if S.State == "checking" and S.Asked and os.clock() - S.Asked < 2 then return false end
+        S.Asked = os.clock()
+        S.State, S.Why = "checking", nil
+        S.Seq = (S.Seq or 0) + 1
+        local seq = S.Seq
+        V8.RawTask.spawn(function()
+            local ok, r = pcall(function() return fn:InvokeServer() end)
+            if V8.Unloaded or seq ~= S.Seq then return end
+            local info = ok and S.Clean(r) or nil
+            S.Info = info
+            S.State = info and "ok" or "noresponse"
+            S.Why = (not ok) and tostring(r) or ((not info) and "resposta inválida ou limite de pedidos" or nil)
+            if info then
+                Log("Servidor HYGE " .. info.hyge .. ": seu cargo é " .. info.role, info.level > 0 and "ok" or "warn")
+            end
+            S.Changed()
+        end)
+        return true
+    end
+
+    S.Refresh = function()
+        S.Scan()
+        S.Hello()
+        S.Changed()
+    end
+
+    ----------------------------------------------------------------------------
+    -- Can / Send
+    ----------------------------------------------------------------------------
+    -- ok, motivo (frase para o jogador), estado
+    S.Can = function(key)
+        local e = S.Entry(key)
+        local name = e and e[2] or tostring(key)
+        if not Remotes[key] then
+            return false, "precisa do script de servidor do HYGE, que não está instalado neste jogo "
+                .. "(falta ReplicatedStorage." .. name .. "). Instale server/HYGE_AdminServer.server.lua "
+                .. "em ServerScriptService pelo Roblox Studio (Início › Servidor › Instalação)", "none"
+        end
+        local I = S.State == "ok" and S.Info or nil
+        if I and I.level < 1 then
+            return false, "o servidor deste jogo não reconhece você como admin: coloque o seu UserId ("
+                .. tostring(LocalPlayer.UserId) .. ") em CONFIG.AdminIds do script de servidor", "ok"
+        end
+        if I and not I.actions[name] then
+            return false, "o seu cargo no servidor (" .. I.role .. ") não tem permissão para esta ação "
+                .. "(CONFIG.Permissions do script de servidor)", "ok"
+        end
+        return true, nil, S.State
+    end
+
+    -- motivo curto para o botão; nil = disponível
+    S.Short = function(key)
+        local ok, _, state = S.Can(key)
+        if ok then return nil end
+        if state == "none" then return "sem servidor" end
+        if S.Info and S.Info.level < 1 then return "não é admin" end
+        return "sem permissão"
+    end
+
+    -- Pede ao servidor. label = o que aparece no console ("Kick: Fulano").
+    -- Devolve: o pedido saiu?, estado. O resultado vem depois (HYGE_Result).
+    S.Send = function(key, label, ...)
+        local ok, why, state = S.Can(key)
+        if not ok then
+            Log(label .. " — não enviado: " .. why, "warn")
+            Toast(label .. ": " .. (S.Short(key) or "indisponível"), "warn", 3)
+            return false, state
+        end
+        local remote = Remotes[key]
+        local sent, err = pcall(remote.FireServer, remote, ...)
+        if not sent then
+            Log(label .. " — falhou ao enviar: " .. tostring(err), "error")
+            return false, state
+        end
+        if state == "legacy" then
+            Log(label .. " — pedido enviado (servidor sem resposta estruturada: confira no jogo)", "warn")
+        else
+            S.Pending[remote.Name] = { at = os.clock(), label = label }
+            Log(label .. " — pedido enviado; aguardando o servidor", "action")
+        end
+        return true, state
+    end
+
+    -- uma linha sobre o servidor (aba Servidor, Sobre, Diagnóstico, comando)
+    -- devolve texto, cor do tema
+    S.Summary = function()
+        local have, total = V8.RemoteStatus()
+        if S.State == "none" then
+            return "não instalado neste jogo (0/" .. total .. " Remotes)", "Dim"
+        elseif S.State == "legacy" then
+            return "Remotes " .. have .. "/" .. total .. " sem o HYGE_Status (servidor v9.1 ou de outro "
+                .. "sistema): o servidor valida, mas o painel não sabe o seu cargo", "Warning"
+        elseif S.State == "checking" then
+            return "conferindo o servidor...", "Dim"
+        elseif S.State == "noresponse" or not S.Info then
+            return "HYGE_Status sem resposta (" .. tostring(S.Why or "?") .. ") — os pedidos vão e "
+                .. "o servidor decide", "Warning"
+        end
+        local I = S.Info
+        if I.level < 1 then
+            return "HYGE " .. I.hyge .. " instalado, mas o servidor NÃO reconhece você como admin", "Danger"
+        end
+        local n = 0
+        for _ in pairs(I.actions) do n = n + 1 end
+        return "HYGE " .. I.hyge .. " instalado · seu cargo: " .. I.role .. " · " .. n .. "/" .. total
+            .. " ações liberadas", "Success"
+    end
+
+    -- pedido sem resposta e HYGE_Status que não respondeu
+    V8.Job(1, function()
+        local now = os.clock()
+        if S.State == "checking" and S.Asked and now - S.Asked > HELLO_TIMEOUT then
+            S.State, S.Why = "noresponse", "nada em " .. HELLO_TIMEOUT .. " s"
+            S.Changed()
+        end
+        for name, p in pairs(S.Pending) do
+            if now - p.at > TIMEOUT then
+                S.Pending[name] = nil
+                Log(p.label .. " — o servidor não respondeu em " .. TIMEOUT .. " s (script parado ou "
+                    .. "com erro? veja o Output do servidor)", "warn")
+            end
+        end
+    end)
+
+    S.Scan()
+end
+-- [srv:end]
+
+--------------------------------------------------------------------------------
+-- Cada ação abaixo só PEDE (V8.Srv.Send). Sem o servidor, ela diz o motivo e
+-- não faz nada — nada é simulado na sua tela como se tivesse funcionado.
+--------------------------------------------------------------------------------
+
+-- Ir até o jogador: com o servidor HYGE (e permissão), quem move é o servidor
+-- (fica no registro e respeita o jogo); sem ele, move só o SEU personagem —
+-- isso funciona em qualquer jogo, porque o seu cliente controla o seu corpo
 local function Goto(player)
     local char = player and player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then Toast("Alvo sem personagem", "warn") return end
-    TeleportTo(root.CFrame * CFrame.new(0, 0, 4))
-    Log("Goto -> " .. player.Name, "ok")
-end
-
-local function Bring(player)
-    if Remotes.Pull then
-        Remotes.Pull:FireServer(player.UserId, "selected")
-        Log("Bring (server) -> " .. player.Name, "ok")
+    if V8.Srv.Can("Teleport") then
+        V8.Srv.Send("Teleport", "Ir até " .. player.Name, player.UserId)
         return
     end
-    local myRoot, theirRoot = Root(), player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if myRoot and theirRoot then
-        theirRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -4)
-        Log("Bring (local) -> " .. player.Name, "warn")
-    else
-        Toast("Não foi possível trazer", "error")
-    end
+    TeleportTo(root.CFrame * CFrame.new(0, 0, 4))
+    Log("Goto (local: só o seu personagem) -> " .. player.Name, "ok")
 end
 
+-- v9.2: sem o servidor não existe mais o "bring local" (movia o alvo só na
+-- sua tela e o servidor desfazia: parecia que tinha funcionado)
+local function Bring(player)
+    return V8.Srv.Send("Pull", "Bring: " .. player.Name, player.UserId)
+end
+
+-- v9.2: também não mexe mais no personagem do alvo no seu cliente
 local function FreezePlayer(player, freeze)
-    if Remotes.Freeze then Remotes.Freeze:FireServer(player.UserId, freeze) end
-    local char = player.Character
-    if char then
-        local root = char:FindFirstChild("HumanoidRootPart")
-        local h = char:FindFirstChildOfClass("Humanoid")
-        if root then root.Anchored = freeze end
-        if h then
-            h.PlatformStand = freeze
-            h.WalkSpeed = freeze and 0 or 16
-        end
-    end
-    Log((freeze and "Freeze: " or "Unfreeze: ") .. player.Name, "ok")
+    return V8.Srv.Send("Freeze", (freeze and "Freeze: " or "Unfreeze: ") .. player.Name,
+        player.UserId, freeze == true)
 end
 
 local function KickPlayer(player, reason)
-    if Remotes.Kick then
-        Remotes.Kick:FireServer(player.UserId, reason or "Removido por um admin")
-        Log("Kick enviado: " .. player.Name, "ok")
-    else
-        Log("Remote AdminKick ausente — kick precisa do servidor", "error")
-        Toast("Sem AdminKick no ReplicatedStorage", "error")
-    end
+    return V8.Srv.Send("Kick", "Kick: " .. player.Name, player.UserId, reason)
 end
 
 --------------------------------------------------------------------------------
 -- AÇÕES DE TROLL (v8.0) — 100% dependentes de servidor, cliente só pede.
--- Estado local (Spin/Balloon) é só o que o painel PEDIU, não confirmação real
--- de que o servidor aplicou — deixado claro no Log.
 --------------------------------------------------------------------------------
-local TrollState = { Spin = {}, Balloon = {} }
-
 local function FlingPlayer(player)
-    if not Remotes.Fling then
-        Log("Remote AdminFling ausente — fling precisa do servidor", "error")
-        Toast("Sem AdminFling no ReplicatedStorage", "error")
-        return
-    end
-    Remotes.Fling:FireServer(player.UserId)
-    Log("Fling enviado: " .. player.Name, "ok")
+    return V8.Srv.Send("Fling", "Fling: " .. player.Name, player.UserId)
 end
 
+-- liga/desliga: o botão segue a confirmação do servidor. Servidor v9.1 não
+-- confirma — aí o botão segue o pedido, como antes
 local function SpinPlayer(player, on)
-    if not Remotes.Spin then
-        Log("Remote AdminSpin ausente — spin precisa do servidor", "error")
-        Toast("Sem AdminSpin no ReplicatedStorage", "error")
-        return
-    end
-    Remotes.Spin:FireServer(player.UserId, on)
-    TrollState.Spin[player.UserId] = on
-    Log((on and "Spin ON pedido: " or "Spin OFF pedido: ") .. player.Name, "ok")
+    local sent, state = V8.Srv.Send("Spin", (on and "Spin ON: " or "Spin OFF: ") .. player.Name,
+        player.UserId, on == true)
+    if sent and state == "legacy" then TrollState.Spin[player.UserId] = on end
+    return sent
 end
 
 local function TripPlayer(player)
-    if not Remotes.Trip then
-        Log("Remote AdminTrip ausente — trip precisa do servidor", "error")
-        Toast("Sem AdminTrip no ReplicatedStorage", "error")
-        return
-    end
-    Remotes.Trip:FireServer(player.UserId)
-    Log("Trip enviado: " .. player.Name, "ok")
+    return V8.Srv.Send("Trip", "Trip: " .. player.Name, player.UserId)
 end
 
 local function LaunchPlayer(player)
-    if not Remotes.Launch then
-        Log("Remote AdminLaunch ausente — launch precisa do servidor", "error")
-        Toast("Sem AdminLaunch no ReplicatedStorage", "error")
-        return
-    end
-    Remotes.Launch:FireServer(player.UserId)
-    Log("Launch enviado: " .. player.Name, "ok")
+    return V8.Srv.Send("Launch", "Launch: " .. player.Name, player.UserId)
 end
 
 local function SitPlayer(player)
-    if not Remotes.Sit then
-        Log("Remote AdminSit ausente — force sit precisa do servidor", "error")
-        Toast("Sem AdminSit no ReplicatedStorage", "error")
-        return
-    end
-    Remotes.Sit:FireServer(player.UserId)
-    Log("Force Sit enviado: " .. player.Name, "ok")
+    return V8.Srv.Send("Sit", "Force Sit: " .. player.Name, player.UserId)
 end
 
 local function ScalePlayer(player, mode)
-    if not Remotes.Scale then
-        Log("Remote AdminScale ausente — mudar tamanho precisa do servidor", "error")
-        Toast("Sem AdminScale no ReplicatedStorage", "error")
-        return
-    end
-    Remotes.Scale:FireServer(player.UserId, mode)
-    Log("Scale (" .. mode .. ") enviado: " .. player.Name, "ok")
+    return V8.Srv.Send("Scale", "Scale (" .. mode .. "): " .. player.Name, player.UserId, mode)
 end
 
 local function BalloonPlayer(player, on)
-    if not Remotes.Balloon then
-        Log("Remote AdminBalloon ausente — balão precisa do servidor", "error")
-        Toast("Sem AdminBalloon no ReplicatedStorage", "error")
-        return
-    end
-    Remotes.Balloon:FireServer(player.UserId, on)
-    TrollState.Balloon[player.UserId] = on
-    Log((on and "Balloon ON pedido: " or "Balloon OFF pedido: ") .. player.Name, "ok")
+    local sent, state = V8.Srv.Send("Balloon", (on and "Balloon ON: " or "Balloon OFF: ") .. player.Name,
+        player.UserId, on == true)
+    if sent and state == "legacy" then TrollState.Balloon[player.UserId] = on end
+    return sent
 end
 
+-- 100% LOCAL de propósito (e dito na tela): o alvo e o servidor não veem nada
 local function FakeMessage(player, kind)
     local texts = {
         kick = "[SISTEMA] " .. player.Name .. " foi expulso do servidor.",
@@ -3227,17 +3464,18 @@ local function FakeMessage(player, kind)
     Toast("Fake message é 100% local", "warn", 3)
 end
 
+-- v9.2: sem o servidor o anúncio não aparece mais "só no seu chat" como se
+-- tivesse ido para todos — o painel diz que precisa do servidor
 local function Announce(msg)
-    if Remotes.Announce then
-        Remotes.Announce:FireServer(msg)
-        Log("Anúncio enviado: " .. msg, "ok")
-    else
-        pcall(function()
-            StarterGui:SetCore("ChatMakeSystemMessage", {
-                Text = "[ADMIN] " .. msg, Color = THEME.Accent, Font = Enum.Font.GothamBold })
-        end)
-        Log("Anúncio local: " .. msg, "warn")
-    end
+    return V8.Srv.Send("Announce", "Anúncio", msg)
+end
+
+-- v9.2: mensagem privada num lugar só (Moderação, Chat e HUD do Spectate
+-- faziam cada um o seu FireServer)
+V8.Srv.Whisper = function(player, text)
+    local cut = utf8.offset(text, 58)   -- corta sem partir acento
+    local short = (cut and cut <= #text) and (text:sub(1, cut - 1) .. "...") or text
+    return V8.Srv.Send("Whisper", "Privado para " .. player.Name .. ": " .. short, player.UserId, text)
 end
 
 local function Copy(text, what)
@@ -3249,7 +3487,6 @@ local function Copy(text, what)
         Log(what .. ": " .. text)
     end
 end
-
 -- SPECTATE -------------------------------------------------------------------
 local SpectateHud
 local StopSpectate, StartSpectate
@@ -3300,7 +3537,7 @@ local function CycleSpectate(dir)
     StartSpectate(list[idx])
 end
 
-V8.Mod("src/20_features/08_spectate_hud.lua", 3303, 3376, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/08_spectate_hud.lua", 3540, 3609, function() --------------------------------------------------------------------------------
 -- HUD DE SPECTATE (fora da janela, funciona com o painel fechado)
 --------------------------------------------------------------------------------
 do
@@ -3354,16 +3591,12 @@ do
     send.Size = UDim2.new(0, 100, 0, 32)
     send.Position = UDim2.new(1, -114, 0, 44)
 
+    -- v9.2: a mesma mensagem privada da Moderação (V8.Srv.Whisper): sem o
+    -- servidor ela explica o motivo e o texto fica no campo
     local function sendMsg()
         local msg = input.Text
-        if msg == "" or not State.SpectateTarget then return end
-        if Remotes.Whisper then
-            Remotes.Whisper:FireServer(State.SpectateTarget.UserId, msg)
-            Log("Você -> " .. State.SpectateTarget.Name .. ": " .. msg, "ok")
-        else
-            Log("Remote AdminWhisper ausente", "error")
-        end
-        input.Text = ""
+        if msg:match("^%s*$") or not State.SpectateTarget then return end
+        if V8.Srv.Whisper(State.SpectateTarget, msg) then input.Text = "" end
     end
 
     send.MouseButton1Click:Connect(sendMsg)
@@ -3375,7 +3608,7 @@ do
     SpectateHud = hud
 end
 end)
-V8.Mod("src/20_features/09_body.lua", 3378, 3523, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/09_body.lua", 3611, 3756, function() --------------------------------------------------------------------------------
 -- v8.1 — ANTI-FALL e ANTI-GRAVIDADE (seção Personagem)
 --
 -- Anti-Fall, três camadas, tudo no SEU personagem:
@@ -3522,7 +3755,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/20_features/10_wallwalk.lua", 3525, 3804, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/10_wallwalk.lua", 3758, 4037, function() --------------------------------------------------------------------------------
 -- v8.1 — WALK ON WALLS (seção Troll)
 --
 -- O Humanoid só sabe andar com o "para cima" do mundo, então aqui o painel
@@ -3803,7 +4036,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/20_features/11_clicktp.lua", 3806, 3859, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/11_clicktp.lua", 4039, 4092, function() --------------------------------------------------------------------------------
 -- v8.2 — CTRL + CLIQUE TELEPORTA (Personagem › Movimento › Teleporte)
 -- Com a função ligada, Ctrl + clique esquerdo leva o personagem até o ponto do
 -- mapa embaixo do mouse. Clique em cima de GUI (painel, chat) não conta: o
@@ -4255,27 +4488,35 @@ do
 end
 
 --------------------------------------------------------------------------------
--- BOTÃO DE AÇÃO COM GATE DE REMOTE
--- remoteKey = chave em Remotes. Sem o remote o botão fica indisponível,
--- explica o motivo e registra no log — nunca finge que executou.
+-- BOTÃO DE AÇÃO COM GATE DE SERVIDOR
+-- remoteKey = chave em Remotes (ação que exige o servidor) ou nil (local).
+-- v9.2: a disponibilidade vem da ponte com o servidor (V8.Srv) e se atualiza
+-- sozinha: sem servidor, sem cargo ou sem permissão o botão diz qual dos três
+-- e, clicado, explica o motivo no console — nunca finge que executou.
 --------------------------------------------------------------------------------
 local function ActionBtn(parent, text, colorKey, remoteKey, fn, confirmText)
-    local available = (remoteKey == nil) or (Remotes[remoteKey] ~= nil)
-    local b = CreateButton(parent, text, available and colorKey or "Line", 32)
+    local b = CreateButton(parent, text, colorKey, 32)
+    local stroke = b:FindFirstChildOfClass("UIStroke")
 
-    if not available then
-        b.TextColor3 = THEME.Dim
-        b.BackgroundTransparency = 0.45
-        b.Text = text .. " (servidor)"
-        Paint(b, "TextColor3", "Dim")
+    local last = false   -- motivo atual (false = ainda não pintou)
+    local function Look()
+        local short = (remoteKey and V8.Srv) and V8.Srv.Short(remoteKey) or nil
+        if short == last then return end
+        last = short
+        b.Text = short and (text .. " (" .. short .. ")") or text
+        b.TextColor3 = short and THEME.Dim or THEME.Text
+        b.BackgroundTransparency = short and 0.45 or 0
+        if stroke then stroke.Color = short and THEME.Line or THEME[colorKey or "Accent"] end
     end
 
     b.MouseButton1Click:Connect(function()
-        if not available then
-            Log(text .. ": precisa do RemoteEvent " .. tostring(remoteKey)
-                .. " no ReplicatedStorage (função server-side)", "warn")
-            Toast(text .. " depende de um Remote no servidor", "warn", 3)
-            return
+        if remoteKey and V8.Srv then
+            local ok, why = V8.Srv.Can(remoteKey)
+            if not ok then
+                Log(text .. ": " .. why, "warn")
+                Toast(text .. ": " .. (V8.Srv.Short(remoteKey) or "indisponível"), "warn", 3)
+                return
+            end
         end
         if confirmText then
             Confirm(confirmText, fn)
@@ -4284,7 +4525,37 @@ local function ActionBtn(parent, text, colorKey, remoteKey, fn, confirmText)
             if not ok then Log(text .. ": " .. tostring(err), "error") end
         end
     end)
-    return b, available
+    if remoteKey and V8.Srv then V8.Srv.OnChange(Look) end
+    Look()
+    return b
+end
+
+-- v9.2: etiqueta de um cartão — onde aquilo roda.
+--   keys = nil          -> LOCAL (seu cliente, qualquer jogo)
+--   keys = { "Kick" }   -> SERVIDOR (exige server/ no Studio) + estado atual
+-- Fica atualizada sozinha quando o painel descobre o servidor / o seu cargo.
+V8.SrvTag = function(parent, keys, order, localText)
+    local l = SubLabel(parent, "", order)
+    local function Look()
+        if not keys then
+            l.Text = "LOCAL — " .. (localText or "roda só no seu cliente: funciona em qualquer jogo, "
+                .. "sem script de servidor.")
+            l.TextColor3 = THEME.Accent2
+            return
+        end
+        local S = V8.Srv
+        if not S then return end
+        local free = 0
+        for _, k in ipairs(keys) do if S.Can(k) then free = free + 1 end end
+        local txt, color = S.Summary()
+        l.Text = "SERVIDOR — exige os scripts de server/ instalados no Roblox Studio deste jogo. "
+            .. "Agora: " .. txt .. ((S.State == "ok" and S.Info and S.Info.level > 0)
+                and (" · aqui: " .. free .. "/" .. #keys) or "")
+        l.TextColor3 = THEME[color] or THEME.Dim
+    end
+    Look()
+    if keys and V8.Srv then V8.Srv.OnChange(Look) end
+    return l
 end
 
 -- Avatar (headshot) por UserId — usa rbxthumb, não baixa nada duas vezes
@@ -4316,7 +4587,7 @@ local function TagChip(parent, text, colorKey)
     return c
 end
 
-V8.Mod("src/30_kit/01_icons.lua", 4319, 4436, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/01_icons.lua", 4590, 4707, function() --------------------------------------------------------------------------------
 -- ÍCONES VETORIAIS
 -- Sem asset: cada ícone é um punhado de Frames posicionados numa grade 24x24 e
 -- escalados. shape = { x, y, w, h, rot, corner, outline }
@@ -4435,7 +4706,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/02_topbar_chips.lua", 4438, 4517, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/02_topbar_chips.lua", 4709, 4788, function() --------------------------------------------------------------------------------
 -- CHIPS DA TOP BAR
 -- Substitui a linha de texto "FPS ... • PING ..." por chips com ícone.
 -- Reaproveita o mesmo Every(0.5) que já existia (nenhum loop novo): o scheduler
@@ -4516,7 +4787,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/03_drone_hud.lua", 4519, 4906, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/03_drone_hud.lua", 4790, 5177, function() --------------------------------------------------------------------------------
 -- DRONE HUD (overlay de câmera de drone)
 --
 -- Incremental: NÃO toca no movimento do drone. O toggle existente só chama
@@ -4905,7 +5176,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/04_net.lua", 4908, 5137, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/04_net.lua", 5179, 5408, function() --------------------------------------------------------------------------------
 -- v8.1 — REDE E DISCO (helpers do executor)
 --
 -- O Roblox não deixa LocalScript fazer HTTP. Executores expõem request()
@@ -5136,7 +5407,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/05_playtime.lua", 5139, 5636, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/05_playtime.lua", 5410, 5907, function() --------------------------------------------------------------------------------
 -- v8.1 — TEMPO DE JOGO + COSMÉTICOS (base da Playtime Shop)
 --
 -- Moeda da loja = tempo com o HYGE aberto: 1 ponto por minuto. O total vai em
@@ -5635,7 +5906,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/30_kit/06_animpack.lua", 5638, 6162, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/06_animpack.lua", 5909, 6433, function() --------------------------------------------------------------------------------
 -- v8.2 — PACOTES DE ANIMAÇÃO (motor; a UI fica em 40_tabs/02_movement_pack.lua)
 --
 -- Um pacote (bundle) do catálogo é uma lista de itens: Idle, Walk, Run, Jump,
@@ -6161,7 +6432,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/30_kit/07_sha256.lua", 6164, 6257, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/07_sha256.lua", 6435, 6528, function() --------------------------------------------------------------------------------
 -- v9.1 — SHA-256 (integridade da atualização)
 -- A atualização do painel (50_v8/09_update.lua) confere o main.lua baixado
 -- contra o manifest.json do repositório antes de trocar qualquer coisa.
@@ -6256,7 +6527,7 @@ end
     end
 end
 end)
-V8.Mod("src/30_kit/08_profile_tx.lua", 6259, 6420, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/08_profile_tx.lua", 6530, 6691, function() --------------------------------------------------------------------------------
 -- v9.1 — TROCA SEGURA DE PERFIL (usado por 50_v8/10_profiles.lua)
 -- Um perfil nunca deixa o painel pela metade:
 --   1. VALIDA tudo antes de mexer em qualquer coisa (tipos, números finitos,
@@ -6419,7 +6690,7 @@ do
     end
 end
 end)
-V8.Mod("src/40_tabs/00_home.lua", 6422, 6756, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/00_home.lua", 6693, 7027, function() --------------------------------------------------------------------------------
 -- ABA HOME (dashboard)
 --------------------------------------------------------------------------------
 do
@@ -6755,7 +7026,7 @@ do
     end)
 end
 end)
-V8.Mod("src/40_tabs/01_home_dashboard.lua", 6758, 7325, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/01_home_dashboard.lua", 7029, 7596, function() --------------------------------------------------------------------------------
 -- v8.0 — DASHBOARD DA HOME (header + relogio, tira de status, card do jogador
 -- com chat rapido e Friend Activity). Tudo pendurado em V8.Dash: zero locais
 -- novos no chunk principal. Entra DEPOIS de 40_tabs/00_home.lua no build.
@@ -7324,7 +7595,7 @@ do
     pcall(D.Tick)
 end
 end)
-V8.Mod("src/40_tabs/01_home_server.lua", 7327, 7600, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/01_home_server.lua", 7598, 7871, function() --------------------------------------------------------------------------------
 -- v8.1 — INÍCIO: MAPA ATUAL + PERFIL
 -- Mapa: nome do jogo, Place ID, Job ID e jogadores, com os botões rápidos
 -- REJOIN (volta para este servidor), TROCAR SERVIDOR (outro servidor público
@@ -7599,7 +7870,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/02_movement.lua", 7602, 7934, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/02_movement.lua", 7873, 8205, function() --------------------------------------------------------------------------------
 -- ABA MOVEMENT
 --------------------------------------------------------------------------------
 do
@@ -7933,7 +8204,7 @@ do
     RenderWaypoints()
 end
 end)
-V8.Mod("src/40_tabs/02_movement_pack.lua", 7936, 8121, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/02_movement_pack.lua", 8207, 8392, function() --------------------------------------------------------------------------------
 -- v8.2 — CARTÃO "PACOTE DE ANIMAÇÃO" (Personagem › Movimento)
 -- Cole o ID ou o link de um pacote do catálogo; o painel lê as animações dele
 -- (V8.Pack, 30_kit/06_animpack.lua) e guarda na lista. Em cada pacote:
@@ -8120,7 +8391,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/03_visuals.lua", 8123, 8216, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/03_visuals.lua", 8394, 8487, function() --------------------------------------------------------------------------------
 -- ABA VISUALS
 --------------------------------------------------------------------------------
 do
@@ -8215,7 +8486,7 @@ do
         .. "a TeamColor tem prioridade.", 10)
 end
 end)
-V8.Mod("src/40_tabs/04_players.lua", 8218, 8462, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/04_players.lua", 8489, 8733, function() --------------------------------------------------------------------------------
 -- ABA PLAYERS
 --------------------------------------------------------------------------------
 do
@@ -8461,7 +8732,7 @@ do
     RebuildPlayerRows()
 end
 end)
-V8.Mod("src/40_tabs/05_moderation.lua", 8464, 8655, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/05_moderation.lua", 8735, 8916, function() --------------------------------------------------------------------------------
 -- ABA MODERATION
 --------------------------------------------------------------------------------
 do
@@ -8562,21 +8833,20 @@ do
     -- MOVIMENTAÇÃO
     ----------------------------------------------------------------------------
     local mov = CreateCard(tab, "MOVIMENTAÇÃO", 2)
+    SubLabel(mov, "TELEPORTAR ATÉ e SPECTATE são LOCAIS (o seu personagem e a sua câmera: "
+        .. "funcionam em qualquer jogo). Com o servidor HYGE, TELEPORTAR passa por ele. "
+        .. "TRAZER mexe no personagem de outra pessoa: só pelo SERVIDOR.", 0)
     local movGrid = Grid(mov, 3, 32)
+    movGrid.LayoutOrder = 1
 
     ActionBtn(movGrid, "TELEPORTAR ATÉ", "Success", nil, function()
         local p = RequireSelected()
         if p then Goto(p) end
     end)
 
-    ActionBtn(movGrid, "TRAZER (BRING)", "Warning", nil, function()
+    ActionBtn(movGrid, "TRAZER (BRING)", "Warning", "Pull", function()
         local p = RequireSelected()
-        if not p then return end
-        if not Remotes.Pull then
-            Log("Bring sem AdminPull: só a sua tela vai ver o alvo mudar de lugar "
-                .. "(o servidor não replica). Crie o Remote pra valer de verdade.", "warn")
-        end
-        Bring(p)
+        if p then Bring(p) end
     end)
 
     ActionBtn(movGrid, "SPECTATE", "Accent", nil, function()
@@ -8589,9 +8859,7 @@ do
     -- MODERAÇÃO (depende do servidor)
     ----------------------------------------------------------------------------
     local mod = CreateCard(tab, "MODERAÇÃO", 3)
-    SubLabel(mod, "Estas ações mudam o jogo pra todo mundo, então SÓ funcionam com "
-        .. "RemoteEvent + validação no servidor. Sem o Remote o botão fica "
-        .. "indisponível — o painel não finge que executou.", -1)
+    V8.SrvTag(mod, { "Kick", "Freeze" }, -1)
 
     local modGrid = Grid(mod, 3, 32)
 
@@ -8614,39 +8882,32 @@ do
     -- COMUNICAÇÃO
     ----------------------------------------------------------------------------
     local com = CreateCard(tab, "COMUNICAÇÃO", 4)
+    V8.SrvTag(com, { "Whisper", "Announce" }, 0)
 
     local wIn = CreateInput(com, "Mensagem privada para o selecionado...", 32)
     wIn.LayoutOrder = 1
     ActionBtn(com, "ENVIAR PRIVADO", "Accent", "Whisper", function()
         local p = RequireSelected()
         if not p then return end
-        if wIn.Text == "" then
+        if wIn.Text:match("^%s*$") then
             Toast("Escreva a mensagem primeiro", "warn", 1.6)
             return
         end
-        Remotes.Whisper:FireServer(p.UserId, wIn.Text)
-        Log("Você -> " .. p.Name .. ": " .. wIn.Text, "ok")
-        wIn.Text = ""
+        if V8.Srv.Whisper(p, wIn.Text) then wIn.Text = "" end
     end).LayoutOrder = 2
 
     Divider(com).LayoutOrder = 3
 
     local aIn = CreateInput(com, "Anúncio para o servidor...", 32)
     aIn.LayoutOrder = 4
-    local aBtn = ActionBtn(com, "ANUNCIAR", "Warning", nil, function()
-        if aIn.Text == "" then
+    local aBtn = ActionBtn(com, "ANUNCIAR", "Warning", "Announce", function()
+        if aIn.Text:match("^%s*$") then
             Toast("Escreva o anúncio primeiro", "warn", 1.6)
             return
         end
-        Announce(aIn.Text)
-        aIn.Text = ""
-    end, "Enviar este anúncio?")
+        if Announce(aIn.Text) then aIn.Text = "" end
+    end, "Enviar este anúncio? O servidor filtra o texto antes de mostrar para todos.")
     aBtn.LayoutOrder = 5
-
-    if not Remotes.Announce then
-        SubLabel(com, "Sem AdminAnnounce o anúncio aparece SÓ no seu chat (local). "
-            .. "Pra chegar em todo mundo precisa do Remote no servidor.", 6)
-    end
 
     -- v8.1: o card TROLL mudou para a seção própria (40_tabs/12_troll.lua)
 
@@ -8654,7 +8915,7 @@ do
     UpdateSelectedInfo()
 end
 end)
-V8.Mod("src/40_tabs/06_server.lua", 8657, 8790, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/06_server.lua", 8918, 9125, function() --------------------------------------------------------------------------------
 -- ABA SERVER
 --------------------------------------------------------------------------------
 do
@@ -8719,32 +8980,45 @@ do
     end)
 
     ----------------------------------------------------------------------------
-    -- REMOTES
+    -- v9.2: INTEGRAÇÃO COM O SERVIDOR
+    -- O painel é client-side. Tudo que muda o jogo para os outros é PEDIDO ao
+    -- script de servidor (server/), que valida e responde. Aqui: se ele está
+    -- instalado, o seu cargo lá e o que cada ação precisa.
     ----------------------------------------------------------------------------
-    local rc = CreateCard(tab, "REMOTES (FUNÇÕES SERVER-SIDE)", 2)
-    SubLabel(rc, "O painel é client-side. Tudo que muda o jogo para os outros "
-        .. "precisa de um RemoteEvent em ReplicatedStorage COM validação de admin "
-        .. "no servidor. Sem o Remote a ação fica indisponível.", -1)
+    local rc = CreateCard(tab, "INTEGRAÇÃO COM O SERVIDOR", 2)
+    SubLabel(rc, "Ações que mexem em outros jogadores são pedidas ao script de servidor do "
+        .. "HYGE por RemoteEvents, e ele decide: confere o seu cargo, a permissão da ação, o "
+        .. "alvo, os argumentos e o limite de uso. O que aparece aqui é só o que o servidor "
+        .. "informou — cada pedido é conferido de novo lá.", -1)
+    local resumo = SubLabel(rc, "", 0)
+
+    local acts2 = Grid(rc, 2, 30)
+    acts2.LayoutOrder = 1
+    local recheck = CreateButton(acts2, "RECONFERIR SERVIDOR", "Accent", 30)
+    recheck.LayoutOrder = 1
+    recheck.MouseButton1Click:Connect(function()
+        V8.Srv.Refresh()
+        Log("Servidor: " .. (V8.Srv.Summary()), "action")
+    end)
+    local myId = CreateButton(acts2, "COPIAR MEU USERID", "Accent2", 30)
+    myId.LayoutOrder = 2
+    myId.MouseButton1Click:Connect(function()
+        Copy(tostring(LocalPlayer.UserId), "Seu UserId (para o CONFIG.AdminIds do servidor)")
+    end)
 
     -- v8.0: lê o catálogo único (V8.RemoteInfo) — os 13 Remotes, por grupo
-    do
-        local have, total = V8.RemoteStatus()
-        local resumo = SubLabel(rc, have .. " de " .. total .. " Remotes encontrados"
-            .. (have < total and "  ·  o script pronto está em server/ (veja o README)" or ""), 0)
-        resumo.TextColor3 = (have == total) and THEME.Success or THEME.Warning
-    end
-
     local rGrid = Grid(rc, 1, 22)
-    rGrid.LayoutOrder = 1
+    rGrid.LayoutOrder = 2
+    local rows = {}
     local lastGroup
     for i, item in ipairs(V8.RemoteInfo) do
-        local key, remoteName, what, group = item[1], item[2], item[3], item[4]
+        local group = item[4]
         if group ~= lastGroup then
             lastGroup = group
             local g = Instance.new("TextLabel")
             g.Size = UDim2.new(1, 0, 0, 22)
             g.BackgroundTransparency = 1
-            g.Text = "  " .. group:upper()
+            g.Text = "  " .. group:upper() .. "  ·  SERVIDOR"
             g.TextColor3 = THEME.Accent
             g.Font = Enum.Font.GothamBold
             g.TextSize = 10
@@ -8754,20 +9028,81 @@ do
             g.Parent = rGrid
             Paint(g, "TextColor3", "Accent")
         end
-        local found = Remotes[key] ~= nil
         local l = Instance.new("TextLabel")
         l.Size = UDim2.new(1, 0, 0, 22)
         l.BackgroundTransparency = 1
-        l.Text = (found and "  [OK]      " or "  [AUSENTE] ") .. remoteName
-            .. "   —   " .. what
-        l.TextColor3 = found and THEME.Success or THEME.Dim
+        l.TextColor3 = THEME.Dim
         l.Font = Enum.Font.Code
         l.TextSize = 12
         l.TextXAlignment = Enum.TextXAlignment.Left
+        l.TextTruncate = Enum.TextTruncate.AtEnd
         l.LayoutOrder = i * 2
         l.Parent = rGrid
-        Paint(l, "TextColor3", found and "Success" or "Dim")
+        rows[i] = l
     end
+
+    -- [LIBERADA] o servidor confirmou que o seu cargo pode · [SEM PERMISSÃO]
+    -- · [NÃO É ADMIN] · [AUSENTE] o Remote não existe · [ENCONTRADO] existe,
+    -- sem confirmação. (Rótulos fixos: string.upper não conhece acento.)
+    local TAGS = {
+        ["sem servidor"]  = { "[AUSENTE]       ", "Dim" },
+        ["não é admin"]   = { "[NÃO É ADMIN]   ", "Danger" },
+        ["sem permissão"] = { "[SEM PERMISSÃO] ", "Warning" },
+    }
+    local function Render()
+        local txt, color = V8.Srv.Summary()
+        resumo.Text = "Servidor: " .. txt
+        resumo.TextColor3 = THEME[color] or THEME.Dim
+        for i, item in ipairs(V8.RemoteInfo) do
+            local key, remoteName, what = item[1], item[2], item[3]
+            local short = V8.Srv.Short(key)
+            local tag, c
+            if short then
+                local t = TAGS[short] or TAGS["sem permissão"]
+                tag, c = t[1], t[2]
+            elseif V8.Srv.State == "ok" then tag, c = "[LIBERADA]      ", "Success"
+            else tag, c = "[ENCONTRADO]    ", "Text" end
+            rows[i].Text = "  " .. tag .. " " .. remoteName .. "   —   " .. what
+            rows[i].TextColor3 = THEME[c] or THEME.Dim
+        end
+    end
+    V8.Srv.OnChange(Render)
+    Render()
+
+    ----------------------------------------------------------------------------
+    -- v9.2: O QUE FUNCIONA ONDE
+    ----------------------------------------------------------------------------
+    local where = CreateCard(tab, "O QUE FUNCIONA ONDE", 3)
+    local lw = SubLabel(where, "LOCAL — roda no seu cliente, em qualquer jogo, sem instalar nada:\n"
+        .. "  Fly, Noclip, God, Invisível, WalkSpeed/JumpPower, Anti-Fall, Anti-Gravidade, "
+        .. "Walk on Walls, Ctrl+clique TP, waypoints, ESP, Freecam, Drone, Spectate, Fullbright, "
+        .. "Chat Spy, emotes e pacotes de animação, Teleportar até (sem o servidor), falar no chat, "
+        .. "Fake Kick/Ban (só na sua tela) e todas as Configurações.\n"
+        .. "  (O que muda o SEU personagem os outros veem; ESP, Freecam, Fullbright e efeitos, só você.)", 1)
+    lw.TextColor3 = THEME.Accent2
+    local sw = SubLabel(where, "SERVIDOR — exige server/HYGE_AdminServer.server.lua instalado no "
+        .. "Roblox Studio deste jogo:\n"
+        .. "  Kick, Bring, Freeze/Unfreeze, Ir até (pelo servidor), Anúncio, Mensagem privada, "
+        .. "Fling, Spin, Trip, Launch, Force Sit, Scale e Balloon.\n"
+        .. "  Sem o servidor esses botões mostram (sem servidor) e explicam o motivo — nada é "
+        .. "simulado na sua tela.", 2)
+    sw.TextColor3 = THEME.Warning
+
+    ----------------------------------------------------------------------------
+    -- v9.2: INSTALAR NO SEU JOGO (o passo a passo completo: docs/SERVIDOR.md)
+    ----------------------------------------------------------------------------
+    local inst = CreateCard(tab, "INSTALAR NO SEU JOGO (ROBLOX STUDIO)", 4)
+    SubLabel(inst, "1. ServerScriptService › Script (comum) › cole server/HYGE_AdminServer.server.lua.\n"
+        .. "2. StarterPlayer › StarterPlayerScripts › LocalScript › cole "
+        .. "server/HYGE_AdminClient.client.lua (mostra anúncios e privados para todos).\n"
+        .. "3. No topo do script de servidor: o seu UserId (" .. LocalPlayer.UserId .. ") em "
+        .. "CONFIG.AdminIds; moderadores em CONFIG.ModIds; o que cada cargo pode em "
+        .. "CONFIG.Permissions.\n"
+        .. "4. Game Settings › Security: nada a ligar (RemoteEvents não precisam de HTTP).\n"
+        .. "5. Opcional: o painel no próprio jogo — LocalScript HYGE_Panel em ServerStorage com o "
+        .. "main.lua; o servidor entrega só para quem tem cargo. NUNCA ponha o main.lua em "
+        .. "StarterPlayerScripts: todo jogador receberia o painel.\n"
+        .. "6. Publique e teste (Test › Clients and Servers). Passo a passo: docs/SERVIDOR.md.", 1)
 
     ----------------------------------------------------------------------------
     UpdateServerInfo = function()
@@ -8789,7 +9124,7 @@ do
     UpdateServerInfo()
 end
 end)
-V8.Mod("src/40_tabs/07_emotes.lua", 8792, 9384, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/07_emotes.lua", 9127, 9719, function() --------------------------------------------------------------------------------
 -- ABA EMOTES (catálogo pesquisável + tocar por ID + favoritos)
 --
 -- Limitação do Roblox, não do painel: o Animator só carrega animação cujo
@@ -9383,7 +9718,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/08_settings.lua", 9386, 9819, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/08_settings.lua", 9721, 10161, function() --------------------------------------------------------------------------------
 -- ABA SETTINGS
 --------------------------------------------------------------------------------
 do
@@ -9787,21 +10122,28 @@ do
     }
 
     local about = CreateCard(tab, "SOBRE", 21)
-    local _, _, missing = V8.RemoteStatus()
 
     local txt = Instance.new("TextLabel")
     txt.Size = UDim2.new(1, 0, 0, 0)
     txt.AutomaticSize = Enum.AutomaticSize.Y
     txt.BackgroundTransparency = 1
-    txt.Text = "HYGE Admin Panel " .. CONFIG.Version
-        .. "\nPainel client-side. Tudo que aparece aqui roda na SUA máquina."
-        .. "\n\nAdmin: " .. LocalPlayer.Name .. " (UserId " .. LocalPlayer.UserId .. ")"
-        .. "\nEdite CONFIG.AdminIds no topo do script para liberar outros admins."
-        .. "\n\nRemotes ausentes: "
-        .. (#missing == 0 and "nenhum — tudo pronto"
-            or (table.concat(missing, ", ") .. "\nAs ações que dependem deles ficam "
-                .. "indisponíveis (com aviso), nunca são simuladas. O script de "
-                .. "servidor que cria e valida todos eles está em server/ (README)."))
+    -- v9.2: o estado do servidor muda depois do boot (a resposta do HYGE_Status)
+    local function AboutText()
+        local _, _, missing = V8.RemoteStatus()
+        txt.Text = "HYGE Admin Panel " .. CONFIG.Version
+            .. "\nPainel client-side. A interface e as funções LOCAIS rodam na SUA máquina; "
+            .. "o que mexe em outros jogadores é pedido ao script de servidor, que decide."
+            .. "\n\nVocê: " .. LocalPlayer.Name .. " (UserId " .. LocalPlayer.UserId .. ")"
+            .. "\nCONFIG.AdminIds do painel só decide quem ABRE o painel. Quem pode agir "
+            .. "nos outros é o CONFIG.AdminIds do script de servidor."
+            .. "\n\nServidor: " .. (V8.Srv.Summary())
+            .. (#missing == 0 and ""
+                or ("\nRemotes ausentes: " .. table.concat(missing, ", ") .. "\nAs ações que "
+                    .. "dependem deles ficam indisponíveis (com o motivo), nunca são simuladas. "
+                    .. "Instalação: Início › Servidor (ou docs/SERVIDOR.md)."))
+    end
+    AboutText()
+    V8.Srv.OnChange(AboutText)
     txt.TextColor3 = THEME.Dim
     txt.Font = Enum.Font.Gotham
     txt.TextSize = 12
@@ -9818,7 +10160,7 @@ do
     end)
 end
 end)
-V8.Mod("src/40_tabs/09_shop.lua", 9821, 10144, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/09_shop.lua", 10163, 10486, function() --------------------------------------------------------------------------------
 -- v8.1 — PLAYTIME SHOP (ícone de sacola do dock)
 -- Loja do próprio painel paga com tempo de jogo: 1 ponto por minuto com o HYGE
 -- aberto (V8.Play, 30_kit/05_playtime.lua). Categorias: All, Ranks, Icons,
@@ -10143,7 +10485,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/10_scripts.lua", 10146, 10220, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/10_scripts.lua", 10488, 10562, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA SCRIPTS (ícone de terminal do dock)
 -- O console de log sai do rodapé da janela e passa a morar aqui, ocupando a
 -- aba inteira, com uma linha de comando embaixo (Enter executa, ↑/↓ histórico).
@@ -10219,7 +10561,7 @@ do
     if V8.CompactRow then V8.CompactRow.Visible = false end
 end
 end)
-V8.Mod("src/40_tabs/11_chat.lua", 10222, 10351, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/11_chat.lua", 10564, 10692, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA CHAT (balão do dock)
 -- Feed do chat DESTE servidor + enviar no chat do jogo + privado pelo Remote.
 -- Mostra só o que o seu cliente já recebe do Roblox: nenhuma mensagem é
@@ -10234,9 +10576,10 @@ do
     -- ENVIAR
     ----------------------------------------------------------------------------
     local send = CreateCard(tab, "ENVIAR", 1)
-    SubLabel(send, "ENVIAR NO CHAT fala pelo seu personagem, como se você tivesse "
-        .. "digitado. PRIVADO vai para o jogador selecionado em Jogadores e "
-        .. "precisa do Remote AdminWhisper (script de server/).", -1)
+    SubLabel(send, "ENVIAR NO CHAT é LOCAL: fala pelo seu personagem, como se você tivesse "
+        .. "digitado (funciona em qualquer jogo). PRIVADO vai para o jogador selecionado em "
+        .. "Jogadores e passa pelo SERVIDOR (filtro do Roblox + o seu cargo).", -1)
+    V8.SrvTag(send, { "Whisper" }, 3)
 
     local box = CreateInput(send, "Mensagem...", 34)
     box.LayoutOrder = 1
@@ -10271,9 +10614,7 @@ do
         if not p then return end
         local text = Take()
         if not text then return end
-        Remotes.Whisper:FireServer(p.UserId, text)
-        Log("Você -> " .. p.Name .. ": " .. text, "ok")
-        box.Text = ""
+        if V8.Srv.Whisper(p, text) then box.Text = "" end
     end)
     priv.LayoutOrder = 2
 
@@ -10350,7 +10691,7 @@ do
     status.Text = "Nenhuma mensagem ainda   ·   " .. mode
 end
 end)
-V8.Mod("src/40_tabs/12_troll.lua", 10353, 10541, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/12_troll.lua", 10694, 10889, function() --------------------------------------------------------------------------------
 -- v8.1 — SEÇÃO TROLL (ícone de máscara do dock)
 -- * Walk on Walls (20_features/10_wallwalk.lua): roda no SEU personagem, então
 --   funciona em qualquer jogo — e os outros veem você andando na parede.
@@ -10369,6 +10710,8 @@ do
         -- MOVIMENTO
         ----------------------------------------------------------------------------
         local mov = CreateCard(tab, "MOVIMENTO", 1)
+        V8.SrvTag(mov, nil, 0, "roda no SEU personagem: funciona em qualquer jogo, sem servidor "
+            .. "(os outros veem você na parede).")
         SwitchRow(mov, "wallwalk", "Walk on Walls", Toggles.wallwalk.desc)
         SubLabel(mov, "Ande contra uma parede para subir nela; continue para chegar ao "
             .. "teto. WASD segue a câmera, Space pula para fora da superfície e, sem "
@@ -10443,11 +10786,16 @@ do
         -- AÇÕES NO ALVO (servidor)
         ----------------------------------------------------------------------------
         local troll = CreateCard(tab, "AÇÕES NO ALVO", 3)
-        SubLabel(troll, "Mexer no personagem de outra pessoa é coisa do servidor: estes "
-            .. "botões só funcionam com o RemoteEvent + validação (script pronto em "
-            .. "server/). Sem o Remote o botão fica indisponível — nada aqui é fingido.", -1)
+        V8.SrvTag(troll, { "Fling", "Spin", "Trip", "Launch", "Sit", "Balloon", "Scale" }, -1)
+        SubLabel(troll, "Mexer no personagem de outra pessoa é coisa do servidor: o painel só "
+            .. "pede, e o servidor confere o seu cargo, o alvo e o limite antes de fazer. "
+            .. "SPIN e BALLOON mostram ON só depois que o servidor confirma.", 0)
 
         local grid = Grid(troll, 3, 32)
+        grid.LayoutOrder = 1
+
+        -- declarado antes: os botões chamam depois de enviar
+        local Sync
 
         ActionBtn(grid, "FLING", "Danger", "Fling", function()
             local p = RequireSelected()
@@ -10458,9 +10806,8 @@ do
         spinBtn = ActionBtn(grid, "SPIN: OFF", "Warning", "Spin", function()
             local p = RequireSelected()
             if not p then return end
-            local on = not TrollState.Spin[p.UserId]
-            SpinPlayer(p, on)
-            spinBtn.Text = on and "SPIN: ON" or "SPIN: OFF"
+            SpinPlayer(p, not TrollState.Spin[p.UserId])
+            Sync()
         end)
 
         ActionBtn(grid, "TRIP", "Warning", "Trip", function()
@@ -10482,9 +10829,8 @@ do
         balloonBtn = ActionBtn(grid, "BALLOON: OFF", "Accent", "Balloon", function()
             local p = RequireSelected()
             if not p then return end
-            local on = not TrollState.Balloon[p.UserId]
-            BalloonPlayer(p, on)
-            balloonBtn.Text = on and "BALLOON: ON" or "BALLOON: OFF"
+            BalloonPlayer(p, not TrollState.Balloon[p.UserId])
+            Sync()
         end)
 
         ActionBtn(grid, "TINY", "Accent", "Scale", function()
@@ -10517,21 +10863,23 @@ do
             if p then FakeMessage(p, "ban") end
         end)
 
-        SubLabel(troll, "Fake Message só aparece na SUA tela — não afeta o alvo nem o "
-            .. "servidor.", 12)
+        V8.SrvTag(troll, nil, 12, "FAKE KICK/BAN MSG aparece só na SUA tela — não afeta o alvo "
+            .. "nem o servidor.")
 
-        -- os botões de liga/desliga seguem o alvo atual
-        local function Sync()
+        -- os botões de liga/desliga seguem o alvo atual e o que o SERVIDOR
+        -- confirmou (TrollState muda no HYGE_Result)
+        Sync = function()
             local p = State.SelectedPlayer
             local id = p and p.UserId
-            -- sem o Remote o botão mostra "(servidor)": não mexe no texto
-            if Remotes.Spin then
+            -- indisponível o botão mostra o motivo: não mexe no texto
+            if not V8.Srv.Short("Spin") then
                 spinBtn.Text = (id and TrollState.Spin[id]) and "SPIN: ON" or "SPIN: OFF"
             end
-            if Remotes.Balloon then
+            if not V8.Srv.Short("Balloon") then
                 balloonBtn.Text = (id and TrollState.Balloon[id]) and "BALLOON: ON" or "BALLOON: OFF"
             end
         end
+        table.insert(V8.Srv.Hooks, function() pcall(Sync) end)
 
         V8.TabTick.Troll = function() Target() Sync() end
         OnTabOpen("Troll", function() pcall(Target) pcall(Sync) end)
@@ -10540,7 +10888,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/13_hychat.lua", 10543, 10923, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/13_hychat.lua", 10891, 11271, function() --------------------------------------------------------------------------------
 -- v8.1 — CHAT HYGE (Chat › HYGE)
 -- Conversa entre quem usa o HYGE: sala "Este servidor" (mesmo JobId) e sala
 -- "Global" (todos os servidores). Dois clientes Roblox não falam direto um
@@ -10922,7 +11270,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/00_dock.lua", 10925, 11391, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/00_dock.lua", 11273, 11739, function() --------------------------------------------------------------------------------
 -- v8.0 — DOCK (navegação principal)
 -- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
 -- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
@@ -11390,7 +11738,7 @@ do
     K.Apply(SET.Dock)
 end
 end)
-V8.Mod("src/50_v8/01_shell.lua", 11393, 11781, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/01_shell.lua", 11741, 12129, function() --------------------------------------------------------------------------------
 -- v8.0 — SHELL (layout novo)
 -- NAO recria a janela: reconfigura as instancias que o engine ja criou.
 -- Dois modos, escolhidos por SET.Dock (Ajustes › Navegação):
@@ -11780,7 +12128,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/02_situations.lua", 11783, 12122, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/02_situations.lua", 12131, 12470, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — SISTEMA DE SITUAÇÕES
 -- Um clique troca o modo de operação inteiro: liga o que pertence à situação
 -- e DESLIGA o que não pertence. Cards no Dashboard + keybind por situação.
@@ -12121,7 +12469,7 @@ do
     S.Render()
 end
 end)
-V8.Mod("src/50_v8/03_persist.lua", 12124, 12719, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/03_persist.lua", 12472, 13067, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — PERSISTÊNCIA (HYGE/config.json)
 -- Salva/carrega keybinds, aparência, comportamento, velocidades, opções de ESP,
 -- waypoints, favoritos de emote, notas e a última situação.
@@ -12718,7 +13066,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/04_search.lua", 12721, 13179, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/04_search.lua", 13069, 13527, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — BUSCA GLOBAL (Ctrl+K)
 -- Overlay único que pesquisa situações, funções, jogadores, waypoints e
 -- comandos. Enter executa o item selecionado; ↑/↓ navegam; Esc fecha.
@@ -13178,7 +13526,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/05_island.lua", 13181, 13315, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/05_island.lua", 13529, 13663, function() --------------------------------------------------------------------------------
 -- v8.0 — ILHA NO TOPO DA TELA
 -- Pílula fixa no alto, centralizada: logo, hora, FPS e ping — à vista mesmo
 -- com o painel fechado. Clicar abre/fecha o painel.
@@ -13314,7 +13662,7 @@ do
     pcall(I.Update, State.Fps, nil)
 end
 end)
-V8.Mod("src/50_v8/06_auto.lua", 13317, 13399, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/06_auto.lua", 13665, 13747, function() --------------------------------------------------------------------------------
 -- v8.1 — RECURSOS AUTOMÁTICOS (Configurações › Ajustes › Automático)
 -- * escolha quais funções ligam sozinhas toda vez que o painel carrega
 --   (SET.Auto, vai na config em disco). O BootStep "Automático" roda depois do
@@ -13398,7 +13746,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/07_mobile.lua", 13401, 13620, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/07_mobile.lua", 13749, 13968, function() --------------------------------------------------------------------------------
 -- v8.2 — CELULAR (botões na tela + janela que cabe)
 -- * Botões na tela (SET.TouchHud; padrão: ligado em aparelho com toque):
 --   FLY liga/desliga o voo; com ele ligado aparecem SUBIR, DESCER e 2x.
@@ -13619,7 +13967,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/08_quests.lua", 13622, 13886, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/08_quests.lua", 13970, 14234, function() --------------------------------------------------------------------------------
 -- v8.2 — MISSÕES E BÔNUS DIÁRIO (Playtime Shop › Missões de hoje)
 -- Mais um jeito de ganhar pontos além do 1/minuto:
 --   * bônus diário: na primeira vez que o painel abre no dia. Dias seguidos
@@ -13885,7 +14233,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/09_update.lua", 13888, 14147, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/09_update.lua", 14236, 14495, function() --------------------------------------------------------------------------------
 -- v8.2 — ATUALIZAÇÃO (Configurações › Ajustes › Atualização)
 -- Confere se existe um main.lua mais novo no endereço de atualização:
 --   * aberto pelo loader.lua: o loader conta qual build ele rodou
@@ -14146,7 +14494,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/10_profiles.lua", 14149, 14587, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/10_profiles.lua", 14497, 14935, function() --------------------------------------------------------------------------------
 -- v9.0 — PERFIS (Configurações › Dados › Perfis)
 -- Um perfil é o painel inteiro guardado com um nome: tema, tamanho, teclas,
 -- macros, velocidades, opções de ESP, favoritos, ajustes e as funções que
@@ -14586,7 +14934,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/11_notify.lua", 14589, 14909, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/11_notify.lua", 14937, 15257, function() --------------------------------------------------------------------------------
 -- v9.0 — CENTRAL DE NOTIFICAÇÕES
 -- Todo Toast passa a ficar guardado (os últimos 60). O sino na ilha do topo
 -- mostra quantos chegaram desde a última olhada; clicar abre a lista.
@@ -14908,7 +15256,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/12_colors.lua", 14911, 15073, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/12_colors.lua", 15259, 15421, function() --------------------------------------------------------------------------------
 -- v9.0 — COR PERSONALIZADA (Configurações › Visual)
 -- Tema "Personalizado": a base escura do Grafite levemente tingida + a cor de
 -- destaque que você escolher (matiz 0–360° e intensidade). USAR ESTA COR
@@ -15072,7 +15420,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/13_macros.lua", 15075, 15336, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/13_macros.lua", 15423, 15684, function() --------------------------------------------------------------------------------
 -- v9.0 — MACROS DE TECLADO (Configurações › Teclas › Macros de teclado)
 -- Uma tecla roda qualquer comando da barra (;) — "tp joao", "sit caça",
 -- "flyspeed 200", "theme rosa"... Vários de uma vez: separe com &&
@@ -15335,7 +15683,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/14_diag.lua", 15338, 15642, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/14_diag.lua", 15686, 15997, function() --------------------------------------------------------------------------------
 -- v9.0 — DIAGNÓSTICO (Configurações › Sistema › Diagnóstico)
 -- Num lugar só: o que este executor suporta, quanto o boot demorou, qual
 -- módulo falhou (e em que linha do src/), memória, FPS/ping e os últimos
@@ -15528,6 +15876,13 @@ do
             for _, id in ipairs(ToggleOrder) do if IsOn(id) then on = on + 1 end end
             add("  Funções ligadas " .. on .. "/" .. #ToggleOrder .. "  ·  registry de tema " .. #Painted
                 .. "  ·  Remotes " .. (select(1, V8.RemoteStatus())) .. "/" .. #V8.RemoteInfo)
+            -- v9.2: integração com o servidor (estado, cargo, pedidos sem resposta)
+            if V8.Srv then
+                local pend = 0
+                for _ in pairs(V8.Srv.Pending) do pend = pend + 1 end
+                add("  Servidor: " .. (V8.Srv.Summary()) .. "  ·  estado " .. V8.Srv.State
+                    .. "  ·  pedidos aguardando " .. pend)
+            end
 
             head("Executor")
             local caps = {}
@@ -15641,7 +15996,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/15_news.lua", 15644, 15841, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/15_news.lua", 15999, 16195, function() --------------------------------------------------------------------------------
 -- v9.0 — NOVIDADES / BOAS-VINDAS
 -- Na primeira vez que uma versão nova abre, aparece um cartão com o que
 -- mudou. Quem nunca usou o HYGE (sem config salva) vê os primeiros passos.
@@ -15660,14 +16015,13 @@ do
             if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
         end)
 
-        -- v9.1: estabilidade
+        -- v9.2: integração com o servidor do seu jogo
         W.Items = {
-            { "check",    "Backup da config", "Config, perfis e tempo de jogo têm backup. Arquivo estragado? RECUPERAR BACKUP (ou o comando recover)." },
-            { "shield",   "Atualização conferida", "O loader e o ATUALIZAR AGORA só trocam a versão se o arquivo bater com o SHA-256 do manifesto. Download ruim abre a última que funcionava." },
-            { "layers",   "Perfis seguros", "Perfil inválido não muda nada; se algo falhar no meio, o painel volta ao que estava." },
-            { "signal",   "Diagnóstico novo", "Conexões por módulo, tarefas, respawn e se o último Unload ficou limpo." },
-            { "power",    "Rodar de novo sem duplicar", "Executar o script outra vez descarrega o painel anterior de verdade." },
-            { "keyboard", "Shift Lock bloqueado", "O Shift não prende mais o mouse no centro (o Fly usa o Shift para acelerar). Dá para religar em Comportamento." },
+            { "shield",   "Servidor decide", "Kick, Bring, Freeze, anúncio, privado e troll são pedidos ao script de servidor (server/), que confere cargo, alvo, argumentos e limite antes de fazer." },
+            { "layers",   "Cargos e permissões", "Moderador, admin e dono no servidor, cada ação com o seu cargo mínimo. O painel mostra o seu cargo e o que está liberado." },
+            { "check",    "Local ou servidor?", "Cada cartão diz onde roda. Sem servidor o botão mostra o motivo (sem servidor, não é admin, sem permissão)." },
+            { "power",    "Nada simulado", "Bring, Freeze e Anúncio não fingem mais que funcionaram na sua tela sem o servidor. Spin e Balloon só mostram ON depois da confirmação." },
+            { "signal",   "Instalação", "Início › Servidor mostra o estado, o passo a passo e o seu UserId para o CONFIG.AdminIds. Detalhes: docs/SERVIDOR.md." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou
         W.Tips = function()
@@ -15810,7 +16164,7 @@ do
                 for i, it in ipairs(W.Tips()) do Row(list, i, it) end
             else
                 titleLbl.Text = "Novidades da " .. CONFIG.Version
-                subLbl.Text = "A maior atualização do HYGE até agora:"
+                subLbl.Text = "Integração com o servidor do seu jogo:"
                 for i, it in ipairs(W.Items) do Row(list, i, it) end
             end
             -- tela baixa (celular deitado): o cartão encolhe e a lista rola
@@ -15840,7 +16194,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/19_settings_nav.lua", 15843, 16024, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/19_settings_nav.lua", 16197, 16378, function() --------------------------------------------------------------------------------
 -- v9.0 — AJUSTES ORGANIZADOS (Configurações › Ajustes)
 -- A aba tinha ~20 cartões numa rolagem só. Agora, no topo:
 --   * categorias em pílula: Tudo · Geral · Teclas · Visual · Dados · Sistema
@@ -16058,7 +16412,7 @@ AddNav("Scripts", 11)
 AddNav("HyChat", 12)      -- v8.1
 AddNav("Chat", 13)
 
-V8.Mod("src/90_runtime/01_commands.lua", 16061, 16802, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/01_commands.lua", 16415, 17161, function() --------------------------------------------------------------------------------
 -- BARRA DE COMANDOS (histórico, autocomplete, aliases)
 --------------------------------------------------------------------------------
 do
@@ -16255,7 +16609,7 @@ do
         if p then Goto(p) else Log("Jogador não encontrado: " .. tostring(args[1]), "warn") end
     end)
 
-    DefCmd("bring", "bring <jogador>", "puxa o jogador (precisa de Remote)", function(args)
+    DefCmd("bring", "bring <jogador>", "puxa o jogador (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then Bring(p) else Log("Jogador não encontrado", "warn") end
     end)
@@ -16271,17 +16625,17 @@ do
         RefreshStatus()
     end, "spec")
 
-    DefCmd("freeze", "freeze <jogador>", "congela (precisa de Remote)", function(args)
+    DefCmd("freeze", "freeze <jogador>", "congela (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then FreezePlayer(p, true) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("unfreeze", "unfreeze <jogador>", "descongela (precisa de Remote)", function(args)
+    DefCmd("unfreeze", "unfreeze <jogador>", "descongela (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then FreezePlayer(p, false) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("kick", "kick <jogador>", "expulsa (precisa de Remote)", function(args)
+    DefCmd("kick", "kick <jogador>", "expulsa (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then KickPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
@@ -16289,12 +16643,12 @@ do
     ----------------------------------------------------------------------------
     -- TROLL (v8.0) — todas dependem de Remote no servidor, exceto fakemsg
     ----------------------------------------------------------------------------
-    DefCmd("fling", "fling <jogador>", "impulso forte no alvo (precisa de Remote)", function(args)
+    DefCmd("fling", "fling <jogador>", "impulso forte no alvo (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then FlingPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("spin", "spin <jogador> [on|off]", "rotação contínua no alvo (precisa de Remote)",
+    DefCmd("spin", "spin <jogador> [on|off]", "rotação contínua no alvo (servidor)",
         function(args)
             local p = FindPlayer(args[1])
             if not p then Log("Jogador não encontrado", "warn") return end
@@ -16306,23 +16660,23 @@ do
             SpinPlayer(p, on)
         end)
 
-    DefCmd("trip", "trip <jogador>", "derruba o alvo (precisa de Remote)", function(args)
+    DefCmd("trip", "trip <jogador>", "derruba o alvo (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then TripPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("launch", "launch <jogador>", "lança o alvo bem alto (precisa de Remote)", function(args)
+    DefCmd("launch", "launch <jogador>", "lança o alvo bem alto (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then LaunchPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
     -- nota: "sit" já é o comando de Situações (v8.0) — usamos "forcesit" pro troll
-    DefCmd("forcesit", "forcesit <jogador>", "senta o alvo (precisa de Remote)", function(args)
+    DefCmd("forcesit", "forcesit <jogador>", "senta o alvo (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then SitPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("scale", "scale <jogador> <tiny|normal|giant>", "muda o tamanho do alvo (precisa de Remote)",
+    DefCmd("scale", "scale <jogador> <tiny|normal|giant>", "muda o tamanho do alvo (servidor)",
         function(args)
             local p = FindPlayer(args[1])
             if not p then Log("Jogador não encontrado", "warn") return end
@@ -16334,7 +16688,7 @@ do
             ScalePlayer(p, mode)
         end)
 
-    DefCmd("balloon", "balloon <jogador> [on|off]", "empurrão suave pra cima (precisa de Remote)",
+    DefCmd("balloon", "balloon <jogador> [on|off]", "empurrão suave pra cima (servidor)",
         function(args)
             local p = FindPlayer(args[1])
             if not p then Log("Jogador não encontrado", "warn") return end
@@ -16386,7 +16740,7 @@ do
             Emote.Play(a)
         end, "e")
 
-    DefCmd("announce", "announce <mensagem>", "anúncio global (precisa de Remote)", function(args)
+    DefCmd("announce", "announce <mensagem>", "anúncio global (servidor)", function(args)
         local msg = table.concat(args, " ")
         if msg == "" then Log("uso: announce <mensagem>", "warn") return end
         Announce(msg)
@@ -16461,15 +16815,20 @@ do
         Log(#names .. " online: " .. table.concat(names, ", "))
     end)
 
-    DefCmd("server", "server", "info do servidor e Remotes", function()
-        Log("PlaceId " .. game.PlaceId .. "  •  JobId "
-            .. (game.JobId ~= "" and game.JobId or "estúdio"))
-        local have, total, miss = V8.RemoteStatus()
-        if #miss == 0 then Log("Todos os " .. total .. " Remotes presentes", "ok")
-        else Log("Remotes " .. have .. "/" .. total .. " — ausentes: "
-            .. table.concat(miss, ", "), "warn") end
-        if UpdateServerInfo then UpdateServerInfo() end
-    end)
+    DefCmd("server", "server [check]", "info do servidor, Remotes e o seu cargo (check: reconfere)",
+        function(args)
+            Log("PlaceId " .. game.PlaceId .. "  •  JobId "
+                .. (game.JobId ~= "" and game.JobId or "estúdio"))
+            -- v9.2: check pergunta de novo ao servidor (a resposta chega sozinha)
+            if (args[1] or ""):lower() == "check" then V8.Srv.Refresh() end
+            local have, total, miss = V8.RemoteStatus()
+            if #miss == 0 then Log("Todos os " .. total .. " Remotes presentes", "ok")
+            else Log("Remotes " .. have .. "/" .. total .. " — ausentes: "
+                .. table.concat(miss, ", "), "warn") end
+            local txt, color = V8.Srv.Summary()
+            Log("Servidor HYGE: " .. txt, color == "Success" and "ok" or "warn")
+            if UpdateServerInfo then UpdateServerInfo() end
+        end)
 
     ----------------------------------------------------------------------------
     -- v8.1: Início (servidor), Personagem (gravidade) e Playtime Shop
@@ -16801,7 +17160,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/02_window_ctl.lua", 16804, 17020, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/02_window_ctl.lua", 17163, 17379, function() --------------------------------------------------------------------------------
 -- ORB FLUTUANTE
 --------------------------------------------------------------------------------
 do
@@ -17019,7 +17378,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/03_input.lua", 17022, 17171, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/03_input.lua", 17381, 17530, function() --------------------------------------------------------------------------------
 -- INPUT GLOBAL (teclas)
 --------------------------------------------------------------------------------
 -- v8.0: teclas que cada modo usa para se mover. Com o modo ligado, um atalho
@@ -17170,7 +17529,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/04_scheduler.lua", 17173, 17279, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/04_scheduler.lua", 17532, 17638, function() --------------------------------------------------------------------------------
 -- SCHEDULER ÚNICO (um Heartbeat para todo o painel)
 --------------------------------------------------------------------------------
 do
@@ -17278,7 +17637,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/05_events.lua", 17281, 17399, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/05_events.lua", 17640, 17748, function() --------------------------------------------------------------------------------
 -- RESPAWN: reaplica o que estava ligado (e avisa o que não deu)
 --------------------------------------------------------------------------------
 Conn.CharAdded = LocalPlayer.CharacterAdded:Connect(function(char)
@@ -17381,24 +17740,14 @@ Conn.PlayerRemoving = Players.PlayerRemoving:Connect(function(p)
 end)
 
 --------------------------------------------------------------------------------
--- MENSAGENS DO SERVIDOR (AdminWhisper)
+-- MENSAGENS DO SERVIDOR (AdminWhisper / AdminAnnounce / HYGE_Result)
+-- v9.2: a escuta mora na ponte com o servidor (V8.Srv.Scan, em
+-- 20_features/06_actions.lua), que a religa se o servidor criar os Remotes
+-- depois que o painel abriu.
 --------------------------------------------------------------------------------
-if Remotes.Whisper then
-    Conn.Whisper = Remotes.Whisper.OnClientEvent:Connect(function(fromName, message)
-        Log("[ADMIN " .. tostring(fromName) .. "] " .. tostring(message), "action")
-        Toast("ADMIN " .. tostring(fromName) .. ": " .. tostring(message), nil, 6)
-    end)
-end
--- v8.0: com o script de server/ o anúncio volta para todos (já filtrado pelo
--- Roblox); o painel registra no próprio console como confirmação real
-if Remotes.Announce then
-    Conn.Announce = Remotes.Announce.OnClientEvent:Connect(function(fromName, message)
-        Log("[ANÚNCIO " .. tostring(fromName) .. "] " .. tostring(message), "action")
-    end)
-end
 
 end)
-V8.Mod("src/90_runtime/06_unload.lua", 17401, 17497, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/06_unload.lua", 17750, 17846, function() --------------------------------------------------------------------------------
 -- UNLOAD (desfaz tudo)
 --------------------------------------------------------------------------------
 Unload = function()
@@ -17496,7 +17845,7 @@ pcall(function()
 end)
 
 end)
-V8.Mod("src/90_runtime/07_boot.lua", 17499, 17582, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/07_boot.lua", 17848, 17934, function() --------------------------------------------------------------------------------
 -- BOOT
 --------------------------------------------------------------------------------
 do
@@ -17515,6 +17864,9 @@ do
     BootStep("PlayerRows",    function() if RebuildPlayerRows then RebuildPlayerRows() end end)
     BootStep("Waypoints",     function() if RenderWaypoints then RenderWaypoints() end end)
     BootStep("ServerInfo",    function() if UpdateServerInfo then UpdateServerInfo() end end)
+    -- v9.2: Remotes de novo + pergunta ao servidor o seu cargo (não espera a
+    -- resposta: os botões se atualizam quando ela chegar)
+    BootStep("Servidor",      function() V8.Srv.Refresh() end)
     BootStep("Config",        function() if V8.Cfg then V8.Cfg.Load(true) end end)
     -- v8.1: funções marcadas em Configurações › Automático (depois da config)
     BootStep("Automático",    function() if V8.Auto then V8.Auto.Run() end end)
@@ -17581,4 +17933,4 @@ do
     end
 end
 end)
-V8.SrcMap = { { "src/00_core/00_header.lua", 6, 81 }, { "src/00_core/01_config.lua", 82, 190 }, { "src/00_core/02_theme.lua", 191, 304 }, { "src/00_core/03_bootstrap.lua", 305, 382 }, { "src/00_core/04_state.lua", 383, 690 }, { "src/00_core/05_helpers.lua", 691, 732 }, { "src/10_ui/00_window.lua", 733, 781 }, { "src/10_ui/01_toasts.lua", 782, 925 }, { "src/10_ui/02_console.lua", 926, 1146 }, { "src/10_ui/03_topbar_sidebar.lua", 1147, 1292 }, { "src/10_ui/04_factory.lua", 1293, 1597 }, { "src/10_ui/05_toggles_keybinds.lua", 1598, 1910 }, { "src/20_features/00_fly.lua", 1911, 2339 }, { "src/20_features/01_character.lua", 2340, 2471 }, { "src/20_features/02_esp.lua", 2472, 2798 }, { "src/20_features/03_world.lua", 2799, 2870 }, { "src/20_features/04_freecam.lua", 2871, 2952 }, { "src/20_features/05_drone.lua", 2953, 3069 }, { "src/20_features/06_actions.lua", 3070, 3252 }, { "src/20_features/07_spectate.lua", 3253, 3302 }, { "src/20_features/08_spectate_hud.lua", 3303, 3377 }, { "src/20_features/09_body.lua", 3378, 3524 }, { "src/20_features/10_wallwalk.lua", 3525, 3805 }, { "src/20_features/11_clicktp.lua", 3806, 3860 }, { "src/30_kit/00_widgets.lua", 3861, 4318 }, { "src/30_kit/01_icons.lua", 4319, 4437 }, { "src/30_kit/02_topbar_chips.lua", 4438, 4518 }, { "src/30_kit/03_drone_hud.lua", 4519, 4907 }, { "src/30_kit/04_net.lua", 4908, 5138 }, { "src/30_kit/05_playtime.lua", 5139, 5637 }, { "src/30_kit/06_animpack.lua", 5638, 6163 }, { "src/30_kit/07_sha256.lua", 6164, 6258 }, { "src/30_kit/08_profile_tx.lua", 6259, 6421 }, { "src/40_tabs/00_home.lua", 6422, 6757 }, { "src/40_tabs/01_home_dashboard.lua", 6758, 7326 }, { "src/40_tabs/01_home_server.lua", 7327, 7601 }, { "src/40_tabs/02_movement.lua", 7602, 7935 }, { "src/40_tabs/02_movement_pack.lua", 7936, 8122 }, { "src/40_tabs/03_visuals.lua", 8123, 8217 }, { "src/40_tabs/04_players.lua", 8218, 8463 }, { "src/40_tabs/05_moderation.lua", 8464, 8656 }, { "src/40_tabs/06_server.lua", 8657, 8791 }, { "src/40_tabs/07_emotes.lua", 8792, 9385 }, { "src/40_tabs/08_settings.lua", 9386, 9820 }, { "src/40_tabs/09_shop.lua", 9821, 10145 }, { "src/40_tabs/10_scripts.lua", 10146, 10221 }, { "src/40_tabs/11_chat.lua", 10222, 10352 }, { "src/40_tabs/12_troll.lua", 10353, 10542 }, { "src/40_tabs/13_hychat.lua", 10543, 10924 }, { "src/50_v8/00_dock.lua", 10925, 11392 }, { "src/50_v8/01_shell.lua", 11393, 11782 }, { "src/50_v8/02_situations.lua", 11783, 12123 }, { "src/50_v8/03_persist.lua", 12124, 12720 }, { "src/50_v8/04_search.lua", 12721, 13180 }, { "src/50_v8/05_island.lua", 13181, 13316 }, { "src/50_v8/06_auto.lua", 13317, 13400 }, { "src/50_v8/07_mobile.lua", 13401, 13621 }, { "src/50_v8/08_quests.lua", 13622, 13887 }, { "src/50_v8/09_update.lua", 13888, 14148 }, { "src/50_v8/10_profiles.lua", 14149, 14588 }, { "src/50_v8/11_notify.lua", 14589, 14910 }, { "src/50_v8/12_colors.lua", 14911, 15074 }, { "src/50_v8/13_macros.lua", 15075, 15337 }, { "src/50_v8/14_diag.lua", 15338, 15643 }, { "src/50_v8/15_news.lua", 15644, 15842 }, { "src/50_v8/19_settings_nav.lua", 15843, 16025 }, { "src/90_runtime/00_status_nav.lua", 16026, 16060 }, { "src/90_runtime/01_commands.lua", 16061, 16803 }, { "src/90_runtime/02_window_ctl.lua", 16804, 17021 }, { "src/90_runtime/03_input.lua", 17022, 17172 }, { "src/90_runtime/04_scheduler.lua", 17173, 17280 }, { "src/90_runtime/05_events.lua", 17281, 17400 }, { "src/90_runtime/06_unload.lua", 17401, 17498 }, { "src/90_runtime/07_boot.lua", 17499, 17583 } }
+V8.SrcMap = { { "src/00_core/00_header.lua", 6, 96 }, { "src/00_core/01_config.lua", 97, 207 }, { "src/00_core/02_theme.lua", 208, 321 }, { "src/00_core/03_bootstrap.lua", 322, 399 }, { "src/00_core/04_state.lua", 400, 707 }, { "src/00_core/05_helpers.lua", 708, 749 }, { "src/10_ui/00_window.lua", 750, 798 }, { "src/10_ui/01_toasts.lua", 799, 942 }, { "src/10_ui/02_console.lua", 943, 1163 }, { "src/10_ui/03_topbar_sidebar.lua", 1164, 1309 }, { "src/10_ui/04_factory.lua", 1310, 1614 }, { "src/10_ui/05_toggles_keybinds.lua", 1615, 1927 }, { "src/20_features/00_fly.lua", 1928, 2356 }, { "src/20_features/01_character.lua", 2357, 2488 }, { "src/20_features/02_esp.lua", 2489, 2815 }, { "src/20_features/03_world.lua", 2816, 2887 }, { "src/20_features/04_freecam.lua", 2888, 2969 }, { "src/20_features/05_drone.lua", 2970, 3086 }, { "src/20_features/06_actions.lua", 3087, 3489 }, { "src/20_features/07_spectate.lua", 3490, 3539 }, { "src/20_features/08_spectate_hud.lua", 3540, 3610 }, { "src/20_features/09_body.lua", 3611, 3757 }, { "src/20_features/10_wallwalk.lua", 3758, 4038 }, { "src/20_features/11_clicktp.lua", 4039, 4093 }, { "src/30_kit/00_widgets.lua", 4094, 4589 }, { "src/30_kit/01_icons.lua", 4590, 4708 }, { "src/30_kit/02_topbar_chips.lua", 4709, 4789 }, { "src/30_kit/03_drone_hud.lua", 4790, 5178 }, { "src/30_kit/04_net.lua", 5179, 5409 }, { "src/30_kit/05_playtime.lua", 5410, 5908 }, { "src/30_kit/06_animpack.lua", 5909, 6434 }, { "src/30_kit/07_sha256.lua", 6435, 6529 }, { "src/30_kit/08_profile_tx.lua", 6530, 6692 }, { "src/40_tabs/00_home.lua", 6693, 7028 }, { "src/40_tabs/01_home_dashboard.lua", 7029, 7597 }, { "src/40_tabs/01_home_server.lua", 7598, 7872 }, { "src/40_tabs/02_movement.lua", 7873, 8206 }, { "src/40_tabs/02_movement_pack.lua", 8207, 8393 }, { "src/40_tabs/03_visuals.lua", 8394, 8488 }, { "src/40_tabs/04_players.lua", 8489, 8734 }, { "src/40_tabs/05_moderation.lua", 8735, 8917 }, { "src/40_tabs/06_server.lua", 8918, 9126 }, { "src/40_tabs/07_emotes.lua", 9127, 9720 }, { "src/40_tabs/08_settings.lua", 9721, 10162 }, { "src/40_tabs/09_shop.lua", 10163, 10487 }, { "src/40_tabs/10_scripts.lua", 10488, 10563 }, { "src/40_tabs/11_chat.lua", 10564, 10693 }, { "src/40_tabs/12_troll.lua", 10694, 10890 }, { "src/40_tabs/13_hychat.lua", 10891, 11272 }, { "src/50_v8/00_dock.lua", 11273, 11740 }, { "src/50_v8/01_shell.lua", 11741, 12130 }, { "src/50_v8/02_situations.lua", 12131, 12471 }, { "src/50_v8/03_persist.lua", 12472, 13068 }, { "src/50_v8/04_search.lua", 13069, 13528 }, { "src/50_v8/05_island.lua", 13529, 13664 }, { "src/50_v8/06_auto.lua", 13665, 13748 }, { "src/50_v8/07_mobile.lua", 13749, 13969 }, { "src/50_v8/08_quests.lua", 13970, 14235 }, { "src/50_v8/09_update.lua", 14236, 14496 }, { "src/50_v8/10_profiles.lua", 14497, 14936 }, { "src/50_v8/11_notify.lua", 14937, 15258 }, { "src/50_v8/12_colors.lua", 15259, 15422 }, { "src/50_v8/13_macros.lua", 15423, 15685 }, { "src/50_v8/14_diag.lua", 15686, 15998 }, { "src/50_v8/15_news.lua", 15999, 16196 }, { "src/50_v8/19_settings_nav.lua", 16197, 16379 }, { "src/90_runtime/00_status_nav.lua", 16380, 16414 }, { "src/90_runtime/01_commands.lua", 16415, 17162 }, { "src/90_runtime/02_window_ctl.lua", 17163, 17380 }, { "src/90_runtime/03_input.lua", 17381, 17531 }, { "src/90_runtime/04_scheduler.lua", 17532, 17639 }, { "src/90_runtime/05_events.lua", 17640, 17749 }, { "src/90_runtime/06_unload.lua", 17750, 17847 }, { "src/90_runtime/07_boot.lua", 17848, 17935 } }

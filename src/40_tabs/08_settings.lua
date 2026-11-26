@@ -402,21 +402,28 @@ do
     }
 
     local about = CreateCard(tab, "SOBRE", 21)
-    local _, _, missing = V8.RemoteStatus()
 
     local txt = Instance.new("TextLabel")
     txt.Size = UDim2.new(1, 0, 0, 0)
     txt.AutomaticSize = Enum.AutomaticSize.Y
     txt.BackgroundTransparency = 1
-    txt.Text = "HYGE Admin Panel " .. CONFIG.Version
-        .. "\nPainel client-side. Tudo que aparece aqui roda na SUA máquina."
-        .. "\n\nAdmin: " .. LocalPlayer.Name .. " (UserId " .. LocalPlayer.UserId .. ")"
-        .. "\nEdite CONFIG.AdminIds no topo do script para liberar outros admins."
-        .. "\n\nRemotes ausentes: "
-        .. (#missing == 0 and "nenhum — tudo pronto"
-            or (table.concat(missing, ", ") .. "\nAs ações que dependem deles ficam "
-                .. "indisponíveis (com aviso), nunca são simuladas. O script de "
-                .. "servidor que cria e valida todos eles está em server/ (README)."))
+    -- v9.2: o estado do servidor muda depois do boot (a resposta do HYGE_Status)
+    local function AboutText()
+        local _, _, missing = V8.RemoteStatus()
+        txt.Text = "HYGE Admin Panel " .. CONFIG.Version
+            .. "\nPainel client-side. A interface e as funções LOCAIS rodam na SUA máquina; "
+            .. "o que mexe em outros jogadores é pedido ao script de servidor, que decide."
+            .. "\n\nVocê: " .. LocalPlayer.Name .. " (UserId " .. LocalPlayer.UserId .. ")"
+            .. "\nCONFIG.AdminIds do painel só decide quem ABRE o painel. Quem pode agir "
+            .. "nos outros é o CONFIG.AdminIds do script de servidor."
+            .. "\n\nServidor: " .. (V8.Srv.Summary())
+            .. (#missing == 0 and ""
+                or ("\nRemotes ausentes: " .. table.concat(missing, ", ") .. "\nAs ações que "
+                    .. "dependem deles ficam indisponíveis (com o motivo), nunca são simuladas. "
+                    .. "Instalação: Início › Servidor (ou docs/SERVIDOR.md)."))
+    end
+    AboutText()
+    V8.Srv.OnChange(AboutText)
     txt.TextColor3 = THEME.Dim
     txt.Font = Enum.Font.Gotham
     txt.TextSize = 12

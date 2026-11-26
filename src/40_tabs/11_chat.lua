@@ -13,9 +13,10 @@ do
     -- ENVIAR
     ----------------------------------------------------------------------------
     local send = CreateCard(tab, "ENVIAR", 1)
-    SubLabel(send, "ENVIAR NO CHAT fala pelo seu personagem, como se você tivesse "
-        .. "digitado. PRIVADO vai para o jogador selecionado em Jogadores e "
-        .. "precisa do Remote AdminWhisper (script de server/).", -1)
+    SubLabel(send, "ENVIAR NO CHAT é LOCAL: fala pelo seu personagem, como se você tivesse "
+        .. "digitado (funciona em qualquer jogo). PRIVADO vai para o jogador selecionado em "
+        .. "Jogadores e passa pelo SERVIDOR (filtro do Roblox + o seu cargo).", -1)
+    V8.SrvTag(send, { "Whisper" }, 3)
 
     local box = CreateInput(send, "Mensagem...", 34)
     box.LayoutOrder = 1
@@ -50,9 +51,7 @@ do
         if not p then return end
         local text = Take()
         if not text then return end
-        Remotes.Whisper:FireServer(p.UserId, text)
-        Log("Você -> " .. p.Name .. ": " .. text, "ok")
-        box.Text = ""
+        if V8.Srv.Whisper(p, text) then box.Text = "" end
     end)
     priv.LayoutOrder = 2
 

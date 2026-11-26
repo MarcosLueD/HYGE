@@ -101,19 +101,9 @@ Conn.PlayerRemoving = Players.PlayerRemoving:Connect(function(p)
 end)
 
 --------------------------------------------------------------------------------
--- MENSAGENS DO SERVIDOR (AdminWhisper)
+-- MENSAGENS DO SERVIDOR (AdminWhisper / AdminAnnounce / HYGE_Result)
+-- v9.2: a escuta mora na ponte com o servidor (V8.Srv.Scan, em
+-- 20_features/06_actions.lua), que a religa se o servidor criar os Remotes
+-- depois que o painel abriu.
 --------------------------------------------------------------------------------
-if Remotes.Whisper then
-    Conn.Whisper = Remotes.Whisper.OnClientEvent:Connect(function(fromName, message)
-        Log("[ADMIN " .. tostring(fromName) .. "] " .. tostring(message), "action")
-        Toast("ADMIN " .. tostring(fromName) .. ": " .. tostring(message), nil, 6)
-    end)
-end
--- v8.0: com o script de server/ o anúncio volta para todos (já filtrado pelo
--- Roblox); o painel registra no próprio console como confirmação real
-if Remotes.Announce then
-    Conn.Announce = Remotes.Announce.OnClientEvent:Connect(function(fromName, message)
-        Log("[ANÚNCIO " .. tostring(fromName) .. "] " .. tostring(message), "action")
-    end)
-end
 

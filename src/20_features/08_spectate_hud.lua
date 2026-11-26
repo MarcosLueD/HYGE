@@ -52,16 +52,12 @@ do
     send.Size = UDim2.new(0, 100, 0, 32)
     send.Position = UDim2.new(1, -114, 0, 44)
 
+    -- v9.2: a mesma mensagem privada da Moderação (V8.Srv.Whisper): sem o
+    -- servidor ela explica o motivo e o texto fica no campo
     local function sendMsg()
         local msg = input.Text
-        if msg == "" or not State.SpectateTarget then return end
-        if Remotes.Whisper then
-            Remotes.Whisper:FireServer(State.SpectateTarget.UserId, msg)
-            Log("Você -> " .. State.SpectateTarget.Name .. ": " .. msg, "ok")
-        else
-            Log("Remote AdminWhisper ausente", "error")
-        end
-        input.Text = ""
+        if msg:match("^%s*$") or not State.SpectateTarget then return end
+        if V8.Srv.Whisper(State.SpectateTarget, msg) then input.Text = "" end
     end
 
     send.MouseButton1Click:Connect(sendMsg)

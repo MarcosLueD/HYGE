@@ -17,14 +17,13 @@ do
             if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
         end)
 
-        -- v9.1: estabilidade
+        -- v9.2: integração com o servidor do seu jogo
         W.Items = {
-            { "check",    "Backup da config", "Config, perfis e tempo de jogo têm backup. Arquivo estragado? RECUPERAR BACKUP (ou o comando recover)." },
-            { "shield",   "Atualização conferida", "O loader e o ATUALIZAR AGORA só trocam a versão se o arquivo bater com o SHA-256 do manifesto. Download ruim abre a última que funcionava." },
-            { "layers",   "Perfis seguros", "Perfil inválido não muda nada; se algo falhar no meio, o painel volta ao que estava." },
-            { "signal",   "Diagnóstico novo", "Conexões por módulo, tarefas, respawn e se o último Unload ficou limpo." },
-            { "power",    "Rodar de novo sem duplicar", "Executar o script outra vez descarrega o painel anterior de verdade." },
-            { "keyboard", "Shift Lock bloqueado", "O Shift não prende mais o mouse no centro (o Fly usa o Shift para acelerar). Dá para religar em Comportamento." },
+            { "shield",   "Servidor decide", "Kick, Bring, Freeze, anúncio, privado e troll são pedidos ao script de servidor (server/), que confere cargo, alvo, argumentos e limite antes de fazer." },
+            { "layers",   "Cargos e permissões", "Moderador, admin e dono no servidor, cada ação com o seu cargo mínimo. O painel mostra o seu cargo e o que está liberado." },
+            { "check",    "Local ou servidor?", "Cada cartão diz onde roda. Sem servidor o botão mostra o motivo (sem servidor, não é admin, sem permissão)." },
+            { "power",    "Nada simulado", "Bring, Freeze e Anúncio não fingem mais que funcionaram na sua tela sem o servidor. Spin e Balloon só mostram ON depois da confirmação." },
+            { "signal",   "Instalação", "Início › Servidor mostra o estado, o passo a passo e o seu UserId para o CONFIG.AdminIds. Detalhes: docs/SERVIDOR.md." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou
         W.Tips = function()
@@ -167,7 +166,7 @@ do
                 for i, it in ipairs(W.Tips()) do Row(list, i, it) end
             else
                 titleLbl.Text = "Novidades da " .. CONFIG.Version
-                subLbl.Text = "A maior atualização do HYGE até agora:"
+                subLbl.Text = "Integração com o servidor do seu jogo:"
                 for i, it in ipairs(W.Items) do Row(list, i, it) end
             end
             -- tela baixa (celular deitado): o cartão encolhe e a lista rola

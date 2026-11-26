@@ -36,11 +36,19 @@ local function Inst(class, name)
     function o:IsA(c) return self.ClassName == c end
     function o:FindFirstChild(n) for _, c in ipairs(self.children) do if c.Name == n and not c.destroyed then return c end end return nil end
     function o:FindFirstChildOfClass(cl) for _, c in ipairs(self.children) do if c.ClassName == cl and not c.destroyed then return c end end return nil end
+    function o:WaitForChild(n) return self:FindFirstChild(n) end
     function o:Destroy() self.destroyed = true self.Parent = nil end
+    function o:Clone()
+        local c = Instance.new(self.ClassName)
+        c.Name = self.Name
+        c.clonedFrom = self
+        return c
+    end
     return o
 end
 
 ReplicatedStorage = Inst("ReplicatedStorage")
+ServerStorage = Inst("ServerStorage")
 local realChildren = ReplicatedStorage.children
 REMOTES = {}
 
@@ -84,10 +92,14 @@ PLAYERS = {}
 function Players:GetPlayerByUserId(id) for _, p in ipairs(PLAYERS) do if p.UserId == id then return p end end return nil end
 function Players:GetPlayers() return PLAYERS end
 
+-- opts: ranks = { [grupo] = rank } | rankError = true | noCharacter = true
 function AddPlayer(name, userId, opts)
     opts = opts or {}
     local p = Inst("Player", name)
     p.UserId, p.Parent = userId, Players
+    local gui = Inst("PlayerGui", "PlayerGui")
+    gui.Parent = p
+    table.insert(p.children, gui)
     local char = Inst("Model", name)
     local root = Inst("Part", "HumanoidRootPart")
     root.Parent, root.CFrame, root.AssemblyMass, root.Anchored = char, CFrame.new(0, 0, 0), 10, false
@@ -98,7 +110,7 @@ function AddPlayer(name, userId, opts)
     table.insert(char.children, hum)
     char.PivotTo = function(self, cf) self.pivoted = cf end
     char.ScaleTo = function(self, f) self.scale = f end
-    p.Character = char
+    if not opts.noCharacter then p.Character = char end
     p.Kick = function(self, msg) self.kicked = msg or "" self.Parent = nil end
     p.GetRankInGroup = function(self, g)
         if opts.rankError then error("HTTP 503") end
@@ -107,6 +119,13 @@ function AddPlayer(name, userId, opts)
     table.insert(PLAYERS, p)
     Players.PlayerAdded:Fire(p)
     return p
+end
+
+-- o jogador sai do servidor (alvo que some entre o clique e o pedido)
+function RemovePlayer(p)
+    for i, q in ipairs(PLAYERS) do if q == p then table.remove(PLAYERS, i) break end end
+    Players.PlayerRemoving:Fire(p)
+    p.Parent = nil
 end
 
 -- filtro de texto: FILTER = "ok" | "error" | "hash" | function(texto) -> texto
@@ -133,7 +152,8 @@ game = {
     CreatorType = Enum.CreatorType.User,
     CreatorId = 1,
     GetService = function(_, n)
-        local s = ({ Players = Players, ReplicatedStorage = ReplicatedStorage, TextService = TextService })[n]
+        local s = ({ Players = Players, ReplicatedStorage = ReplicatedStorage, TextService = TextService,
+                     ServerStorage = ServerStorage })[n]
         return s or error("serviço não imitado: " .. n)
     end,
 }
@@ -142,12 +162,35 @@ game = {
 function Call(remote, player, ...)
     REMOTES[remote].OnServerEvent:Fire(player, ...)
 end
--- o que o servidor mandou de volta para 'player' (confirmações do painel)
+-- chama o HYGE_Status (RemoteFunction) como o cliente 'player'
+function Ask(player, ...)
+    return REMOTES.HYGE_Status.OnServerInvoke(player, ...)
+end
+-- respostas estruturadas que o servidor mandou para 'player' (HYGE_Result)
+function ResultsFor(player)
+    local out = {}
+    for _, s in ipairs(REMOTES.HYGE_Result.sent) do
+        if s.to == player then table.insert(out, s.args[1]) end
+    end
+    return out
+end
+function LastResult(player) local r = ResultsFor(player) return r[#r] end
+-- as mesmas respostas como o console do painel mostra ("✓ Kick: Bob")
 function NotesFor(player)
     local out = {}
-    for _, s in ipairs(REMOTES.AdminWhisper.sent) do
-        if s.to == player and s.args[1] == "HYGE" then table.insert(out, s.args[2]) end
+    for _, r in ipairs(ResultsFor(player)) do
+        table.insert(out, (r.ok and "✓ " or "✗ ") .. tostring(r.message))
     end
     return table.concat(out, " | ")
 end
 function LastAudit() return shared.HYGE_AUDIT[#shared.HYGE_AUDIT] end
+-- o registro inteiro como texto (para conferir o que NÃO pode estar lá)
+function AuditText()
+    local out = {}
+    for _, e in ipairs(shared.HYGE_AUDIT) do
+        local t = {}
+        for k, v in pairs(e) do table.insert(t, tostring(k) .. "=" .. tostring(v)) end
+        table.insert(out, table.concat(t, " "))
+    end
+    return table.concat(out, "\n")
+end

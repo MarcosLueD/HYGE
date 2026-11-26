@@ -17,6 +17,9 @@ do
     BootStep("PlayerRows",    function() if RebuildPlayerRows then RebuildPlayerRows() end end)
     BootStep("Waypoints",     function() if RenderWaypoints then RenderWaypoints() end end)
     BootStep("ServerInfo",    function() if UpdateServerInfo then UpdateServerInfo() end end)
+    -- v9.2: Remotes de novo + pergunta ao servidor o seu cargo (não espera a
+    -- resposta: os botões se atualizam quando ela chegar)
+    BootStep("Servidor",      function() V8.Srv.Refresh() end)
     BootStep("Config",        function() if V8.Cfg then V8.Cfg.Load(true) end end)
     -- v8.1: funções marcadas em Configurações › Automático (depois da config)
     BootStep("Automático",    function() if V8.Auto then V8.Auto.Run() end end)

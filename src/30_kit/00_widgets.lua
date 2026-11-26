@@ -395,27 +395,35 @@ do
 end
 
 --------------------------------------------------------------------------------
--- BOTÃO DE AÇÃO COM GATE DE REMOTE
--- remoteKey = chave em Remotes. Sem o remote o botão fica indisponível,
--- explica o motivo e registra no log — nunca finge que executou.
+-- BOTÃO DE AÇÃO COM GATE DE SERVIDOR
+-- remoteKey = chave em Remotes (ação que exige o servidor) ou nil (local).
+-- v9.2: a disponibilidade vem da ponte com o servidor (V8.Srv) e se atualiza
+-- sozinha: sem servidor, sem cargo ou sem permissão o botão diz qual dos três
+-- e, clicado, explica o motivo no console — nunca finge que executou.
 --------------------------------------------------------------------------------
 local function ActionBtn(parent, text, colorKey, remoteKey, fn, confirmText)
-    local available = (remoteKey == nil) or (Remotes[remoteKey] ~= nil)
-    local b = CreateButton(parent, text, available and colorKey or "Line", 32)
+    local b = CreateButton(parent, text, colorKey, 32)
+    local stroke = b:FindFirstChildOfClass("UIStroke")
 
-    if not available then
-        b.TextColor3 = THEME.Dim
-        b.BackgroundTransparency = 0.45
-        b.Text = text .. " (servidor)"
-        Paint(b, "TextColor3", "Dim")
+    local last = false   -- motivo atual (false = ainda não pintou)
+    local function Look()
+        local short = (remoteKey and V8.Srv) and V8.Srv.Short(remoteKey) or nil
+        if short == last then return end
+        last = short
+        b.Text = short and (text .. " (" .. short .. ")") or text
+        b.TextColor3 = short and THEME.Dim or THEME.Text
+        b.BackgroundTransparency = short and 0.45 or 0
+        if stroke then stroke.Color = short and THEME.Line or THEME[colorKey or "Accent"] end
     end
 
     b.MouseButton1Click:Connect(function()
-        if not available then
-            Log(text .. ": precisa do RemoteEvent " .. tostring(remoteKey)
-                .. " no ReplicatedStorage (função server-side)", "warn")
-            Toast(text .. " depende de um Remote no servidor", "warn", 3)
-            return
+        if remoteKey and V8.Srv then
+            local ok, why = V8.Srv.Can(remoteKey)
+            if not ok then
+                Log(text .. ": " .. why, "warn")
+                Toast(text .. ": " .. (V8.Srv.Short(remoteKey) or "indisponível"), "warn", 3)
+                return
+            end
         end
         if confirmText then
             Confirm(confirmText, fn)
@@ -424,7 +432,37 @@ local function ActionBtn(parent, text, colorKey, remoteKey, fn, confirmText)
             if not ok then Log(text .. ": " .. tostring(err), "error") end
         end
     end)
-    return b, available
+    if remoteKey and V8.Srv then V8.Srv.OnChange(Look) end
+    Look()
+    return b
+end
+
+-- v9.2: etiqueta de um cartão — onde aquilo roda.
+--   keys = nil          -> LOCAL (seu cliente, qualquer jogo)
+--   keys = { "Kick" }   -> SERVIDOR (exige server/ no Studio) + estado atual
+-- Fica atualizada sozinha quando o painel descobre o servidor / o seu cargo.
+V8.SrvTag = function(parent, keys, order, localText)
+    local l = SubLabel(parent, "", order)
+    local function Look()
+        if not keys then
+            l.Text = "LOCAL — " .. (localText or "roda só no seu cliente: funciona em qualquer jogo, "
+                .. "sem script de servidor.")
+            l.TextColor3 = THEME.Accent2
+            return
+        end
+        local S = V8.Srv
+        if not S then return end
+        local free = 0
+        for _, k in ipairs(keys) do if S.Can(k) then free = free + 1 end end
+        local txt, color = S.Summary()
+        l.Text = "SERVIDOR — exige os scripts de server/ instalados no Roblox Studio deste jogo. "
+            .. "Agora: " .. txt .. ((S.State == "ok" and S.Info and S.Info.level > 0)
+                and (" · aqui: " .. free .. "/" .. #keys) or "")
+        l.TextColor3 = THEME[color] or THEME.Dim
+    end
+    Look()
+    if keys and V8.Srv then V8.Srv.OnChange(Look) end
+    return l
 end
 
 -- Avatar (headshot) por UserId — usa rbxthumb, não baixa nada duas vezes

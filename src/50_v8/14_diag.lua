@@ -191,6 +191,13 @@ do
             for _, id in ipairs(ToggleOrder) do if IsOn(id) then on = on + 1 end end
             add("  Funções ligadas " .. on .. "/" .. #ToggleOrder .. "  ·  registry de tema " .. #Painted
                 .. "  ·  Remotes " .. (select(1, V8.RemoteStatus())) .. "/" .. #V8.RemoteInfo)
+            -- v9.2: integração com o servidor (estado, cargo, pedidos sem resposta)
+            if V8.Srv then
+                local pend = 0
+                for _ in pairs(V8.Srv.Pending) do pend = pend + 1 end
+                add("  Servidor: " .. (V8.Srv.Summary()) .. "  ·  estado " .. V8.Srv.State
+                    .. "  ·  pedidos aguardando " .. pend)
+            end
 
             head("Executor")
             local caps = {}

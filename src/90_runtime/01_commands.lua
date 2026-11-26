@@ -195,7 +195,7 @@ do
         if p then Goto(p) else Log("Jogador não encontrado: " .. tostring(args[1]), "warn") end
     end)
 
-    DefCmd("bring", "bring <jogador>", "puxa o jogador (precisa de Remote)", function(args)
+    DefCmd("bring", "bring <jogador>", "puxa o jogador (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then Bring(p) else Log("Jogador não encontrado", "warn") end
     end)
@@ -211,17 +211,17 @@ do
         RefreshStatus()
     end, "spec")
 
-    DefCmd("freeze", "freeze <jogador>", "congela (precisa de Remote)", function(args)
+    DefCmd("freeze", "freeze <jogador>", "congela (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then FreezePlayer(p, true) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("unfreeze", "unfreeze <jogador>", "descongela (precisa de Remote)", function(args)
+    DefCmd("unfreeze", "unfreeze <jogador>", "descongela (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then FreezePlayer(p, false) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("kick", "kick <jogador>", "expulsa (precisa de Remote)", function(args)
+    DefCmd("kick", "kick <jogador>", "expulsa (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then KickPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
@@ -229,12 +229,12 @@ do
     ----------------------------------------------------------------------------
     -- TROLL (v8.0) — todas dependem de Remote no servidor, exceto fakemsg
     ----------------------------------------------------------------------------
-    DefCmd("fling", "fling <jogador>", "impulso forte no alvo (precisa de Remote)", function(args)
+    DefCmd("fling", "fling <jogador>", "impulso forte no alvo (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then FlingPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("spin", "spin <jogador> [on|off]", "rotação contínua no alvo (precisa de Remote)",
+    DefCmd("spin", "spin <jogador> [on|off]", "rotação contínua no alvo (servidor)",
         function(args)
             local p = FindPlayer(args[1])
             if not p then Log("Jogador não encontrado", "warn") return end
@@ -246,23 +246,23 @@ do
             SpinPlayer(p, on)
         end)
 
-    DefCmd("trip", "trip <jogador>", "derruba o alvo (precisa de Remote)", function(args)
+    DefCmd("trip", "trip <jogador>", "derruba o alvo (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then TripPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("launch", "launch <jogador>", "lança o alvo bem alto (precisa de Remote)", function(args)
+    DefCmd("launch", "launch <jogador>", "lança o alvo bem alto (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then LaunchPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
     -- nota: "sit" já é o comando de Situações (v8.0) — usamos "forcesit" pro troll
-    DefCmd("forcesit", "forcesit <jogador>", "senta o alvo (precisa de Remote)", function(args)
+    DefCmd("forcesit", "forcesit <jogador>", "senta o alvo (servidor)", function(args)
         local p = FindPlayer(args[1])
         if p then SitPlayer(p) else Log("Jogador não encontrado", "warn") end
     end)
 
-    DefCmd("scale", "scale <jogador> <tiny|normal|giant>", "muda o tamanho do alvo (precisa de Remote)",
+    DefCmd("scale", "scale <jogador> <tiny|normal|giant>", "muda o tamanho do alvo (servidor)",
         function(args)
             local p = FindPlayer(args[1])
             if not p then Log("Jogador não encontrado", "warn") return end
@@ -274,7 +274,7 @@ do
             ScalePlayer(p, mode)
         end)
 
-    DefCmd("balloon", "balloon <jogador> [on|off]", "empurrão suave pra cima (precisa de Remote)",
+    DefCmd("balloon", "balloon <jogador> [on|off]", "empurrão suave pra cima (servidor)",
         function(args)
             local p = FindPlayer(args[1])
             if not p then Log("Jogador não encontrado", "warn") return end
@@ -326,7 +326,7 @@ do
             Emote.Play(a)
         end, "e")
 
-    DefCmd("announce", "announce <mensagem>", "anúncio global (precisa de Remote)", function(args)
+    DefCmd("announce", "announce <mensagem>", "anúncio global (servidor)", function(args)
         local msg = table.concat(args, " ")
         if msg == "" then Log("uso: announce <mensagem>", "warn") return end
         Announce(msg)
@@ -401,15 +401,20 @@ do
         Log(#names .. " online: " .. table.concat(names, ", "))
     end)
 
-    DefCmd("server", "server", "info do servidor e Remotes", function()
-        Log("PlaceId " .. game.PlaceId .. "  •  JobId "
-            .. (game.JobId ~= "" and game.JobId or "estúdio"))
-        local have, total, miss = V8.RemoteStatus()
-        if #miss == 0 then Log("Todos os " .. total .. " Remotes presentes", "ok")
-        else Log("Remotes " .. have .. "/" .. total .. " — ausentes: "
-            .. table.concat(miss, ", "), "warn") end
-        if UpdateServerInfo then UpdateServerInfo() end
-    end)
+    DefCmd("server", "server [check]", "info do servidor, Remotes e o seu cargo (check: reconfere)",
+        function(args)
+            Log("PlaceId " .. game.PlaceId .. "  •  JobId "
+                .. (game.JobId ~= "" and game.JobId or "estúdio"))
+            -- v9.2: check pergunta de novo ao servidor (a resposta chega sozinha)
+            if (args[1] or ""):lower() == "check" then V8.Srv.Refresh() end
+            local have, total, miss = V8.RemoteStatus()
+            if #miss == 0 then Log("Todos os " .. total .. " Remotes presentes", "ok")
+            else Log("Remotes " .. have .. "/" .. total .. " — ausentes: "
+                .. table.concat(miss, ", "), "warn") end
+            local txt, color = V8.Srv.Summary()
+            Log("Servidor HYGE: " .. txt, color == "Success" and "ok" or "warn")
+            if UpdateServerInfo then UpdateServerInfo() end
+        end)
 
     ----------------------------------------------------------------------------
     -- v8.1: Início (servidor), Personagem (gravidade) e Playtime Shop

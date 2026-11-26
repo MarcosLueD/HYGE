@@ -1,8 +1,9 @@
-# HYGE v9.1 — roteiro de testes antes do lançamento
+# HYGE v9.2 — roteiro de testes antes do lançamento
 
 O `npm test` cobre o que dá para conferir fora do Roblox (build, gravação
-segura, loader, troca de perfil, lógica do servidor, contabilidade de
-conexões). Este roteiro é o resto: o que só dá para ver **dentro do Roblox**.
+segura, loader, troca de perfil, lógica do servidor, ponte do cliente com o
+servidor, contabilidade de conexões). Este roteiro é o resto: o que só dá para
+ver **dentro do Roblox**. Instalação do servidor: [`SERVIDOR.md`](SERVIDOR.md).
 
 Marque cada linha só depois de ver o resultado com os próprios olhos. Se algo
 falhar, copie o relatório de **Configurações › Sistema › Diagnóstico ›
@@ -15,7 +16,7 @@ Antes de começar:
 
 ---
 
-## 1. Servidor (Etapa 5) — Roblox Studio, *Test › Clients and Servers*
+## 1. Servidor — Roblox Studio, *Test › Clients and Servers*
 
 **Preparação:** um lugar de teste seu, com `HYGE_AdminServer.server.lua` em
 ServerScriptService e `HYGE_AdminClient.client.lua` em
@@ -23,25 +24,32 @@ StarterPlayerScripts. Em `CONFIG.AdminIds` do servidor, coloque **só** o
 UserId que vai ser o Player1 (no Studio os jogadores de teste têm UserIds
 negativos: rode uma vez, veja no Output, `print(game.Players.Player1.UserId)`
 na barra de comandos do servidor, e coloque esse número). Inicie com
-**3 jogadores**. O painel roda no Player1 (cole o `main.lua` num LocalScript
-de teste ou use o executor do Studio).
+**3 jogadores**. O painel roda no Player1 (LocalScript `HYGE_Panel` em
+ServerStorage — item 16 —, um LocalScript de teste com o `main.lua` ou o
+executor do Studio).
 
 Para ver o registro: na barra de comandos do **servidor**,
-`for _, e in ipairs(shared.HYGE_AUDIT) do print(e.ok, e.name, e.action, e.reason) end`
+`for _, e in ipairs(shared.HYGE_AUDIT) do print(e.ok, e.name, e.action, e.reason, e.count) end`
 
 | # | Situação | Como fazer | Resultado esperado | ✓ |
 |---|---|---|---|---|
-| 1 | Admin autorizado | Player1: kick no Player3 pela aba Moderação | Player3 sai com o motivo filtrado; console do painel: `✓ Kick: Player3`; registro: `true Player1 kick` | [ ] |
+| 1 | Admin autorizado | Player1: kick no Player3 pela aba Moderação | Player3 sai com o motivo filtrado; console do painel: `pedido enviado` e depois `[SERVIDOR] ✓ Kick: Player3`; registro: `true Player1 kick` | [ ] |
 | 2 | Jogador comum | Player2, barra de comandos do **cliente** dele: `game.ReplicatedStorage.AdminKick:FireServer(<UserId do Player1>, "x")` | Nada acontece; Output do servidor: `RECUSADO Player2 ... não é admin`; registro: `false Player2 AdminKick não é admin` | [ ] |
 | 3 | Jogador comum em todos os remotes | Repita o 2 com `AdminAnnounce:FireServer("oi")`, `AdminFling`, `AdminScale:FireServer(id, "giant")` | Tudo recusado, ninguém é afetado, nenhum anúncio aparece | [ ] |
 | 4 | Alvo inexistente | Player1 (cliente): `game.ReplicatedStorage.AdminSit:FireServer(123)` | Console do painel: `jogador não está no servidor`; registro: `alvo inválido` | [ ] |
-| 5 | Argumento inválido | Player1: `AdminScale:FireServer(<id Player2>, "huge")` e `AdminFreeze:FireServer(<id Player2>, "sim")` | Recusados (`argumento inválido`); Player2 não muda | [ ] |
+| 5 | Argumento inválido | Player1: `AdminScale:FireServer(<id Player2>, "huge")`, `AdminFreeze:FireServer(<id Player2>, "sim")` e `AdminSit:FireServer(<id Player2>, "extra")` | Recusados (`argumento inválido` / `argumentos a mais`); Player2 não muda | [ ] |
 | 6 | Muitas requisições | Player1: anúncio duas vezes seguidas (menos de 5 s) | Só o primeiro aparece; painel: `espere ...s`; registro: `limite da ação` | [ ] |
 | 7 | Limite por ação | Logo depois do 6, Player1 faz Sit no Player2 | Funciona (o limite do anúncio não bloqueia outra ação) | [ ] |
 | 8 | Texto recusado pelo filtro | Player1: anúncio com uma palavra que o filtro do Roblox bloqueia inteira | **No Studio o filtro não filtra** (devolve o texto igual). Este item só vale num servidor publicado: a mensagem toda censurada **não** é enviada e o painel mostra `o filtro do Roblox bloqueou a mensagem` | [ ] |
 | 9 | Mensagem privada | Player1: mensagem para o Player2 | Só o Player2 vê `[PRIVADO de Player1]`; Player3 não vê nada | [ ] |
-| 10 | Admin protegido | Coloque o UserId do Player2 em `AdminIds`, reinicie; Player1 tenta kick no Player2 | Recusado: `Player2 também é admin` | [ ] |
-| 11 | Troll | Player1: Spin ON/OFF, Balloon ON (espere 20 s), Fling, Launch, Trip no Player3 | Cada um funciona; o balão desliga sozinho em 20 s e o painel avisa | [ ] |
+| 10 | Cargo protegido | Coloque o UserId do Player2 em `AdminIds` também, reinicie; Player1 tenta kick no Player2 | Recusado: `Player2 tem cargo igual ou maior` | [ ] |
+| 11 | Troll | Player1: Spin ON/OFF, Balloon ON (espere 20 s), Fling, Launch, Trip no Player3 | Cada um funciona; SPIN/BALLOON só mostram ON depois da confirmação; o balão desliga sozinho em 20 s e o botão volta a OFF | [ ] |
+| 12 | Moderador (v9.2) | Tire o Player2 de `AdminIds`, ponha em `ModIds`, reinicie; painel no Player2 | Início › Servidor: `seu cargo: moderador · 5/13`; Kick/Freeze/Bring/privado funcionam; Fling/Anúncio mostram **(sem permissão)** e, chamados pela barra do cliente, o servidor recusa (`sem permissão`) | [ ] |
+| 13 | Estado no painel (v9.2) | Player1: Início › Servidor | `HYGE 9.2 instalado · seu cargo: admin`; as 13 ações `[LIBERADA]`; cartões com **SERVIDOR** e **LOCAL** | [ ] |
+| 14 | Sem o servidor (v9.2) | Desabilite o `HYGE_AdminServer` e rode de novo | Botões de servidor mostram **(sem servidor)**; clicar explica onde instalar; Bring não move ninguém, Freeze não congela, Anúncio não aparece no seu chat; Teleportar até continua (local) | [ ] |
+| 15 | Limite geral (v9.2) | Player1 (cliente): `for i = 1, 40 do game.ReplicatedStorage.AdminSit:FireServer(<id Player2>) task.wait(0.3) end` | Os primeiros ~30 passam; depois, um aviso `muitos pedidos seguidos` e o resto recusado; 10 s parado volta | [ ] |
+| 16 | Painel entregue (v9.2) | LocalScript `HYGE_Panel` com o `main.lua` em ServerStorage; `AdminIds = { -1 }` | O Player1 recebe o painel (PlayerGui › HYGE_PanelHost); Player2 e Player3 **não** recebem; registro: `true Player1 panel` | [ ] |
+| 17 | Você mesmo (v9.2) | Player1 (cliente): `game.ReplicatedStorage.AdminKick:FireServer(<UserId do Player1>)` | Recusado: `não vale em você mesmo` | [ ] |
 
 ---
 

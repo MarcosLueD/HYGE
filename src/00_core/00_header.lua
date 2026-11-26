@@ -1,9 +1,24 @@
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v9.0
+    HYGE ADMIN PANEL v9.2
     Evolucao direta da v7.0 — nada foi reescrito do zero.
 
-    O que a v9.0 trouxe (a maior atualizacao ate agora):
+    O que a v9.2 trouxe (integracao com o servidor do SEU jogo):
+      * Acoes em outros jogadores sao PEDIDAS ao script de servidor (server/)
+        por RemoteEvents; o servidor confere cargo, permissao, alvo,
+        argumentos e limite, executa e responde (HYGE_Result)
+      * Cargos no servidor (moderador / admin / dono) e permissao por acao;
+        o painel pergunta o seu cargo (HYGE_Status) e mostra o que pode
+      * Cada cartao diz se e LOCAL ou SERVIDOR; sem servidor o botao explica
+        o motivo (sem servidor / nao e admin / sem permissao)
+      * Fim das simulacoes: Bring, Freeze e Anuncio nao "funcionam" mais so
+        na sua tela quando o servidor nao esta instalado
+      * Opcional: o servidor entrega o painel so para quem tem cargo
+
+    O que a v9.1 trouxe: testes automaticos, backup da config, loader com
+    SHA-256, perfis seguros, servidor auditado e diagnostico de conexoes.
+
+    O que a v9.0 trouxe:
       * Ajustes organizados: categorias + busca dentro de Configuracoes
       * Favoritos: estrela em qualquer funcao vira acao rapida da Home
       * Perfis: o painel inteiro salvo com um nome; um perfil por jogo

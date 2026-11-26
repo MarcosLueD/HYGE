@@ -99,21 +99,20 @@ do
     -- MOVIMENTAÇÃO
     ----------------------------------------------------------------------------
     local mov = CreateCard(tab, "MOVIMENTAÇÃO", 2)
+    SubLabel(mov, "TELEPORTAR ATÉ e SPECTATE são LOCAIS (o seu personagem e a sua câmera: "
+        .. "funcionam em qualquer jogo). Com o servidor HYGE, TELEPORTAR passa por ele. "
+        .. "TRAZER mexe no personagem de outra pessoa: só pelo SERVIDOR.", 0)
     local movGrid = Grid(mov, 3, 32)
+    movGrid.LayoutOrder = 1
 
     ActionBtn(movGrid, "TELEPORTAR ATÉ", "Success", nil, function()
         local p = RequireSelected()
         if p then Goto(p) end
     end)
 
-    ActionBtn(movGrid, "TRAZER (BRING)", "Warning", nil, function()
+    ActionBtn(movGrid, "TRAZER (BRING)", "Warning", "Pull", function()
         local p = RequireSelected()
-        if not p then return end
-        if not Remotes.Pull then
-            Log("Bring sem AdminPull: só a sua tela vai ver o alvo mudar de lugar "
-                .. "(o servidor não replica). Crie o Remote pra valer de verdade.", "warn")
-        end
-        Bring(p)
+        if p then Bring(p) end
     end)
 
     ActionBtn(movGrid, "SPECTATE", "Accent", nil, function()
@@ -126,9 +125,7 @@ do
     -- MODERAÇÃO (depende do servidor)
     ----------------------------------------------------------------------------
     local mod = CreateCard(tab, "MODERAÇÃO", 3)
-    SubLabel(mod, "Estas ações mudam o jogo pra todo mundo, então SÓ funcionam com "
-        .. "RemoteEvent + validação no servidor. Sem o Remote o botão fica "
-        .. "indisponível — o painel não finge que executou.", -1)
+    V8.SrvTag(mod, { "Kick", "Freeze" }, -1)
 
     local modGrid = Grid(mod, 3, 32)
 
@@ -151,39 +148,32 @@ do
     -- COMUNICAÇÃO
     ----------------------------------------------------------------------------
     local com = CreateCard(tab, "COMUNICAÇÃO", 4)
+    V8.SrvTag(com, { "Whisper", "Announce" }, 0)
 
     local wIn = CreateInput(com, "Mensagem privada para o selecionado...", 32)
     wIn.LayoutOrder = 1
     ActionBtn(com, "ENVIAR PRIVADO", "Accent", "Whisper", function()
         local p = RequireSelected()
         if not p then return end
-        if wIn.Text == "" then
+        if wIn.Text:match("^%s*$") then
             Toast("Escreva a mensagem primeiro", "warn", 1.6)
             return
         end
-        Remotes.Whisper:FireServer(p.UserId, wIn.Text)
-        Log("Você -> " .. p.Name .. ": " .. wIn.Text, "ok")
-        wIn.Text = ""
+        if V8.Srv.Whisper(p, wIn.Text) then wIn.Text = "" end
     end).LayoutOrder = 2
 
     Divider(com).LayoutOrder = 3
 
     local aIn = CreateInput(com, "Anúncio para o servidor...", 32)
     aIn.LayoutOrder = 4
-    local aBtn = ActionBtn(com, "ANUNCIAR", "Warning", nil, function()
-        if aIn.Text == "" then
+    local aBtn = ActionBtn(com, "ANUNCIAR", "Warning", "Announce", function()
+        if aIn.Text:match("^%s*$") then
             Toast("Escreva o anúncio primeiro", "warn", 1.6)
             return
         end
-        Announce(aIn.Text)
-        aIn.Text = ""
-    end, "Enviar este anúncio?")
+        if Announce(aIn.Text) then aIn.Text = "" end
+    end, "Enviar este anúncio? O servidor filtra o texto antes de mostrar para todos.")
     aBtn.LayoutOrder = 5
-
-    if not Remotes.Announce then
-        SubLabel(com, "Sem AdminAnnounce o anúncio aparece SÓ no seu chat (local). "
-            .. "Pra chegar em todo mundo precisa do Remote no servidor.", 6)
-    end
 
     -- v8.1: o card TROLL mudou para a seção própria (40_tabs/12_troll.lua)
 

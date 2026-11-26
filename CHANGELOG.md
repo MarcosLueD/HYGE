@@ -1,5 +1,75 @@
 # Changelog
 
+## v9.2
+
+Integração com o servidor do seu jogo: o painel continua no cliente, mas tudo
+o que mexe em outros jogadores é pedido ao servidor e executado lá, depois da
+validação. Guia de instalação novo: `docs/SERVIDOR.md`.
+
+### Servidor (`server/HYGE_AdminServer.server.lua`)
+- **Cargos**: moderador (1), admin (2), dono (3) — `ModIds` e `GroupModRank`
+  novos; `AdminIds`, `OwnerIsAdmin` e `GroupMinRank` continuam valendo.
+- **Permissão por ação** (`CONFIG.Permissions`, cargo mínimo; padrão:
+  moderação e privado para moderador, anúncio e troll para admin). Valor
+  inválido fica só para o dono e o Output avisa.
+- `ProtectAdmins` agora é por hierarquia: ninguém age sobre cargo igual ou
+  maior (o dono age sobre admins; antes ninguém agia sobre admin nenhum).
+- **`HYGE_Status`** (RemoteFunction): devolve versão, cargo e ações
+  liberadas. Quem não tem cargo recebe só a versão e o cargo 0.
+- **`HYGE_Result`** (RemoteEvent): resposta estruturada de cada pedido, só
+  para quem pediu (`action`, `ok`, `message`, `code`, `target`, `state`).
+  Substitui as confirmações pelo `AdminWhisper` com remetente "HYGE".
+- **Limite geral** por jogador (`CONFIG.RateLimit`, 30 pedidos em 10 s,
+  somando todos os Remotes); quem insiste continua bloqueado; staff recebe um
+  aviso só.
+- **Formato**: argumento a mais é recusado (`nil` no fim não conta).
+- **Alvo**: não vale em você mesmo (kick, bring, ir até); alvo sem personagem
+  é recusado com o motivo (antes o Fling sem personagem era registrado como
+  feito).
+- **Erro interno** não vai para o cliente (só "erro interno"); o detalhe fica
+  no Output do servidor e fora do registro.
+- **Registro**: a mesma recusa repetida com menos de 10 s de intervalo vira
+  uma entrada com contador (`count`, `last`) — um jogador martelando os
+  Remotes não apaga mais o histórico. Continua sem o texto de privados, sem o
+  motivo do kick e sem os argumentos recusados.
+- **Entrega do painel** (opcional): LocalScript `HYGE_Panel` em ServerStorage
+  é copiado só para quem tem cargo ≥ `PanelMinLevel` (vai para o registro).
+
+### Painel
+- **Ponte com o servidor** (`V8.Srv`, em `20_features/06_actions.lua`): acha
+  os Remotes (de novo, se o servidor criar depois), pergunta o cargo, explica
+  por que uma ação não pode ir e mostra a resposta real no console
+  (`[SERVIDOR] ✓ ...` / `✗ ...`). Pedido sem resposta em 6 s é avisado.
+- **LOCAL ou SERVIDOR** em cada cartão (Moderação, Troll, Chat); botões que
+  não podem ir mostram **(sem servidor)**, **(não é admin)** ou **(sem
+  permissão)** e se atualizam sozinhos.
+- **Fim das simulações**: sem servidor, Bring não move o alvo só na sua tela,
+  Freeze não mexe no personagem dele no seu cliente e o anúncio não aparece
+  "só no seu chat". Com servidor, o Freeze também não mexe mais localmente.
+- Spin e Balloon só mostram ON depois da confirmação (e voltam a OFF quando o
+  balão desliga sozinho).
+- "Teleportar até" passa pelo servidor quando ele está instalado e liberado
+  (senão continua local, só o seu personagem).
+- Mensagem privada num lugar só (Moderação, Chat e HUD do Spectate faziam
+  cada um o seu `FireServer`).
+- Bring não manda mais um argumento a mais (`"selected"`).
+- **Início › Servidor**: estado da integração, seu cargo, cada ação
+  (`[LIBERADA]` / `[SEM PERMISSÃO]` / `[NÃO É ADMIN]` / `[AUSENTE]`),
+  RECONFERIR, COPIAR MEU USERID, "O que funciona onde" e o passo a passo da
+  instalação. Comando `server check`. Sobre e Diagnóstico mostram o estado.
+- Servidor v9.1 continua funcionando (estado "sem o HYGE_Status": os pedidos
+  vão, sem resposta estruturada).
+
+### Testes
+- `tests/server.test.js`: cargos e permissão por ação, proteção por cargo,
+  `HYGE_Status`, alvo que saiu / sem personagem / você mesmo, argumento a
+  mais, limite geral, registro sem inundação e sem dados desnecessários, erro
+  interno que não vaza, resposta estruturada, entrega do painel.
+- `tests/bridge.test.js` (novo): o `06_actions.lua` de verdade com um cliente
+  imitado — sem servidor / sem cargo / sem permissão nada é enviado nem
+  simulado; formato dos pedidos; estado só com confirmação; servidor v9.1;
+  `HYGE_Status` estranho ou que trava; resposta depois do Unload ignorada.
+
 ## v9.1
 
 Versão de estabilidade: não perder configuração, não instalar build ruim,

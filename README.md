@@ -1,7 +1,9 @@
-# HYGE Admin Panel v9.1
+# HYGE Admin Panel v9.2
 
 Painel admin client-side para Roblox (executor ou LocalScript) + script de
-servidor opcional para as ações que afetam outros jogadores.
+servidor para o **seu** jogo: as ações que afetam outros jogadores são pedidas
+ao servidor por RemoteEvents, e ele confere cargo, permissão, alvo, argumentos
+e limite antes de executar. Instalação: [`docs/SERVIDOR.md`](docs/SERVIDOR.md).
 
 ## Rodar sempre a versão mais nova (loader)
 
@@ -34,13 +36,14 @@ arquivo que não bate é recusado e nada é trocado.
 HYGE/
 ├── loader.lua          ← cole ESTE no executor (baixa o main.lua mais novo)
 ├── main.lua            ← GERADO pelo build. É o arquivo que o loader baixa.
-├── manifest.json       ← GERADO junto (versão, build, tamanho, SHA-256) — v9.1
+├── manifest.json       ← GERADO junto (versão, build, tamanho, SHA-256)
 ├── src/                ← código-fonte, dividido por assunto (edite aqui)
 │   ├── 00_core/        config, temas, checagem de admin, estado, helpers
 │   ├── 10_ui/          janela, toasts, console, topbar/sidebar, fábrica de UI, toggles/keybinds
 │   ├── 20_features/    fly, noclip/god/invisível/paredes, ESP, chat spy/fullbright/anti-afk,
-│   │                   freecam, drone, ações de moderação/troll, spectate,
-│   │                   anti-fall/anti-gravidade, walk on walls, Ctrl + clique TP
+│   │                   freecam, drone, ações de moderação/troll + ponte com o servidor
+│   │                   (v9.2: V8.Srv), spectate, anti-fall/anti-gravidade, walk on walls,
+│   │                   Ctrl + clique TP
 │   ├── 30_kit/         widgets v7 (sliders, switches, confirmação), ícones, chips, HUD do drone,
 │   │                   rede/disco do executor (v9.1: gravação segura), tempo de jogo +
 │   │                   cosméticos (Playtime Shop), pacotes de animação; v9.1: SHA-256,
@@ -53,11 +56,12 @@ HYGE/
 │   │                   notificações, cor personalizada, macros, diagnóstico, novidades,
 │   │                   ajustes organizados (19_settings_nav: sempre o último)
 │   └── 90_runtime/     comandos, abrir/fechar/arrastar, teclas, scheduler, eventos, unload, boot
-├── server/             ← opcional
-│   ├── HYGE_AdminServer.server.lua   (no SEU jogo: ServerScriptService)
-│   ├── HYGE_AdminClient.client.lua   (no SEU jogo: StarterPlayer › StarterPlayerScripts)
+├── server/             ← no SEU jogo (para as ações em outros jogadores)
+│   ├── HYGE_AdminServer.server.lua   (ServerScriptService)
+│   ├── HYGE_AdminClient.client.lua   (StarterPlayer › StarterPlayerScripts)
 │   └── chat-relay/server.js          (relay do Chat HYGE: roda num servidor Node seu)
-├── tests/              ← npm test (v9.1) — veja "Testes"
+├── tests/              ← npm test — veja "Testes"
+├── docs/SERVIDOR.md    instalação e configuração do servidor (v9.2)
 ├── docs/TESTES.md      roteiro dos testes que só dá para fazer no Roblox
 ├── tools/check.js      validador estático (usado pelo build)
 ├── tools/leaks.js      procura conexões que o Unload não desconectaria (v9.1)
@@ -108,7 +112,7 @@ isolados. No fim do `main.lua` vai `V8.SrcMap`, que o log usa para trocar
 Se o `main.lua` for editado à mão, o build se recusa a sobrescrever (para não
 apagar sua mudança). Leve a mudança para `src/` ou use `node build.js --force`.
 
-## Testes (v9.1)
+## Testes
 
 ```
 npm test
@@ -126,44 +130,54 @@ Roda `tests/*.test.js` com o test runner do Node (sem dependência extra além d
 | `disk.test.js` | gravação segura: queda simulada em **cada** gravação nunca perde a config anterior |
 | `integrity.test.js` | SHA-256 em Lua = SHA-256 do Node; o loader recusa download cortado/adulterado/que não compila e abre a versão anterior |
 | `profiles.test.js` | perfil inválido não muda nada; erro no meio volta ao estado anterior; Freecam/Drone nunca ligam |
-| `server.test.js` | servidor com o Roblox imitado: a matriz admin / comum / alvo inexistente / argumento inválido / limite / filtro |
+| `server.test.js` | servidor com o Roblox imitado: cargos e permissão por ação (moderador / admin / dono, proteção de cargo), `HYGE_Status`, alvo inexistente / que saiu / sem personagem / você mesmo, argumento inválido ou a mais, limite por ação e geral, registro (sem inundação, sem dados desnecessários), erro interno que não vaza, filtro, entrega do painel |
+| `bridge.test.js` | o cliente (v9.2): sem servidor / sem cargo / sem permissão nada é enviado nem simulado e o motivo aparece; os pedidos saem no formato que o servidor aceita; liga/desliga só com a confirmação; servidor v9.1; `HYGE_Status` estranho ou que trava |
 | `diag.test.js` | contabilidade de conexões e tarefas; nenhuma conexão persistente fora do `Conn` (`tools/leaks.js`) |
 
 O que só dá para conferir dentro do Roblox está em [`docs/TESTES.md`](docs/TESTES.md).
 
-## Servidor (opcional, só em jogo seu)
+## Servidor (no seu jogo)
 
-Sem os RemoteEvents, kick/bring/freeze/anúncio/mensagem/troll ficam
-indisponíveis no painel (com aviso — nada é simulado). Para ativar:
+O painel é a interface; quem decide o que vale para os outros jogadores é o
+script de servidor. **Passo a passo completo: [`docs/SERVIDOR.md`](docs/SERVIDOR.md).**
+Em resumo, no Roblox Studio:
 
-1. No Roblox Studio, crie um **Script** em `ServerScriptService` e cole
-   `server/HYGE_AdminServer.server.lua`.
-2. Crie um **LocalScript** em `StarterPlayer › StarterPlayerScripts` e cole
+1. **ServerScriptService** › Script: cole `server/HYGE_AdminServer.server.lua`.
+2. **StarterPlayer › StarterPlayerScripts** › LocalScript: cole
    `server/HYGE_AdminClient.client.lua` (mostra anúncios e mensagens privadas
-   no chat de todos os jogadores).
-3. No topo do script de servidor, coloque os UserIds dos admins em
-   `CONFIG.AdminIds` (os mesmos do `CONFIG.AdminIds` do painel). O dono do
-   jogo já é admin por padrão; também dá para liberar um rank de grupo.
+   no chat de todos — não dá poder a ninguém).
+3. No topo do script de servidor: `CONFIG.AdminIds` (admins), `CONFIG.ModIds`
+   (moderadores) e, se quiser, `CONFIG.Permissions` (cargo mínimo de cada
+   ação). O dono do jogo já é cargo "dono"; dá para usar ranks de grupo.
+4. Opcional: o painel dentro do jogo — LocalScript `HYGE_Panel` em
+   **ServerStorage** com o `main.lua`; o servidor entrega só para quem tem
+   cargo. **Nunca** ponha o `main.lua` em StarterPlayerScripts (todo jogador
+   receberia o painel).
 
-O servidor valida tudo (admin, alvo, cooldown, tamanho do texto), passa
-anúncios e mensagens pelo filtro de texto do Roblox (se o filtro falhar, nada
-é enviado) e devolve a confirmação real para o console do painel
-(`[ADMIN HYGE] ✓ Kick: Fulano`). A aba **Server** mostra quantos dos 13
-Remotes foram encontrados.
+| Roda onde | Funções |
+|---|---|
+| **LOCAL** (qualquer jogo, sem instalar nada) | Fly, Noclip, God, Invisível, velocidades, Anti-Fall, Anti-Gravidade, Walk on Walls, Ctrl+clique TP, waypoints, ESP, Freecam, Drone, Spectate, Fullbright, Chat Spy, emotes, pacotes de animação, falar no chat, Teleportar até (sem o servidor), Fake Kick/Ban (só na sua tela), Configurações |
+| **SERVIDOR** (exige os scripts acima) | Kick, Bring, Freeze/Unfreeze, Ir até (pelo servidor), Anúncio, Mensagem privada, Fling, Spin, Trip, Launch, Force Sit, Scale, Balloon |
 
-**v9.1 (auditoria):** cada RemoteEvent tem os argumentos validados (tipo, faixa,
-valores aceitos — o resto é recusado); o UserId do alvo precisa ser um inteiro
-de alguém no servidor; cada ação tem o seu limite
-(`CONFIG.Cooldowns`: kick 1 s, anúncio 5 s, ...); mensagem que o filtro
-censurou inteira (`#####`) não é enviada; e **tudo vai para o registro** —
-ações aceitas e recusas (quem, o quê, por quê) no Output do servidor e em
-`shared.HYGE_AUDIT` (últimas 200; no Studio: `print(#shared.HYGE_AUDIT)` na
-barra de comandos do servidor).
+Cada pedido é conferido no servidor, do zero: limite geral por jogador →
+tem cargo → o cargo permite a ação → limite da ação → formato (argumento a
+mais é recusado) → alvo (inteiro, no servidor, não você mesmo, cargo menor
+que o seu) → argumentos → ação (texto pelo filtro do Roblox). A resposta
+volta só para quem pediu (`HYGE_Result`) e o console do painel mostra o
+resultado real (`[SERVIDOR] ✓ Kick: Fulano` ou o motivo da recusa). Tudo vai
+para o registro (`shared.HYGE_AUDIT` + Output do servidor), sem o texto de
+mensagens privadas, sem o motivo do kick e sem os argumentos recusados.
 
-> A lógica do servidor tem testes automáticos (`tests/server.test.js`, com o
-> Roblox imitado), mas ele **ainda não foi testado dentro de um jogo**. Antes
-> de publicar, siga o roteiro de [`docs/TESTES.md`](docs/TESTES.md) no Studio
-> (*Test › Clients and Servers*, 2+ jogadores).
+No painel, cada cartão diz se é **LOCAL** ou **SERVIDOR**, e os botões que
+não podem ir dizem o porquê: **(sem servidor)**, **(não é admin)** ou **(sem
+permissão)** — nada é simulado. **Início › Servidor** mostra o estado, o seu
+cargo e o que está liberado (comando `server`; `server check` reconfere).
+
+> A lógica do servidor e da ponte do cliente tem testes automáticos
+> (`tests/server.test.js` e `tests/bridge.test.js`, com o Roblox imitado), mas
+> **ainda não foi testada dentro de um jogo**. Antes de publicar, siga o
+> roteiro de [`docs/TESTES.md`](docs/TESTES.md) no Studio (*Test › Clients and
+> Servers*, 2+ jogadores).
 
 ## Navegação (dock)
 
@@ -188,6 +202,29 @@ No alto da tela fica a **ilha** (hora, FPS e ping; clique abre/fecha o painel)
 
 Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
 desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
+
+### O que a v9.2 trouxe (integração com o servidor do seu jogo)
+
+- **O servidor decide**: as 13 ações em outros jogadores são pedidas por
+  RemoteEvent e executadas só depois da validação; a resposta real volta pelo
+  `HYGE_Result`.
+- **Cargos e permissões**: moderador, admin e dono, com o cargo mínimo de cada
+  ação em `CONFIG.Permissions`; ninguém age sobre cargo igual ou maior. O
+  painel pergunta o seu cargo (`HYGE_Status`) só para mostrar — cada pedido
+  é conferido de novo.
+- **Limite geral** por jogador (além do limite por ação), **argumento a mais
+  recusado**, alvo que saiu / sem personagem / você mesmo recusado com o
+  motivo.
+- **Registro** sem inundação (recusa repetida vira uma entrada com contador)
+  e sem dados desnecessários; erro inesperado não vaza para o cliente.
+- **LOCAL ou SERVIDOR** em cada cartão; botões dizem por que não podem ir.
+- **Fim das simulações**: sem servidor, Bring não move mais o alvo só na sua
+  tela, Freeze não mexe mais no personagem dele no seu cliente e o anúncio
+  não aparece mais "só no seu chat". Spin/Balloon só mostram ON confirmados.
+- Mensagem privada num lugar só (Moderação, Chat e HUD do Spectate);
+  "Teleportar até" passa pelo servidor quando ele está instalado.
+- Opcional: o servidor entrega o painel (ServerStorage) só para quem tem cargo.
+- Guia de instalação: [`docs/SERVIDOR.md`](docs/SERVIDOR.md).
 
 ### O que a v9.1 trouxe (estabilidade)
 

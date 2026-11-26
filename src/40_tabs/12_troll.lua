@@ -17,6 +17,8 @@ do
         -- MOVIMENTO
         ----------------------------------------------------------------------------
         local mov = CreateCard(tab, "MOVIMENTO", 1)
+        V8.SrvTag(mov, nil, 0, "roda no SEU personagem: funciona em qualquer jogo, sem servidor "
+            .. "(os outros veem você na parede).")
         SwitchRow(mov, "wallwalk", "Walk on Walls", Toggles.wallwalk.desc)
         SubLabel(mov, "Ande contra uma parede para subir nela; continue para chegar ao "
             .. "teto. WASD segue a câmera, Space pula para fora da superfície e, sem "
@@ -91,11 +93,16 @@ do
         -- AÇÕES NO ALVO (servidor)
         ----------------------------------------------------------------------------
         local troll = CreateCard(tab, "AÇÕES NO ALVO", 3)
-        SubLabel(troll, "Mexer no personagem de outra pessoa é coisa do servidor: estes "
-            .. "botões só funcionam com o RemoteEvent + validação (script pronto em "
-            .. "server/). Sem o Remote o botão fica indisponível — nada aqui é fingido.", -1)
+        V8.SrvTag(troll, { "Fling", "Spin", "Trip", "Launch", "Sit", "Balloon", "Scale" }, -1)
+        SubLabel(troll, "Mexer no personagem de outra pessoa é coisa do servidor: o painel só "
+            .. "pede, e o servidor confere o seu cargo, o alvo e o limite antes de fazer. "
+            .. "SPIN e BALLOON mostram ON só depois que o servidor confirma.", 0)
 
         local grid = Grid(troll, 3, 32)
+        grid.LayoutOrder = 1
+
+        -- declarado antes: os botões chamam depois de enviar
+        local Sync
 
         ActionBtn(grid, "FLING", "Danger", "Fling", function()
             local p = RequireSelected()
@@ -106,9 +113,8 @@ do
         spinBtn = ActionBtn(grid, "SPIN: OFF", "Warning", "Spin", function()
             local p = RequireSelected()
             if not p then return end
-            local on = not TrollState.Spin[p.UserId]
-            SpinPlayer(p, on)
-            spinBtn.Text = on and "SPIN: ON" or "SPIN: OFF"
+            SpinPlayer(p, not TrollState.Spin[p.UserId])
+            Sync()
         end)
 
         ActionBtn(grid, "TRIP", "Warning", "Trip", function()
@@ -130,9 +136,8 @@ do
         balloonBtn = ActionBtn(grid, "BALLOON: OFF", "Accent", "Balloon", function()
             local p = RequireSelected()
             if not p then return end
-            local on = not TrollState.Balloon[p.UserId]
-            BalloonPlayer(p, on)
-            balloonBtn.Text = on and "BALLOON: ON" or "BALLOON: OFF"
+            BalloonPlayer(p, not TrollState.Balloon[p.UserId])
+            Sync()
         end)
 
         ActionBtn(grid, "TINY", "Accent", "Scale", function()
@@ -165,21 +170,23 @@ do
             if p then FakeMessage(p, "ban") end
         end)
 
-        SubLabel(troll, "Fake Message só aparece na SUA tela — não afeta o alvo nem o "
-            .. "servidor.", 12)
+        V8.SrvTag(troll, nil, 12, "FAKE KICK/BAN MSG aparece só na SUA tela — não afeta o alvo "
+            .. "nem o servidor.")
 
-        -- os botões de liga/desliga seguem o alvo atual
-        local function Sync()
+        -- os botões de liga/desliga seguem o alvo atual e o que o SERVIDOR
+        -- confirmou (TrollState muda no HYGE_Result)
+        Sync = function()
             local p = State.SelectedPlayer
             local id = p and p.UserId
-            -- sem o Remote o botão mostra "(servidor)": não mexe no texto
-            if Remotes.Spin then
+            -- indisponível o botão mostra o motivo: não mexe no texto
+            if not V8.Srv.Short("Spin") then
                 spinBtn.Text = (id and TrollState.Spin[id]) and "SPIN: ON" or "SPIN: OFF"
             end
-            if Remotes.Balloon then
+            if not V8.Srv.Short("Balloon") then
                 balloonBtn.Text = (id and TrollState.Balloon[id]) and "BALLOON: ON" or "BALLOON: OFF"
             end
         end
+        table.insert(V8.Srv.Hooks, function() pcall(Sync) end)
 
         V8.TabTick.Troll = function() Target() Sync() end
         OnTabOpen("Troll", function() pcall(Target) pcall(Sync) end)
