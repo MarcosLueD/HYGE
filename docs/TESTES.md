@@ -1,4 +1,4 @@
-# HYGE v9.2 — roteiro de testes antes do lançamento
+# HYGE v9.3 — roteiro de testes antes do lançamento
 
 O `npm test` cobre o que dá para conferir fora do Roblox (build, gravação
 segura, loader, troca de perfil, lógica do servidor, ponte do cliente com o
@@ -77,6 +77,29 @@ Para ver o registro: na barra de comandos do **servidor**,
 
 ---
 
+## 3. Barras do HUD (v9.3)
+
+O `npm test` confere as regras (conexão, geometria do dock recolhido); o
+visual só dá para ver no jogo. Teste no PC **e** no celular (ou com a janela
+do Roblox bem estreita).
+
+| # | Teste | Como fazer | O que verificar | ✓ |
+|---|---|---|---|---|
+| 1 | Ilha | Abra qualquer jogo | H, hora, FPS, barrinhas + ping e o sino, nessa ordem, com separadores; vidro escuro azulado com borda azul discreta; clicar abre/fecha o painel; o sino abre as notificações e o contador aparece | [ ] |
+| 2 | Conexão | Observe a ilha com ping normal; depois simule lag (no Studio: *File › Studio Settings › Network › Incoming Replication Lag*) ou use uma conexão ruim | Até 150 ms: barrinhas azuis e ping discreto; acima de 150 ms: menos barrinhas e ping amarelo; acima de 280 ms: 1 barrinha vermelha | [ ] |
+| 3 | Dock | Abra cada seção pelo dock | Mesmos 8 ícones na mesma ordem, centralizado; a seção aberta ganha fundo azul translúcido com borda e o nome entra com fade; clicar de novo fecha o painel | [ ] |
+| 4 | Hover | Passe o mouse pelos ícones sem clicar | O nome aparece **acima** do ícone; os ícones **não** se mexem | [ ] |
+| 5 | Recolher | Clique na alça de três traços acima do dock | O dock desce suave e some por inteiro (nada fica aparecendo no rodapé); a alça desce e continua visível; passar o mouse acende os traços; clicar encolhe a alça um instante | [ ] |
+| 6 | Trazer de volta | Clique na alça de novo; depois clique duas vezes bem rápido | O dock sobe para o lugar de sempre; com dois cliques rápidos ele termina **ou** aberto **ou** fechado, nunca parado no meio | [ ] |
+| 7 | Estado salvo | Recolha o dock, rode o script de novo | Abre com o dock recolhido (a alça no rodapé) | [ ] |
+| 8 | Não interfere | Com o dock recolhido: abra o painel pela ilha ou pela tecla, use o chat e os botões do jogo | A janela fica onde estava; nada do jogo é coberto; o HUD do spectate fica logo acima da alça | [ ] |
+| 9 | Janela x alça | Painel aberto na posição de casa | A janela fica acima da alça (a alça não fica escondida atrás dela) | [ ] |
+| 10 | Barra do Roblox | Canto superior esquerdo | Moldura de vidro atrás do botão do Roblox, menu, chat e microfone, sem cobrir nenhum deles; abrir o menu do Roblox (ele cresce) e a moldura acompanha; desligar em Configurações › Ilha no topo esconde a moldura | [ ] |
+| 11 | Animações desligadas | Configurações › Aparência › Animações desligado | Tudo troca na hora (sem tween), inclusive recolher o dock | [ ] |
+| 12 | Sidebar | Configurações › Navegação › dock desligado | Dock e alça somem; a sidebar volta; religando, o dock volta como estava (recolhido ou não) | [ ] |
+
+---
+
 ## Limites conhecidos
 
 - O lint de vazamento (`tools/leaks.js`) olha conexões em serviços,
@@ -88,3 +111,7 @@ Para ver o registro: na barra de comandos do **servidor**,
   `rodando` = 0 e nenhum aviso `tarefa rodou depois do unload`.
 - No Studio o filtro de texto não filtra; o item 8 do servidor só vale num
   servidor publicado.
+- A moldura da barra do Roblox depende do `GuiService.TopbarInset` (onde os
+  botões do Roblox terminam). As folgas foram calculadas, não medidas na
+  tela: se ficar torta, ajuste `V8.Island.TB_MARGIN` (padrão 4 px) ou desligue
+  a moldura. Os botões do Roblox em si não são alterados.

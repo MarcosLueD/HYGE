@@ -20,17 +20,21 @@ do
         -- sino na ilha (se a ilha existir)
         ----------------------------------------------------------------------------
         local bell, bellIco, badge
+        -- v9.3: cores do HUD (V8.Hud) quando o módulo de estilo existe
+        local HC = V8.Hud and V8.Hud.C
         if V8.Island and V8.Island.Pill then
+            -- v9.3: sempre o último da ilha, depois de um separador
+            if V8.Island.Sep then V8.Island.Sep(19) end
             bell = Instance.new("TextButton")
             bell.Name = "Bell"
             bell.Size = UDim2.new(0, 24, 0, 24)
             bell.BackgroundTransparency = 1
             bell.Text = ""
             bell.AutoButtonColor = false
-            bell.LayoutOrder = 9
+            bell.LayoutOrder = 20
             bell.ZIndex = 21
             bell.Parent = V8.Island.Pill
-            bellIco = Icon(bell, "bell", THEME.Dim, 16)
+            bellIco = Icon(bell, "bell", HC and HC.IconDim or THEME.Dim, 16)
             bellIco.AnchorPoint = Vector2.new(0.5, 0.5)
             bellIco.Position = UDim2.new(0.5, 0, 0.5, 0)
 
@@ -56,7 +60,11 @@ do
             badge.Visible = N.Unread > 0
             badge.Text = (N.Unread > 9) and "9+" or tostring(N.Unread)
             badge.Size = UDim2.new(0, (N.Unread > 9) and 20 or 15, 0, 14)
-            IconTint(bellIco, SET.Dnd and THEME.Warning or (N.Unread > 0 and THEME.Text or THEME.Dim))
+            if HC then
+                IconTint(bellIco, SET.Dnd and HC.Warn or (N.Unread > 0 and HC.Icon or HC.IconDim))
+            else
+                IconTint(bellIco, SET.Dnd and THEME.Warning or (N.Unread > 0 and THEME.Text or THEME.Dim))
+            end
         end
 
         ----------------------------------------------------------------------------

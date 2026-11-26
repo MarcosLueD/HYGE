@@ -186,7 +186,9 @@ do
             local H = V8.Shell
             if not H then return end
             local sc = CONFIG.UiScale or 1
-            local room = vp.Y - 82 - 12   -- dock + respiro (igual ao HomePos) + margem
+            -- dock + alça + respiro (o mesmo do HomePos) + margem
+            local reserve = (V8.Dock and V8.Dock.Reserve) and V8.Dock.Reserve() or 82
+            local room = vp.Y - reserve - 12
             local newH = math.clamp(math.floor(room / sc), 300, 520)
             if newH ~= H.DockH then
                 H.DockH = newH

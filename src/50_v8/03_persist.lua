@@ -75,7 +75,9 @@ do
                        "Favs", "Dnd", "ToastDur", "CustomHue", "CustomSat",
                        "Macros", "SeenVersion",
                        -- v9.0.1: bloqueio do Shift Lock do Roblox
-                       "NoShiftLock" }
+                       "NoShiftLock",
+                       -- v9.3: dock recolhido pela alça, moldura da barra do Roblox
+                       "DockHidden", "TopbarFrame" }
     C.SetKeys = SET_KEYS   -- v9.0: os perfis usam a mesma lista
 
     -- v8.2: waypoints POR JOGO. State.Waypoints é sempre a lista do jogo

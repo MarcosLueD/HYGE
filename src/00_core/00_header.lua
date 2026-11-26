@@ -1,7 +1,14 @@
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v9.2
+    HYGE ADMIN PANEL v9.3
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v9.3 trouxe (barras do HUD modernizadas, mesma estrutura):
+      * Ilha do topo e dock em vidro escuro azulado com borda neon discreta
+        (V8.Hud); separadores na ilha e indicador de qualidade da conexao
+      * Dock: destaque animado na secao aberta; o nome no hover nao empurra
+        mais os icones; alca de tres tracos para recolher e trazer de volta
+      * Moldura atras da barra do Roblox (os botoes do Roblox nao mudam)
 
     O que a v9.2 trouxe (integracao com o servidor do SEU jogo):
       * Acoes em outros jogadores sao PEDIDAS ao script de servidor (server/)

@@ -1,5 +1,54 @@
 # Changelog
 
+## v9.3
+
+Barras do HUD modernizadas, sem refazer a interface: mesma estrutura, mesmos
+botões, mesmas posições e a mesma navegação.
+
+### Estilo (`src/30_kit/09_hud.lua`, `V8.Hud`)
+- Vidro escuro azulado (transparência + degradê) com borda azul neon que se
+  apaga para baixo, igual em todas as barras. Cores fixas: não seguem o tema
+  do painel. Sem o módulo de estilo, as barras voltam ao visual da v9.2.
+- Tweens curtos que respeitam "Animações" (Configurações › Aparência).
+
+### Ilha do topo (status)
+- H, hora, FPS, ping e o sino com o contador continuam, na mesma ordem; o
+  sino passou a ser sempre o último.
+- Separadores finos entre os blocos.
+- Indicador de qualidade da conexão: 4 barrinhas pelo ping (≤ 80 ms
+  excelente, ≤ 150 boa, ≤ 280 instável, acima disso ruim). O ping só ganha
+  cor (amarelo/vermelho) quando a conexão pede atenção; o FPS, quando cai
+  abaixo de 50/30.
+- A borda acende de leve no hover (a ilha abre/fecha o painel).
+
+### Dock (navegação)
+- Mesmos 8 ícones, mesma ordem, centralizado; espaçamento e alinhamento
+  revistos.
+- Destaque da seção aberta: fundo neon translúcido + borda, com fade; o nome
+  entra com fade.
+- O nome no hover fica acima do ícone. Antes ele era filho da barra (que tem
+  `UIListLayout`), entrava na fila e empurrava os ícones para o lado.
+- **Alça de recolher** (três traços, centralizada acima do dock): o dock
+  desliza para baixo até sair inteiro da tela e só então some; a alça desce
+  para o rodapé e traz o dock de volta. Hover acende os traços; clicar
+  encolhe a alça um instante. Dois cliques rápidos não deixam o dock no meio
+  do caminho. Estado salvo (`SET.DockHidden`, também nos perfis).
+- O espaço reservado para o dock no rodapé virou `V8.Dock.Reserve()` (dock +
+  alça), usado pela janela "em casa", pelo modo celular e pelo HUD do
+  spectate (antes era o número 82 repetido). A janela nasce 13 px mais alta;
+  recolher o dock não a move.
+
+### Barra do Roblox (canto superior esquerdo)
+- Os botões (Roblox, menu, chat, microfone) são da interface do Roblox e não
+  foram tocados. Uma moldura no mesmo vidro fica atrás deles, numa ScreenGui
+  própria no PlayerGui (sempre abaixo da interface do Roblox e da do jogo),
+  medida pelo `GuiService.TopbarInset`. Configurações › Ilha no topo ›
+  Moldura na barra do Roblox (`SET.TopbarFrame`).
+
+### Testes
+- `tests/hud.test.js` (novo): qualidade da conexão, cor do FPS, geometria do
+  dock recolhível e as chaves novas na config.
+
 ## v9.2
 
 Integração com o servidor do seu jogo: o painel continua no cliente, mas tudo

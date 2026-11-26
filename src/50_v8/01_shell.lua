@@ -265,7 +265,8 @@ do
         if H.IsDock() then
             local vh = Gui.AbsoluteSize.Y
             if vh < 100 then vh = Camera.ViewportSize.Y end
-            local gap = 82                                  -- dock + respiro
+            -- dock + alça de recolher + respiro (v9.3: era 82 fixo, sem a alça)
+            local gap = (V8.Dock and V8.Dock.Reserve) and V8.Dock.Reserve() or 82
             if V8.Dock and V8.Dock.SubWasOn then gap = gap + 60 end
             return UDim2.new(0.5, -H.W * sc * 0.5, 0,
                 math.max(8, math.floor(vh - H.Hgt * sc - gap)))

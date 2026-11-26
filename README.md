@@ -1,4 +1,4 @@
-# HYGE Admin Panel v9.2
+# HYGE Admin Panel v9.3
 
 Painel admin client-side para Roblox (executor ou LocalScript) + script de
 servidor para o **seu** jogo: as ações que afetam outros jogadores são pedidas
@@ -47,7 +47,7 @@ HYGE/
 │   ├── 30_kit/         widgets v7 (sliders, switches, confirmação), ícones, chips, HUD do drone,
 │   │                   rede/disco do executor (v9.1: gravação segura), tempo de jogo +
 │   │                   cosméticos (Playtime Shop), pacotes de animação; v9.1: SHA-256,
-│   │                   troca segura de perfil
+│   │                   troca segura de perfil; v9.3: estilo das barras do HUD (V8.Hud)
 │   ├── 40_tabs/        uma aba por arquivo: home (+ mapa/perfil), dashboard, movement, visuals,
 │   │                   players, moderation, server, emotes, settings, shop, scripts, chat,
 │   │                   troll, chat HYGE
@@ -131,6 +131,7 @@ Roda `tests/*.test.js` com o test runner do Node (sem dependência extra além d
 | `integrity.test.js` | SHA-256 em Lua = SHA-256 do Node; o loader recusa download cortado/adulterado/que não compila e abre a versão anterior |
 | `profiles.test.js` | perfil inválido não muda nada; erro no meio volta ao estado anterior; Freecam/Drone nunca ligam |
 | `server.test.js` | servidor com o Roblox imitado: cargos e permissão por ação (moderador / admin / dono, proteção de cargo), `HYGE_Status`, alvo inexistente / que saiu / sem personagem / você mesmo, argumento inválido ou a mais, limite por ação e geral, registro (sem inundação, sem dados desnecessários), erro interno que não vaza, filtro, entrega do painel |
+| `hud.test.js` | barras do HUD (v9.3): qualidade da conexão pelo ping, cor do FPS, dock recolhido sempre inteiro fora da tela, alça à vista e fora do alcance da janela, estado salvo na config |
 | `bridge.test.js` | o cliente (v9.2): sem servidor / sem cargo / sem permissão nada é enviado nem simulado e o motivo aparece; os pedidos saem no formato que o servidor aceita; liga/desliga só com a confirmação; servidor v9.1; `HYGE_Status` estranho ou que trava |
 | `diag.test.js` | contabilidade de conexões e tarefas; nenhuma conexão persistente fora do `Conn` (`tools/leaks.js`) |
 
@@ -197,11 +198,37 @@ HYGE no topo.
 | engrenagem | Configurações | Ajustes (tamanho da GUI, automático, keybinds, temas...) · Console |
 | balão | Chat | HYGE (entre usuários do painel, via relay) · Jogo (chat do servidor) |
 
-No alto da tela fica a **ilha** (hora, FPS e ping; clique abre/fecha o painel)
-— desliga em Configurações › Ilha no topo.
+No alto da tela fica a **ilha** (H, hora, FPS, conexão e ping, sino das
+notificações; clique abre/fecha o painel) — desliga em Configurações › Ilha no
+topo. As barrinhas mostram a qualidade da conexão pelo ping (até 80 ms
+excelente, até 150 boa, até 280 instável, acima disso ruim).
+
+A **alça de três traços** logo acima do dock recolhe o dock (ele desliza para
+fora da tela) e o traz de volta; o estado fica salvo. Recolher não fecha o
+painel nem mexe na janela.
+
+No canto superior esquerdo, o botão do Roblox, o menu, o chat e o microfone
+são da **interface do próprio Roblox**: o painel não mexe neles. A v9.3 põe
+uma moldura no mesmo vidro **atrás** deles (Configurações › Ilha no topo ›
+Moldura na barra do Roblox).
 
 Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
 desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
+
+### O que a v9.3 trouxe (barras do HUD)
+
+- **Vidro escuro azulado com borda neon discreta** na ilha do topo e no dock
+  (`src/30_kit/09_hud.lua`). As cores das barras são fixas (não seguem o tema
+  do painel); o "H" da ilha continua na cor do tema.
+- **Ilha**: separadores entre os blocos, indicador de qualidade da conexão e
+  cores só quando importa (FPS baixo, conexão instável/ruim).
+- **Dock**: mesmos ícones, mesma ordem, centralizado; a seção aberta ganha um
+  destaque (fundo neon translúcido + borda) com fade curto; o nome no hover
+  agora aparece acima do ícone (antes entrava na fila e empurrava os ícones).
+- **Alça de recolher** o dock, com hover/clique; o dock nunca fica meio
+  visível recolhido. A janela "em casa" nasce 13 px mais alta para a alça não
+  ficar embaixo dela.
+- **Moldura atrás da barra do Roblox** (os botões do Roblox não mudam).
 
 ### O que a v9.2 trouxe (integração com o servidor do seu jogo)
 

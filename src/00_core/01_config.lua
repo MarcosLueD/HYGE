@@ -16,7 +16,7 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v9.2",
+    Version   = "v9.3",
     -- quem ABRE o painel neste cliente. Quem pode agir nos outros jogadores é
     -- decidido só pelo servidor (CONFIG.AdminIds do server/HYGE_AdminServer)
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins

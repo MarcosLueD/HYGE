@@ -17,13 +17,13 @@ do
             if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
         end)
 
-        -- v9.2: integração com o servidor do seu jogo
+        -- v9.3: barras do HUD modernizadas
         W.Items = {
-            { "shield",   "Servidor decide", "Kick, Bring, Freeze, anúncio, privado e troll são pedidos ao script de servidor (server/), que confere cargo, alvo, argumentos e limite antes de fazer." },
-            { "layers",   "Cargos e permissões", "Moderador, admin e dono no servidor, cada ação com o seu cargo mínimo. O painel mostra o seu cargo e o que está liberado." },
-            { "check",    "Local ou servidor?", "Cada cartão diz onde roda. Sem servidor o botão mostra o motivo (sem servidor, não é admin, sem permissão)." },
-            { "power",    "Nada simulado", "Bring, Freeze e Anúncio não fingem mais que funcionaram na sua tela sem o servidor. Spin e Balloon só mostram ON depois da confirmação." },
-            { "signal",   "Instalação", "Início › Servidor mostra o estado, o passo a passo e o seu UserId para o CONFIG.AdminIds. Detalhes: docs/SERVIDOR.md." },
+            { "layers",   "Barras novas", "A ilha do topo e o dock ganharam vidro escuro azulado com borda neon discreta. Mesmos botões, mesmo lugar." },
+            { "signal",   "Qualidade da conexão", "Barrinhas na ilha mostram a conexão pelo ping. O ping só muda de cor quando a conexão fica instável ou ruim." },
+            { "check",    "Seção em destaque", "O dock destaca a seção aberta com uma animação curta, e o nome no hover não empurra mais os ícones." },
+            { "power",    "Recolher o dock", "Clique na alça de três traços acima do dock para escondê-lo; ela fica no rodapé para trazê-lo de volta. Fica salvo." },
+            { "shield",   "Barra do Roblox", "Uma moldura no mesmo vidro atrás do botão do Roblox, menu, chat e microfone. Os botões continuam os do Roblox (Ilha no topo desliga)." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou
         W.Tips = function()
@@ -166,7 +166,7 @@ do
                 for i, it in ipairs(W.Tips()) do Row(list, i, it) end
             else
                 titleLbl.Text = "Novidades da " .. CONFIG.Version
-                subLbl.Text = "Integração com o servidor do seu jogo:"
+                subLbl.Text = "Barras do HUD modernizadas:"
                 for i, it in ipairs(W.Items) do Row(list, i, it) end
             end
             -- tela baixa (celular deitado): o cartão encolhe e a lista rola
