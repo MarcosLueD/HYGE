@@ -2,11 +2,12 @@
 -- v9.3 — ESTILO DAS BARRAS DO HUD
 -- Um visual só para as barras que ficam por cima do jogo: a ilha do topo
 -- (status), o dock (navegação), a alça de recolher o dock e a moldura atrás
--- da barra do Roblox. Vidro escuro azulado + azul neon discreto.
+-- da barra do Roblox. Pílulas de vidro azul-marinho com borda azul neon e um
+-- brilho em volta.
 -- As cores são fixas (não seguem o tema do painel): as barras têm identidade
 -- própria por cima de qualquer jogo. O "H" da ilha continua com a cor do tema.
--- O Roblox não tem desfoque de UI: o "vidro" é transparência + degradê +
--- borda mais clara em cima.
+-- O Roblox não tem desfoque nem sombra de UI: o "vidro" é transparência +
+-- degradê, e o brilho são contornos neon bem transparentes (U.Halo).
 -- Tudo em V8.Hud: zero locais novos no chunk principal.
 --------------------------------------------------------------------------------
 -- [hud:begin] (tests/hud.test.js roda este bloco)
@@ -15,19 +16,20 @@ do
     local U = V8.Hud
 
     U.C = {
-        Glass    = Color3.fromRGB(11, 17, 32),     -- fundo escuro azulado
-        GlassT   = 0.24,                           -- transparência do fundo
-        Neon     = Color3.fromRGB(56, 182, 255),   -- destaque
-        Icon     = Color3.fromRGB(255, 255, 255),  -- ícone ativo / em foco
-        IconDim  = Color3.fromRGB(178, 192, 214),  -- ícone em repouso
-        Text     = Color3.fromRGB(240, 246, 255),
+        Glass    = Color3.fromRGB(8, 14, 36),      -- fundo azul-marinho
+        GlassT   = 0.12,                           -- transparência do fundo
+        Neon     = Color3.fromRGB(52, 156, 255),   -- borda, brilho e seção ativa
+        StrokeT  = 0.05,                           -- transparência da borda
+        Icon     = Color3.fromRGB(255, 255, 255),  -- ícone em foco
+        IconDim  = Color3.fromRGB(208, 218, 236),  -- ícone em repouso
+        Text     = Color3.fromRGB(244, 248, 255),
         Dim      = Color3.fromRGB(150, 168, 196),
-        Sep      = Color3.fromRGB(255, 255, 255),  -- separadores da ilha
-        SepT     = 0.85,
+        Sep      = Color3.fromRGB(255, 255, 255),  -- separadores (ilha e dock)
+        SepT     = 0.8,
+        Good     = Color3.fromRGB(92, 222, 104),   -- conexão boa: verde
         Warn     = Color3.fromRGB(255, 196, 92),
         Bad      = Color3.fromRGB(255, 98, 112),
     }
-    U.C.Good = U.C.Neon
 
     -- qualidade da conexão pelo ping (ms, ida e volta, o mesmo da ilha):
     -- devolve barras acesas (0-4), cor (chave em U.C) e o nome
@@ -55,35 +57,95 @@ do
     local U = V8.Hud
     local C = U.C
 
-    -- vidro: fundo + degradê (claro em cima) + borda neon que some para baixo.
-    -- Reaproveita UICorner/UIStroke que a barra já tiver. Devolve o UIStroke.
+    U.PILL = UDim.new(1, 0)   -- canto de pílula (as pontas são meio círculo)
+
+    -- vidro: fundo + degradê (um pouco mais claro em cima) + borda neon.
+    -- radius: pixels ou um UDim (U.PILL). Reaproveita UICorner/UIStroke que a
+    -- barra já tiver. Devolve o UIStroke.
     U.Glass = function(f, radius)
         f.BackgroundColor3 = C.Glass
         f.BackgroundTransparency = C.GlassT
         f.BorderSizePixel = 0
         local corner = f:FindFirstChildOfClass("UICorner") or Instance.new("UICorner", f)
-        corner.CornerRadius = UDim.new(0, radius or 14)
+        corner.CornerRadius = (typeof(radius) == "UDim") and radius or UDim.new(0, radius or 14)
 
         local g = f:FindFirstChild("HudGlass") or Instance.new("UIGradient")
         g.Name = "HudGlass"
         g.Rotation = 90
-        g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(196, 206, 226))
+        g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 210, 230))
         g.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.1) })
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.06) })
         g.Parent = f
 
         local st = f:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke", f)
         st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         st.Color = C.Neon
-        st.Thickness = 1
-        st.Transparency = 0.55
+        st.Thickness = 1.5
+        st.Transparency = C.StrokeT
         local sg = st:FindFirstChild("HudGlow") or Instance.new("UIGradient")
         sg.Name = "HudGlow"
         sg.Rotation = 90
         sg.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.65) })
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.2) })
         sg.Parent = st
         return st
+    end
+
+    -- brilho neon em volta de uma barra em pílula: dois contornos bem
+    -- transparentes (um largo, um estreito) numa moldura IRMÃ da barra, logo
+    -- atrás dela. Irmã e não filha: as barras têm UIListLayout, que poria a
+    -- moldura na fila dos ícones. Copia posição e âncora da barra e o tamanho
+    -- REAL dela (já com a escala do celular, que é aplicada a partir da
+    -- âncora); some junto com ela. Chamar com a barra já num Parent.
+    -- Devolve { frame, outer, inner } (os dois UIStroke, para o hover).
+    U.Halo = function(f)
+        if not f.Parent then return nil end
+        local h = Instance.new("Frame")
+        h.Name = f.Name .. "Halo"
+        h.BackgroundTransparency = 1
+        h.BorderSizePixel = 0
+        h.Active = false
+        h.ZIndex = math.max(1, f.ZIndex - 1)
+        local function Ring(obj, thick, tr)
+            Instance.new("UICorner", obj).CornerRadius = U.PILL
+            local st = Instance.new("UIStroke", obj)
+            st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            st.Color = C.Neon
+            st.Thickness = thick
+            st.Transparency = tr
+            return st
+        end
+        local inner = Instance.new("Frame")
+        inner.Name = "Inner"
+        inner.Size = UDim2.new(1, 0, 1, 0)
+        inner.BackgroundTransparency = 1
+        inner.BorderSizePixel = 0
+        inner.Active = false
+        inner.ZIndex = h.ZIndex
+        inner.Parent = h
+        local r = { frame = h, outer = Ring(h, 7, 0.9), inner = Ring(inner, 3.5, 0.76) }
+        local function Sync()
+            local s = f.AbsoluteSize
+            h.AnchorPoint = f.AnchorPoint
+            h.Position = f.Position
+            h.Size = UDim2.new(0, s.X, 0, s.Y)
+            h.Visible = f.Visible and s.X > 0 and s.Y > 0
+        end
+        for _, p in ipairs({ "AbsoluteSize", "Position", "AnchorPoint", "Visible" }) do
+            f:GetPropertyChangedSignal(p):Connect(Sync)
+        end
+        Sync()
+        h.Parent = f.Parent
+        return r
+    end
+
+    -- hover de uma barra com brilho: borda e brilho acendem um pouco
+    U.Lit = function(stroke, halo, on)
+        if stroke then U.Tween(stroke, 0.14, { Transparency = on and 0 or C.StrokeT }) end
+        if halo then
+            U.Tween(halo.inner, 0.14, { Transparency = on and 0.6 or 0.76 })
+            U.Tween(halo.outer, 0.14, { Transparency = on and 0.84 or 0.9 })
+        end
     end
 
     -- tween curto que respeita "Animações" (Configurações › Aparência)

@@ -85,11 +85,11 @@ do Roblox bem estreita).
 
 | # | Teste | Como fazer | O que verificar | ✓ |
 |---|---|---|---|---|
-| 1 | Ilha | Abra qualquer jogo | H, hora, FPS, barrinhas + ping e o sino, nessa ordem, com separadores; vidro escuro azulado com borda azul discreta; clicar abre/fecha o painel; o sino abre as notificações e o contador aparece | [ ] |
-| 2 | Conexão | Observe a ilha com ping normal; depois simule lag (no Studio: *File › Studio Settings › Network › Incoming Replication Lag*) ou use uma conexão ruim | Até 150 ms: barrinhas azuis e ping discreto; acima de 150 ms: menos barrinhas e ping amarelo; acima de 280 ms: 1 barrinha vermelha | [ ] |
-| 3 | Dock | Abra cada seção pelo dock | Mesmos 8 ícones na mesma ordem, centralizado; a seção aberta ganha fundo azul translúcido com borda e o nome entra com fade; clicar de novo fecha o painel | [ ] |
-| 4 | Hover | Passe o mouse pelos ícones sem clicar | O nome aparece **acima** do ícone; os ícones **não** se mexem | [ ] |
-| 5 | Recolher | Clique na alça de três traços acima do dock | O dock desce suave e some por inteiro (nada fica aparecendo no rodapé); a alça desce e continua visível; passar o mouse acende os traços; clicar encolhe a alça um instante | [ ] |
+| 1 | Ilha | Abra qualquer jogo | Pílula azul-marinho com borda neon e brilho em volta; H, hora, FPS, ping + barrinhas e o sino, nessa ordem, com separadores; clicar abre/fecha o painel; o sino abre as notificações e o contador é uma bolinha vermelha no canto do sino | [ ] |
+| 2 | Conexão | Observe a ilha com ping normal; depois simule lag (no Studio: *File › Studio Settings › Network › Incoming Replication Lag*) ou use uma conexão ruim | Até 150 ms: ping e barrinhas verdes; acima de 150 ms: menos barrinhas, em amarelo; acima de 280 ms: 1 barrinha, em vermelho | [ ] |
+| 3 | Dock | Abra cada seção pelo dock | Pílula com o mesmo brilho da ilha; mesmos 8 ícones na mesma ordem, só ícones, com traços finos entre eles; a seção aberta fica azul neon com um traço brilhante embaixo (entra com animação); clicar de novo fecha o painel | [ ] |
+| 4 | Hover | Passe o mouse pelos ícones sem clicar | O nome aparece **acima** do ícone (também no ativo); os ícones **não** se mexem | [ ] |
+| 5 | Recolher | Clique na alça de dois traços acima do dock | O dock desce suave e some por inteiro, brilho junto (nada fica aparecendo no rodapé); a alça desce e continua visível; passar o mouse acende os traços; clicar encolhe a alça um instante | [ ] |
 | 6 | Trazer de volta | Clique na alça de novo; depois clique duas vezes bem rápido | O dock sobe para o lugar de sempre; com dois cliques rápidos ele termina **ou** aberto **ou** fechado, nunca parado no meio | [ ] |
 | 7 | Estado salvo | Recolha o dock, rode o script de novo | Abre com o dock recolhido (a alça no rodapé) | [ ] |
 | 8 | Não interfere | Com o dock recolhido: abra o painel pela ilha ou pela tecla, use o chat e os botões do jogo | A janela fica onde estava; nada do jogo é coberto; o HUD do spectate fica logo acima da alça | [ ] |

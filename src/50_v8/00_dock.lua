@@ -4,7 +4,8 @@
 -- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
 --   Início · Personagem · Playtime Shop · Troll · Emotes · Jogadores ·
 --   Configurações · Chat
--- O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel.
+-- v9.3: só ícones, com separadores finos; o ativo fica azul neon com um traço
+-- que brilha embaixo; o nome aparece no hover. Clicar no ativo fecha o painel.
 -- Navegação dentro da seção (as duas posicionadas pelo V8.Shell):
 --   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores,
 --     Configurações › Ajustes · Console, Chat › HYGE · Jogo)
@@ -12,8 +13,9 @@
 --     acima do dock (nenhuma usa na v8.1; o mecanismo continua disponível)
 -- O título grande da janela (V8.Shell.SetTitle) acompanha a seção ativa.
 -- A sidebar continua existindo: SET.Dock escolhe dock OU sidebar (Ajustes).
--- v9.3: visual de vidro (V8.Hud, 30_kit/09_hud.lua), destaque animado na
--- seção ativa, balão do hover fora da fila de ícones e a alça de recolher.
+-- v9.3: pílula de vidro com brilho neon (V8.Hud, 30_kit/09_hud.lua), traço
+-- animado na seção ativa, balão do hover fora da fila de ícones e a alça de
+-- recolher.
 -- Tudo em V8.Dock: zero locais novos. Entra DEPOIS das abas (40_tabs) no build.
 --------------------------------------------------------------------------------
 do
@@ -75,7 +77,7 @@ do
     K.ById = {}        -- id -> seção
     K.TabSection = {}  -- aba interna -> seção
     K.LastTab = {}     -- id -> última sub-aba usada (volta nela ao reabrir)
-    K.Btns = {}        -- id -> { button, icon, label }
+    K.Btns = {}        -- id -> { button, icon, mark, glow, on }
     K.Current = nil    -- seção da aba ativa
     K.SubWasOn = false -- a barra de sub-ícones estava visível? (o shell usa)
     for _, s in ipairs(K.Sections) do
@@ -90,9 +92,10 @@ do
         return (C and C[hudKey]) or THEME[themeKey]
     end
 
-    -- moldura padrão das duas barras (dock e sub-ícones). v9.3: vidro escuro
-    -- azulado com borda neon (V8.Hud.Glass); fixo, não segue o tema
-    local function BarFrame(name, height, radius)
+    -- moldura padrão das duas barras (dock e sub-ícones). v9.3: vidro
+    -- azul-marinho com borda neon (V8.Hud.Glass); fixo, não segue o tema.
+    -- pill = pontas redondas + brilho em volta (o dock)
+    local function BarFrame(name, height, radius, pill)
         local f = Instance.new("Frame")
         f.Name = name
         f.AnchorPoint = Vector2.new(0.5, 1)
@@ -103,7 +106,8 @@ do
         f.ZIndex = 20
         f.Parent = Gui
         if U then
-            U.Glass(f, radius)
+            U.Glass(f, pill and U.PILL or radius)
+            if pill then U.Halo(f) end
         else
             f.BackgroundColor3 = THEME.Sidebar
             f.BackgroundTransparency = 0.02
@@ -121,7 +125,7 @@ do
         return f, l
     end
 
-    -- nome no hover (o ícone ativo do dock já mostra o nome ao lado).
+    -- nome no hover.
     -- v9.3: o balão mora na tela (Gui), não dentro da barra: a barra tem
     -- UIListLayout, que tratava o balão como mais um item da fila e empurrava
     -- os ícones para o lado no hover. Agora ele aparece acima do ícone.
@@ -138,7 +142,7 @@ do
         t.ZIndex = 40
         t.Parent = Gui
         if U then
-            U.Glass(t, 8)
+            U.Glass(t, U.PILL)
             t.TextColor3 = C.Text
         else
             t.BackgroundColor3 = THEME.Card
@@ -165,80 +169,86 @@ do
     ----------------------------------------------------------------------------
     -- o dock (filho da ScreenGui, não da janela)
     ----------------------------------------------------------------------------
-    local bar, barLayout = BarFrame("Dock", K.H, 20)
+    local bar, barLayout = BarFrame("Dock", K.H, 20, true)
     bar.Position = UDim2.new(0.5, 0, 1, -K.BOTTOM)
     barLayout.Padding = UDim.new(0, 4)
     do
         local pad = Instance.new("UIPadding", bar)
-        pad.PaddingLeft = UDim.new(0, 8)
-        pad.PaddingRight = UDim.new(0, 8)
+        pad.PaddingLeft = UDim.new(0, 12)
+        pad.PaddingRight = UDim.new(0, 12)
     end
     K.Bar = function() return bar end
     local tip = Tip()
 
-    -- os 8 botões: ícone sozinho; o ativo ganha o nome ao lado e um destaque
-    -- (fundo neon translúcido + borda) que entra/sai com um fade curto
+    -- traço fino entre dois ícones
+    local function DockSep(order)
+        local sp = Instance.new("Frame")
+        sp.Name = "Sep"
+        sp.Size = UDim2.new(0, 1, 0, 20)
+        sp.BackgroundColor3 = Col("Sep", "Line")
+        sp.BackgroundTransparency = C and C.SepT or 0.4
+        sp.BorderSizePixel = 0
+        sp.LayoutOrder = order
+        sp.ZIndex = 20
+        sp.Parent = bar
+        if not C then Paint(sp, "BackgroundColor3", "Line") end
+    end
+
+    -- os 8 botões: só o ícone, com um traço fino entre eles. O ativo fica azul
+    -- neon com um traço que brilha embaixo (entra/sai com uma animação curta);
+    -- o nome aparece no balão do hover
+    K.MARK_W = 30   -- largura do traço da seção ativa
     for i, s in ipairs(K.Sections) do
+        if i > 1 then DockSep(i * 2 - 1) end
         local b = Instance.new("TextButton")
         b.Name = s.id
         b.Size = UDim2.new(0, 44, 0, 44)
-        b.AutomaticSize = Enum.AutomaticSize.X
-        b.BackgroundColor3 = Col("Neon", "Accent")
+        b.BackgroundColor3 = Col("Icon", "Accent")   -- hover: círculo claro bem fraco
         b.BackgroundTransparency = 1
         b.Text = ""
         b.AutoButtonColor = false
-        b.LayoutOrder = i
+        b.LayoutOrder = i * 2
         b.ZIndex = 20
         b.Parent = bar
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 14)
-        local ring = Instance.new("UIStroke", b)
-        ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        ring.Color = Col("Neon", "Accent")
-        ring.Thickness = 1
-        ring.Transparency = 1
-        do
-            local p = Instance.new("UIPadding", b)
-            p.PaddingLeft = UDim.new(0, 12)
-            p.PaddingRight = UDim.new(0, 12)
-            local l = Instance.new("UIListLayout", b)
-            l.FillDirection = Enum.FillDirection.Horizontal
-            l.HorizontalAlignment = Enum.HorizontalAlignment.Center
-            l.VerticalAlignment = Enum.VerticalAlignment.Center
-            l.Padding = UDim.new(0, 8)
-            l.SortOrder = Enum.SortOrder.LayoutOrder
-        end
+        Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
 
-        local ico = Icon(b, s.icon, Col("IconDim", "Dim"), 20, 1)
+        local ico = Icon(b, s.icon, Col("IconDim", "Dim"), 22, 1)
+        ico.AnchorPoint = Vector2.new(0.5, 0.5)
+        ico.Position = UDim2.new(0.5, 0, 0.5, 0)
         ico.ZIndex = 20
 
-        local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(0, 0, 0, 20)
-        lbl.AutomaticSize = Enum.AutomaticSize.X
-        lbl.BackgroundTransparency = 1
-        lbl.Text = s.label
-        lbl.TextColor3 = Col("Text", "Text")
-        lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = 14
-        lbl.Visible = false
-        lbl.LayoutOrder = 2
-        lbl.ZIndex = 20
-        lbl.Parent = b
-        if not U then Paint(lbl, "TextColor3", "Text") end
+        -- traço da seção ativa: na base do dock, abaixo do ícone; o brilho é
+        -- um contorno neon transparente em volta dele
+        local mark = Instance.new("Frame")
+        mark.Name = "Active"
+        mark.AnchorPoint = Vector2.new(0.5, 1)
+        mark.Position = UDim2.new(0.5, 0, 1, 3)
+        mark.Size = UDim2.new(0, 0, 0, 3)
+        mark.BackgroundColor3 = Col("Neon", "Accent")
+        mark.BackgroundTransparency = 1
+        mark.BorderSizePixel = 0
+        mark.ZIndex = 21
+        mark.Parent = b
+        Instance.new("UICorner", mark).CornerRadius = UDim.new(1, 0)
+        if not U then Paint(mark, "BackgroundColor3", "Accent") end
+        local glow = Instance.new("UIStroke", mark)
+        glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        glow.Color = Col("Neon", "Accent")
+        glow.Thickness = 3
+        glow.Transparency = 1
 
-        local u = { button = b, icon = ico, label = lbl, ring = ring, on = false }
+        local u = { button = b, icon = ico, mark = mark, glow = glow, on = false }
         K.Btns[s.id] = u
 
         b.MouseEnter:Connect(function()
-            if u.on then return end          -- ativo: nome já está à vista
             ShowTip(tip, s.label, b, bar)
-            IconTint(ico, Col("Icon", "Text"))
-            if U then U.Tween(b, 0.12, { BackgroundTransparency = 0.93 }) end
+            if U then U.Tween(b, 0.12, { BackgroundTransparency = 0.92 }) end
+            if not u.on then IconTint(ico, Col("Icon", "Text")) end
         end)
         b.MouseLeave:Connect(function()
             tip.Visible = false
-            if u.on then return end
-            IconTint(ico, Col("IconDim", "Dim"))
             if U then U.Tween(b, 0.12, { BackgroundTransparency = 1 }) end
+            if not u.on then IconTint(ico, Col("IconDim", "Dim")) end
         end)
         b.MouseButton1Click:Connect(function()
             tip.Visible = false
@@ -426,17 +436,18 @@ do
             local on = open and s ~= nil and s.id == id
             local was = u.on
             u.on = on
-            u.label.Visible = on
-            IconTint(u.icon, on and Col("Icon", "Text") or Col("IconDim", "Dim"))
-            -- v9.3: destaque da seção ativa. Só mexe quando muda: o Sync roda
+            IconTint(u.icon, on and Col("Neon", "Accent") or Col("IconDim", "Dim"))
+            -- v9.3: traço da seção ativa. Só mexe quando muda: o Sync roda
             -- várias vezes seguidas (ShowTab + SetOpen no mesmo clique) e
             -- repintar no meio cortaria a animação
-            if U and on ~= was then
-                U.Tween(u.button, 0.18, { BackgroundTransparency = on and 0.82 or 1 })
-                U.Tween(u.ring, 0.18, { Transparency = on and 0.45 or 1 })
-                if on then
-                    u.label.TextTransparency = 1
-                    U.Tween(u.label, 0.22, { TextTransparency = 0 })
+            if on ~= was then
+                local size = UDim2.new(0, on and K.MARK_W or 0, 0, 3)
+                if U then
+                    U.Tween(u.mark, 0.22, { Size = size, BackgroundTransparency = on and 0 or 1 })
+                    U.Tween(u.glow, 0.22, { Transparency = on and 0.55 or 1 })
+                else
+                    u.mark.Size = size
+                    u.mark.BackgroundTransparency = on and 0 or 1
                 end
             end
         end
@@ -488,7 +499,7 @@ do
     end
 
     ----------------------------------------------------------------------------
-    -- v9.3: ALÇA DE RECOLHER O DOCK (três traços, centralizada logo acima dele)
+    -- v9.3: ALÇA DE RECOLHER O DOCK (dois traços, centralizada logo acima dele)
     -- Clique: o dock desliza para baixo até sair inteiro da tela e só então
     -- some (nunca fica meio visível); a alça desce para o rodapé e continua lá
     -- para trazer o dock de volta. O estado vai para a config (SET.DockHidden).
@@ -506,34 +517,29 @@ do
     handle.Parent = Gui
     K.Handle = function() return handle end
 
+    -- o desenho: dois traços claros soltos (o de cima mais curto), cada um com
+    -- um brilho neon em volta, que também os destaca em jogo de fundo claro
     local grip = Instance.new("Frame")
     grip.Name = "Grip"
     grip.AnchorPoint = Vector2.new(0.5, 0.5)
-    grip.Position = UDim2.new(0.5, 0, 0.5, 0)
-    grip.Size = UDim2.new(0, 42, 0, 14)
+    grip.Position = UDim2.new(0.5, 0, 0.5, -3)   -- um respiro acima do brilho do dock
+    grip.Size = UDim2.new(0, 40, 0, 12)
+    grip.BackgroundTransparency = 1
     grip.Active = false
     grip.ZIndex = 21
     grip.Parent = handle
-    local gripStroke
-    if U then
-        gripStroke = U.Glass(grip, 7)
-    else
-        grip.BackgroundColor3 = THEME.Sidebar
-        Paint(grip, "BackgroundColor3", "Sidebar")
-        Instance.new("UICorner", grip).CornerRadius = UDim.new(0, 7)
-    end
     local gripScale = Instance.new("UIScale", grip)
-    local lines = {}
+    local lines, glows = {}, {}
     do
         local l = Instance.new("UIListLayout", grip)
         l.FillDirection = Enum.FillDirection.Vertical
         l.HorizontalAlignment = Enum.HorizontalAlignment.Center
         l.VerticalAlignment = Enum.VerticalAlignment.Center
-        l.Padding = UDim.new(0, 2)
+        l.Padding = UDim.new(0, 4)
         l.SortOrder = Enum.SortOrder.LayoutOrder
-        for i = 1, 3 do
+        for i, w in ipairs({ 18, 34 }) do
             local ln = Instance.new("Frame")
-            ln.Size = UDim2.new(0, 16, 0, 2)
+            ln.Size = UDim2.new(0, w, 0, 3)
             ln.BackgroundColor3 = Col("IconDim", "Dim")
             ln.BorderSizePixel = 0
             ln.LayoutOrder = i
@@ -541,21 +547,31 @@ do
             ln.Parent = grip
             Instance.new("UICorner", ln).CornerRadius = UDim.new(1, 0)
             lines[i] = ln
+            if U then
+                local st = Instance.new("UIStroke", ln)
+                st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                st.Color = C.Neon
+                st.Thickness = 2
+                st.Transparency = 0.6
+                glows[i] = st
+            end
         end
     end
 
-    -- feedback: passar o mouse acende os traços em neon; apertar encolhe um pouco
+    -- feedback: passar o mouse clareia os traços e acende o brilho; apertar
+    -- encolhe um pouco
     local hover, press = false, false
     local function GripLook()
         local lit = hover or press
-        local c = lit and Col("Neon", "Accent") or Col("IconDim", "Dim")
+        local c = lit and Col("Icon", "Accent") or Col("IconDim", "Dim")
         for _, ln in ipairs(lines) do
             if U then U.Tween(ln, 0.12, { BackgroundColor3 = c }) else ln.BackgroundColor3 = c end
         end
         if U then
-            U.Tween(grip, 0.12, { BackgroundTransparency = lit and 0.08 or C.GlassT })
-            if gripStroke then U.Tween(gripStroke, 0.12, { Transparency = lit and 0.2 or 0.55 }) end
-            U.Tween(gripScale, 0.1, { Scale = press and 0.88 or (hover and 1.06 or 1) })
+            for _, st in ipairs(glows) do
+                U.Tween(st, 0.12, { Transparency = lit and 0.25 or 0.6 })
+            end
+            U.Tween(gripScale, 0.1, { Scale = press and 0.88 or (hover and 1.08 or 1) })
         end
     end
     handle.MouseEnter:Connect(function() hover = true GripLook() end)
@@ -648,7 +664,7 @@ do
         local nav = CreateCard(Tabs.Settings, "NAVEGAÇÃO", 8)
         SubLabel(nav, "O dock no rodapé da tela é o padrão da v8: 8 ícones, sempre "
             .. "visível, e é ele que abre o painel. Desligue para voltar à sidebar "
-            .. "dentro da janela larga (com a bolinha H para abrir). A alça de três "
+            .. "dentro da janela larga (com a bolinha H para abrir). A alça de dois "
             .. "traços logo acima do dock recolhe e traz o dock de volta.", 0)
 
         local render = CheckRow(nav, "Usar dock de ícones",

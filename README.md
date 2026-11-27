@@ -183,7 +183,8 @@ cargo e o que está liberado (comando `server`; `server check` reconfere).
 ## Navegação (dock)
 
 O dock fica solto no rodapé da tela, sempre visível — é ele que abre o painel.
-O ícone ativo mostra o nome ao lado; clicar nele de novo fecha o painel. A
+Só ícones: o da seção aberta fica azul neon com um traço brilhante embaixo, o
+nome aparece no hover, e clicar no ativo de novo fecha o painel. A
 janela (em pé, 460×520) nasce logo acima dele, com o título da seção e o selo
 HYGE no topo.
 
@@ -198,12 +199,13 @@ HYGE no topo.
 | engrenagem | Configurações | Ajustes (tamanho da GUI, automático, keybinds, temas...) · Console |
 | balão | Chat | HYGE (entre usuários do painel, via relay) · Jogo (chat do servidor) |
 
-No alto da tela fica a **ilha** (H, hora, FPS, conexão e ping, sino das
-notificações; clique abre/fecha o painel) — desliga em Configurações › Ilha no
-topo. As barrinhas mostram a qualidade da conexão pelo ping (até 80 ms
-excelente, até 150 boa, até 280 instável, acima disso ruim).
+No alto da tela fica a **ilha** (H, hora, FPS, ping com as barrinhas de
+conexão, sino das notificações; clique abre/fecha o painel) — desliga em
+Configurações › Ilha no topo. O ping e as barrinhas mostram a qualidade da
+conexão (até 80 ms excelente e até 150 boa, em verde; até 280 instável, em
+amarelo; acima disso ruim, em vermelho).
 
-A **alça de três traços** logo acima do dock recolhe o dock (ele desliza para
+A **alça de dois traços** logo acima do dock recolhe o dock (ele desliza para
 fora da tela) e o traz de volta; o estado fica salvo. Recolher não fecha o
 painel nem mexe na janela.
 
@@ -217,15 +219,16 @@ desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
 
 ### O que a v9.3 trouxe (barras do HUD)
 
-- **Vidro escuro azulado com borda neon discreta** na ilha do topo e no dock
-  (`src/30_kit/09_hud.lua`). As cores das barras são fixas (não seguem o tema
-  do painel); o "H" da ilha continua na cor do tema.
-- **Ilha**: separadores entre os blocos, indicador de qualidade da conexão e
-  cores só quando importa (FPS baixo, conexão instável/ruim).
-- **Dock**: mesmos ícones, mesma ordem, centralizado; a seção aberta ganha um
-  destaque (fundo neon translúcido + borda) com fade curto; o nome no hover
-  agora aparece acima do ícone (antes entrava na fila e empurrava os ícones).
-- **Alça de recolher** o dock, com hover/clique; o dock nunca fica meio
+- **Pílulas de vidro azul-marinho com borda e brilho neon** na ilha do topo e
+  no dock (`src/30_kit/09_hud.lua`). As cores das barras são fixas (não seguem
+  o tema do painel); o "H" da ilha continua na cor do tema.
+- **Ilha**: separadores entre os blocos, ping + barrinhas de conexão na cor da
+  qualidade (verde/amarelo/vermelho), FPS com cor só quando cai, sino com a
+  bolinha vermelha do contador.
+- **Dock**: mesmos ícones, mesma ordem, centralizado; só ícones, com
+  separadores finos; a seção aberta fica azul neon com um traço brilhante
+  embaixo (animação curta); o nome aparece acima do ícone no hover.
+- **Alça de recolher** (dois traços) o dock, com hover/clique; o dock nunca fica meio
   visível recolhido. A janela "em casa" nasce 13 px mais alta para a alça não
   ficar embaixo dela.
 - **Moldura atrás da barra do Roblox** (os botões do Roblox não mudam).

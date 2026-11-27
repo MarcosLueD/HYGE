@@ -19,10 +19,10 @@ do
 
         -- v9.3: barras do HUD modernizadas
         W.Items = {
-            { "layers",   "Barras novas", "A ilha do topo e o dock ganharam vidro escuro azulado com borda neon discreta. Mesmos botões, mesmo lugar." },
-            { "signal",   "Qualidade da conexão", "Barrinhas na ilha mostram a conexão pelo ping. O ping só muda de cor quando a conexão fica instável ou ruim." },
-            { "check",    "Seção em destaque", "O dock destaca a seção aberta com uma animação curta, e o nome no hover não empurra mais os ícones." },
-            { "power",    "Recolher o dock", "Clique na alça de três traços acima do dock para escondê-lo; ela fica no rodapé para trazê-lo de volta. Fica salvo." },
+            { "layers",   "Barras novas", "A ilha do topo e o dock viraram pílulas de vidro azul-marinho com borda e brilho neon. Mesmos botões, mesmo lugar." },
+            { "signal",   "Qualidade da conexão", "O ping na ilha vem com barrinhas: verde quando está boa, amarelo quando instável, vermelho quando ruim." },
+            { "check",    "Seção em destaque", "O dock mostra só os ícones; a seção aberta fica azul com um traço brilhante embaixo, e o nome aparece no hover." },
+            { "power",    "Recolher o dock", "Clique na alça de dois traços acima do dock para escondê-lo; ela fica no rodapé para trazê-lo de volta. Fica salvo." },
             { "shield",   "Barra do Roblox", "Uma moldura no mesmo vidro atrás do botão do Roblox, menu, chat e microfone. Os botões continuam os do Roblox (Ilha no topo desliga)." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou

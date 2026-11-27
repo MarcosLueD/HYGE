@@ -5,9 +5,9 @@
 -- Sem loop próprio: o Every(0.5) do scheduler já chama SetChips(fps, ping, ...)
 -- e a ilha pega carona nele. Some durante o drone (a bússola do HUD fica ali).
 -- Ajustes › Ilha no topo liga/desliga (vai junto na config em disco).
--- v9.3: vidro do HUD (V8.Hud), separadores entre os blocos, indicador de
--- qualidade da conexão (barrinhas pelo ping) e a moldura atrás da barra do
--- Roblox (canto superior esquerdo).
+-- v9.3: pílula de vidro com borda e brilho neon (V8.Hud), separadores entre
+-- os blocos, ping + barrinhas de qualidade da conexão e a moldura atrás da
+-- barra do Roblox (canto superior esquerdo).
 -- Tudo em V8.Island: zero locais novos no chunk principal.
 --------------------------------------------------------------------------------
 do
@@ -32,9 +32,10 @@ do
     pill.ZIndex = 20
     pill.Parent = Gui
     I.Pill = pill   -- v9.0: o sino das notificações mora aqui (50_v8/11_notify.lua)
-    local stroke
+    local stroke, halo
     if U then
-        stroke = U.Glass(pill, 14)
+        stroke = U.Glass(pill, U.PILL)
+        halo = U.Halo(pill)
     else
         pill.BackgroundColor3 = THEME.Sidebar
         pill.BackgroundTransparency = 0.02
@@ -45,13 +46,14 @@ do
         Paint(stroke, "Color", "Line")
     end
     do
+        -- pontas em meio círculo: um respiro maior nas laterais
         local p = Instance.new("UIPadding", pill)
-        p.PaddingLeft = UDim.new(0, 6)
-        p.PaddingRight = UDim.new(0, 10)
+        p.PaddingLeft = UDim.new(0, 8)
+        p.PaddingRight = UDim.new(0, 12)
         local l = Instance.new("UIListLayout", pill)
         l.FillDirection = Enum.FillDirection.Horizontal
         l.VerticalAlignment = Enum.VerticalAlignment.Center
-        l.Padding = UDim.new(0, 10)
+        l.Padding = UDim.new(0, 12)
         l.SortOrder = Enum.SortOrder.LayoutOrder
     end
 
@@ -117,12 +119,12 @@ do
         return t
     end
     I.Sep(2)
-    local clock = Txt(pill, 3, 13, "Text", "Text")
+    local clock = Txt(pill, 3, 14, "Text", "Text")
     I.Sep(4)
-    local fps = Txt(pill, 5, 12, "Text", "Text")
+    local fps = Txt(pill, 5, 13, "Text", "Text")
     I.Sep(6)
 
-    -- v9.3: conexão = 4 barrinhas (qualidade pelo ping) + o ping em ms
+    -- v9.3: conexão = o ping em ms + 4 barrinhas (qualidade pelo ping)
     local conn = Instance.new("Frame")
     conn.Name = "Connection"
     conn.Size = UDim2.new(0, 0, 0, 18)
@@ -138,11 +140,12 @@ do
         l.Padding = UDim.new(0, 6)
         l.SortOrder = Enum.SortOrder.LayoutOrder
     end
+    local ping = Txt(conn, 1, 13, "Dim", "Dim")
     local signal = Instance.new("Frame")
     signal.Name = "Signal"
     signal.Size = UDim2.new(0, 15, 0, 13)
     signal.BackgroundTransparency = 1
-    signal.LayoutOrder = 1
+    signal.LayoutOrder = 2
     signal.ZIndex = 21
     signal.Parent = conn
     local bars = {}
@@ -159,7 +162,6 @@ do
         Instance.new("UICorner", b).CornerRadius = UDim.new(0, 1)
         bars[i] = b
     end
-    local ping = Txt(conn, 2, 12, "Dim", "Dim")
 
     I.Update = function(f, p)
         pill.Visible = (SET.Island ~= false) and not IsOn("drone")
@@ -176,8 +178,8 @@ do
                     or THEME.Danger
             end
         end
-        -- barrinhas acesas na cor da qualidade; o ping só ganha cor quando
-        -- a conexão pede atenção
+        -- ping e barrinhas acesas na cor da qualidade (verde, amarelo,
+        -- vermelho; cinza sem medida)
         if U then
             local n, key = U.Quality(p)
             local lit = C[key] or C.Dim
@@ -185,16 +187,17 @@ do
                 b.BackgroundColor3 = (i <= n) and lit or C.Icon
                 b.BackgroundTransparency = (i <= n) and 0 or 0.8
             end
-            ping.TextColor3 = (key == "Warn" or key == "Bad") and lit or C.Dim
+            ping.TextColor3 = lit
         end
     end
 
-    -- v9.3: borda acende de leve no hover (é clicável: abre/fecha o painel)
+    -- v9.3: borda e brilho acendem de leve no hover (é clicável: abre/fecha
+    -- o painel)
     pill.MouseEnter:Connect(function()
-        if U and stroke then U.Tween(stroke, 0.12, { Transparency = 0.3 }) end
+        if U then U.Lit(stroke, halo, true) end
     end)
     pill.MouseLeave:Connect(function()
-        if U and stroke then U.Tween(stroke, 0.12, { Transparency = 0.55 }) end
+        if U then U.Lit(stroke, halo, false) end
     end)
     pill.MouseButton1Click:Connect(function()
         if V8.SetOpen and V8.IsOpen then V8.SetOpen(not V8.IsOpen()) end
@@ -226,7 +229,8 @@ do
         tbFrame.Name = "Frame"
         tbFrame.Visible = false
         tbFrame.Parent = tbGui
-        U.Glass(tbFrame, 16)
+        U.Glass(tbFrame, U.PILL)
+        U.Halo(tbFrame)
         tbGui.Parent = PlayerGui
     end
     I.TB_MARGIN = 4   -- folga da moldura em volta dos botões do Roblox
@@ -240,8 +244,6 @@ do
             local h = math.floor(r.Max.Y - 2 * m)
             tbFrame.Position = UDim2.new(0, m, 0, m)
             tbFrame.Size = UDim2.new(0, math.floor(r.Min.X - 2 * m), 0, h)
-            local corner = tbFrame:FindFirstChildOfClass("UICorner")
-            if corner then corner.CornerRadius = UDim.new(0, math.floor(h / 2)) end
         end
         tbFrame.Visible = show
     end

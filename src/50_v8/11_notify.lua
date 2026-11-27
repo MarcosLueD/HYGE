@@ -34,32 +34,40 @@ do
             bell.LayoutOrder = 20
             bell.ZIndex = 21
             bell.Parent = V8.Island.Pill
-            bellIco = Icon(bell, "bell", HC and HC.IconDim or THEME.Dim, 16)
+            bellIco = Icon(bell, "bell", HC and HC.IconDim or THEME.Dim, 18)
             bellIco.AnchorPoint = Vector2.new(0.5, 0.5)
             bellIco.Position = UDim2.new(0.5, 0, 0.5, 0)
 
+            -- v9.3: bolinha vermelha no canto do sino, com um aro da cor da
+            -- ilha separando ela do desenho do sino
             badge = Instance.new("TextLabel")
             badge.AnchorPoint = Vector2.new(1, 0)
-            badge.Position = UDim2.new(1, 6, 0, -4)
-            badge.Size = UDim2.new(0, 16, 0, 14)
-            badge.BackgroundColor3 = THEME.Danger
+            badge.Position = UDim2.new(1, 6, 0, -6)
+            badge.Size = UDim2.new(0, 16, 0, 16)
+            badge.BackgroundColor3 = HC and HC.Bad or THEME.Danger
             badge.BorderSizePixel = 0
             badge.Text = ""
             badge.TextColor3 = Color3.new(1, 1, 1)
             badge.Font = Enum.Font.GothamBold
-            badge.TextSize = 9
+            badge.TextSize = 10
             badge.Visible = false
             badge.ZIndex = 23
             badge.Parent = bell
-            Paint(badge, "BackgroundColor3", "Danger")
+            if not HC then Paint(badge, "BackgroundColor3", "Danger") end
             Instance.new("UICorner", badge).CornerRadius = UDim.new(1, 0)
+            if HC then
+                local ring = Instance.new("UIStroke", badge)
+                ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                ring.Color = HC.Glass
+                ring.Thickness = 1.5
+            end
         end
 
         N.Badge = function()
             if not badge then return end
             badge.Visible = N.Unread > 0
             badge.Text = (N.Unread > 9) and "9+" or tostring(N.Unread)
-            badge.Size = UDim2.new(0, (N.Unread > 9) and 20 or 15, 0, 14)
+            badge.Size = UDim2.new(0, (N.Unread > 9) and 22 or 16, 0, 16)
             if HC then
                 IconTint(bellIco, SET.Dnd and HC.Warn or (N.Unread > 0 and HC.Icon or HC.IconDim))
             else
@@ -219,7 +227,7 @@ do
             N.Render()
             -- logo abaixo da ilha quando ela está na tela; senão no topo
             local island = V8.Island and V8.Island.Pill
-            local y = (island and island.Visible) and 50 or 14
+            local y = (island and island.Visible) and 54 or 14   -- abaixo do brilho da ilha
             panel.Position = UDim2.new(0.5, 0, 0, y)
             catcher.Visible = true
             panel.Visible = true

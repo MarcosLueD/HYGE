@@ -6,29 +6,36 @@ Barras do HUD modernizadas, sem refazer a interface: mesma estrutura, mesmos
 botões, mesmas posições e a mesma navegação.
 
 ### Estilo (`src/30_kit/09_hud.lua`, `V8.Hud`)
-- Vidro escuro azulado (transparência + degradê) com borda azul neon que se
-  apaga para baixo, igual em todas as barras. Cores fixas: não seguem o tema
-  do painel. Sem o módulo de estilo, as barras voltam ao visual da v9.2.
+- Pílulas de vidro azul-marinho (transparência + degradê) com borda azul neon
+  e um brilho em volta, iguais em todas as barras. O Roblox não tem sombra
+  nem desfoque de UI: o brilho (`V8.Hud.Halo`) são dois contornos neon bem
+  transparentes numa moldura irmã da barra, que acompanha posição, tamanho
+  real (com a escala do celular) e visibilidade. Irmã e não filha porque as
+  barras têm `UIListLayout`. Cores fixas: não seguem o tema do painel. Sem o
+  módulo de estilo, as barras voltam ao visual da v9.2.
 - Tweens curtos que respeitam "Animações" (Configurações › Aparência).
 
 ### Ilha do topo (status)
 - H, hora, FPS, ping e o sino com o contador continuam, na mesma ordem; o
   sino passou a ser sempre o último.
 - Separadores finos entre os blocos.
-- Indicador de qualidade da conexão: 4 barrinhas pelo ping (≤ 80 ms
-  excelente, ≤ 150 boa, ≤ 280 instável, acima disso ruim). O ping só ganha
-  cor (amarelo/vermelho) quando a conexão pede atenção; o FPS, quando cai
-  abaixo de 50/30.
-- A borda acende de leve no hover (a ilha abre/fecha o painel).
+- Ping seguido de 4 barrinhas de qualidade da conexão (≤ 80 ms excelente e
+  ≤ 150 boa, em verde; ≤ 280 instável, em amarelo; acima disso ruim, em
+  vermelho). O FPS só ganha cor quando cai abaixo de 50/30.
+- Contador do sino: bolinha vermelha no canto do sino, com um aro da cor da
+  ilha.
+- Borda e brilho acendem de leve no hover (a ilha abre/fecha o painel).
 
 ### Dock (navegação)
-- Mesmos 8 ícones, mesma ordem, centralizado; espaçamento e alinhamento
-  revistos.
-- Destaque da seção aberta: fundo neon translúcido + borda, com fade; o nome
-  entra com fade.
-- O nome no hover fica acima do ícone. Antes ele era filho da barra (que tem
-  `UIListLayout`), entrava na fila e empurrava os ícones para o lado.
-- **Alça de recolher** (três traços, centralizada acima do dock): o dock
+- Mesmos 8 ícones, mesma ordem, centralizado; só ícones (o nome ao lado do
+  ativo saiu), com traços finos entre eles.
+- Seção aberta: ícone azul neon e um traço brilhante embaixo, que entra e
+  sai com uma animação curta.
+- O nome no hover fica acima do ícone (em todos, inclusive no ativo). Antes
+  ele era filho da barra (que tem `UIListLayout`), entrava na fila e
+  empurrava os ícones para o lado.
+- **Alça de recolher** (dois traços soltos com brilho, o de cima mais curto,
+  centralizada acima do dock): o dock
   desliza para baixo até sair inteiro da tela e só então some; a alça desce
   para o rodapé e traz o dock de volta. Hover acende os traços; clicar
   encolhe a alça um instante. Dois cliques rápidos não deixam o dock no meio
