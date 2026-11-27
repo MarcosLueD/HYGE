@@ -176,9 +176,17 @@ local function SwitchRow(parent, id, labelText, description)
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+    -- v9.4: ligado = o trilho ganha um brilho neon em volta
+    local glow = Instance.new("UIStroke", track)
+    glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    glow.Thickness = 2
+    glow.Transparency = 1
+
     -- v8.0: ligado = trilho no destaque + bolinha escura; desligado = trilho
     -- escuro + bolinha clara (com destaque branco, bolinha branca sumia)
     local function render(on)
+        glow.Color = THEME.Accent
+        TweenService:Create(glow, TweenInfo.new(0.16), { Transparency = on and 0.55 or 1 }):Play()
         TweenService:Create(track, TweenInfo.new(0.16), {
             BackgroundColor3 = on and THEME.Accent or THEME.Track }):Play()
         TweenService:Create(knob, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {

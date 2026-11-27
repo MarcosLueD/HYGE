@@ -16,11 +16,11 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v9.3",
+    Version   = "v9.4",
     -- quem ABRE o painel neste cliente. Quem pode agir nos outros jogadores é
     -- decidido só pelo servidor (CONFIG.AdminIds do server/HYGE_AdminServer)
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
-    DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
+    DefaultTheme = "HYGE",               -- tema de quem nunca salvou config (v9.4: as cores do logo)
     PanelKey  = Enum.KeyCode.B,
     ConsoleKey= Enum.KeyCode.Semicolon,
     UiScale   = 1,
@@ -29,6 +29,10 @@ local CONFIG = {
     -- Logo: suba a imagem em create.roblox.com > Development Items > Decals,
     -- copie o ID e cole aqui como "rbxassetid://SEU_ID". Vazio = logo em texto.
     LogoId    = "",
+    -- v9.4: a coruja do logo. Suba só a coruja (PNG com fundo transparente)
+    -- do mesmo jeito e cole o ID aqui: ela aparece sentada no triângulo da
+    -- faixa do Início, como no logo. Vazio = sem coruja.
+    MascotId  = "",
 
     -- v8.1: convite do Discord (botão da Home e comando 'discord'). Vazio = o
     -- botão avisa que não há link configurado, em vez de copiar qualquer coisa.

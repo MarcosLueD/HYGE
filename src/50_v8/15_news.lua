@@ -17,13 +17,14 @@ do
             if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
         end)
 
-        -- v9.3: barras do HUD modernizadas
+        -- v9.4: o visual do logo no painel inteiro
+        W.Subtitle = "Visual novo, com as cores do logo:"
         W.Items = {
-            { "layers",   "Barras novas", "A ilha do topo e o dock viraram pílulas de vidro azul-marinho com borda e brilho neon. Mesmos botões, mesmo lugar." },
-            { "signal",   "Qualidade da conexão", "O ping na ilha vem com barrinhas: verde quando está boa, amarelo quando instável, vermelho quando ruim." },
-            { "check",    "Seção em destaque", "O dock mostra só os ícones; a seção aberta fica azul com um traço brilhante embaixo, e o nome aparece no hover." },
-            { "power",    "Recolher o dock", "Clique na alça de dois traços acima do dock para escondê-lo; ela fica no rodapé para trazê-lo de volta. Fica salvo." },
-            { "shield",   "Barra do Roblox", "Uma moldura no mesmo vidro atrás do botão do Roblox, menu, chat e microfone. Os botões continuam os do Roblox (Ilha no topo desliga)." },
+            { "gem",      "Tema HYGE", "Azul-marinho com rosa neon, as cores do logo. É o padrão agora; quem usava o Grafite passou para ele — os outros temas continuam em Configurações › Aparência." },
+            { "layers",   "Janela neon", "Borda rosa com um brilho que respira devagar e um véu azul no alto. No cabeçalho, o triângulo do logo e o \"HYGE\" em degradê." },
+            { "home",     "Faixa do Início", "O logo refeito no topo do Início: triângulo neon, \"HYGE\" por cima, a bolinha e o brilho. A coruja aparece com CONFIG.MascotId." },
+            { "bolt",     "Detalhes que acendem", "Switches ligados e sliders brilham, botões têm contorno neon, títulos de seção ganham um tracinho e os cartões, um vidro." },
+            { "signal",   "Ilha e dock", "As barras do HUD trocaram o neon azul pelo rosa do logo, em vidro índigo. Mesmos botões, mesmo lugar." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou
         W.Tips = function()
@@ -101,9 +102,23 @@ do
             st.Color = THEME.Line
             st.Transparency = 0.1
 
+            -- v9.4: borda neon + a marca do logo ao lado do título
+            local tx = 22
+            if V8.Brand then
+                pcall(function()
+                    st.Color = THEME.Accent
+                    st.Transparency = 0.2
+                    Paint(st, "Color", "Accent")
+                    V8.Brand.Glow(box, 18)
+                    local m = V8.Brand.Mark(box, 34)
+                    m.Position = UDim2.new(0, 20, 0, 22)
+                    tx = 64
+                end)
+            end
+
             titleLbl = Instance.new("TextLabel")
-            titleLbl.Position = UDim2.new(0, 22, 0, 18)
-            titleLbl.Size = UDim2.new(1, -44, 0, 26)
+            titleLbl.Position = UDim2.new(0, tx, 0, 18)
+            titleLbl.Size = UDim2.new(1, -(tx + 22), 0, 26)
             titleLbl.BackgroundTransparency = 1
             titleLbl.TextColor3 = THEME.Text
             titleLbl.Font = Enum.Font.GothamBold
@@ -112,8 +127,8 @@ do
             titleLbl.Parent = box
 
             subLbl = Instance.new("TextLabel")
-            subLbl.Position = UDim2.new(0, 22, 0, 46)
-            subLbl.Size = UDim2.new(1, -44, 0, 16)
+            subLbl.Position = UDim2.new(0, tx, 0, 46)
+            subLbl.Size = UDim2.new(1, -(tx + 22), 0, 16)
             subLbl.BackgroundTransparency = 1
             subLbl.TextColor3 = THEME.Dim
             subLbl.Font = Enum.Font.GothamMedium
@@ -166,7 +181,7 @@ do
                 for i, it in ipairs(W.Tips()) do Row(list, i, it) end
             else
                 titleLbl.Text = "Novidades da " .. CONFIG.Version
-                subLbl.Text = "Barras do HUD modernizadas:"
+                subLbl.Text = W.Subtitle or "O que mudou:"
                 for i, it in ipairs(W.Items) do Row(list, i, it) end
             end
             -- tela baixa (celular deitado): o cartão encolhe e a lista rola

@@ -106,6 +106,9 @@ do
         Paint(col, "BackgroundColor3", "Card")
         Instance.new("UICorner", col).CornerRadius = UDim.new(0, 12)
         local colStroke = Instance.new("UIStroke", col)
+        -- v9.4: na borda (num botão de texto o padrão contorna as letras, e
+        -- este botão não tem texto: a borda e o hover nunca apareciam)
+        colStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         colStroke.Transparency = 0.6
         Paint(colStroke, "Color", "Line")
 
@@ -235,6 +238,18 @@ do
         local st = Instance.new("UIStroke", ring)
         st.Thickness = 2
         Paint(st, "Color", "Accent")
+        -- v9.4: brilho neon em volta do aro (moldura irmã: um UIStroke por objeto)
+        local halo = Instance.new("Frame")
+        halo.Name = "RingGlow"
+        halo.Size = ring.Size
+        halo.Position = ring.Position
+        halo.BackgroundTransparency = 1
+        halo.Parent = me
+        Instance.new("UICorner", halo).CornerRadius = UDim.new(1, 0)
+        local hs = Instance.new("UIStroke", halo)
+        hs.Thickness = 7
+        hs.Transparency = 0.84
+        Paint(hs, "Color", "Accent")
     end
 
     local face = Instance.new("ImageLabel")

@@ -2,6 +2,19 @@
 -- TEMAS
 --------------------------------------------------------------------------------
 local PALETTES = {
+    -- v9.4: as cores do logo — fundo azul-marinho/índigo (o miolo do
+    -- triângulo), destaque rosa neon (o contorno e o "HYGE") e o azul do fundo
+    -- do logo como cor secundária. Padrão desde a v9.4.
+    HYGE = {
+        Main = Color3.fromRGB(12, 10, 36),   Sidebar = Color3.fromRGB(8, 7, 27),
+        Card = Color3.fromRGB(22, 20, 62),   Console = Color3.fromRGB(6, 5, 20),
+        Accent = Color3.fromRGB(255, 64, 200), Accent2 = Color3.fromRGB(138, 150, 255),
+        Text = Color3.fromRGB(248, 244, 255), Dim = Color3.fromRGB(162, 156, 214),
+        Danger = Color3.fromRGB(255, 84, 110), Success = Color3.fromRGB(88, 228, 170),
+        Warning = Color3.fromRGB(255, 200, 92), Btn = Color3.fromRGB(31, 28, 86),
+        BtnHover = Color3.fromRGB(44, 40, 116), Track = Color3.fromRGB(42, 38, 106),
+        Line = Color3.fromRGB(60, 54, 150),
+    },
     Roxo = {
         Main = Color3.fromRGB(14, 12, 18),   Sidebar = Color3.fromRGB(10, 8, 14),
         Card = Color3.fromRGB(22, 18, 28),   Console = Color3.fromRGB(8, 6, 12),
@@ -96,7 +109,8 @@ local PALETTES = {
     },
 }
 -- v9.0: ordem em que os temas aparecem (Ajustes › Aparência e comando 'theme')
-local THEME_ORDER = { "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho",
+-- v9.4: HYGE (as cores do logo) é o primeiro e o padrão
+local THEME_ORDER = { "HYGE", "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho",
                       "Rosa", "Laranja", "Meia-noite" }
 
 -- v8.0: nasce no tema padrão (antes nascia Roxo e era repintado depois — o que

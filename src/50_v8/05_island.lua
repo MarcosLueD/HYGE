@@ -57,36 +57,47 @@ do
         l.SortOrder = Enum.SortOrder.LayoutOrder
     end
 
-    -- logo: a mesma caixa "H" da marca (ou a imagem de CONFIG.LogoId)
-    local logo = Instance.new("Frame")
-    logo.Size = UDim2.new(0, 24, 0, 24)
-    logo.BackgroundColor3 = THEME.Accent
-    logo.BorderSizePixel = 0
-    logo.LayoutOrder = 1
-    logo.ZIndex = 21
-    logo.Parent = pill
-    Paint(logo, "BackgroundColor3", "Accent")
-    Instance.new("UICorner", logo).CornerRadius = UDim.new(0, 7)
-    if CONFIG.LogoId ~= "" then
-        logo.BackgroundTransparency = 1
-        local img = Instance.new("ImageLabel")
-        img.Size = UDim2.new(1, 0, 1, 0)
-        img.BackgroundTransparency = 1
-        img.Image = CONFIG.LogoId
-        img.ScaleType = Enum.ScaleType.Fit
-        img.ZIndex = 22
-        img.Parent = logo
-    else
-        local h = Instance.new("TextLabel")
-        h.Size = UDim2.new(1, 0, 1, 0)
-        h.BackgroundTransparency = 1
-        h.Text = "H"
-        h.TextColor3 = THEME.Main
-        h.Font = Enum.Font.GothamBlack
-        h.TextSize = 13
-        h.ZIndex = 22
-        h.Parent = logo
-        Paint(h, "TextColor3", "Main")
+    -- logo. v9.4: a marca do logo (triângulo neon com H, V8.Brand.Mark);
+    -- sem o módulo da marca, a caixa "H" de antes (ou a imagem de CONFIG.LogoId)
+    local logo
+    if V8.Brand then
+        local ok, m = pcall(V8.Brand.Mark, pill, 26, 21)
+        if ok and m then
+            logo = m
+            logo.LayoutOrder = 1
+        end
+    end
+    if not logo then
+        logo = Instance.new("Frame")
+        logo.Size = UDim2.new(0, 24, 0, 24)
+        logo.BackgroundColor3 = THEME.Accent
+        logo.BorderSizePixel = 0
+        logo.LayoutOrder = 1
+        logo.ZIndex = 21
+        logo.Parent = pill
+        Paint(logo, "BackgroundColor3", "Accent")
+        Instance.new("UICorner", logo).CornerRadius = UDim.new(0, 7)
+        if CONFIG.LogoId ~= "" then
+            logo.BackgroundTransparency = 1
+            local img = Instance.new("ImageLabel")
+            img.Size = UDim2.new(1, 0, 1, 0)
+            img.BackgroundTransparency = 1
+            img.Image = CONFIG.LogoId
+            img.ScaleType = Enum.ScaleType.Fit
+            img.ZIndex = 22
+            img.Parent = logo
+        else
+            local h = Instance.new("TextLabel")
+            h.Size = UDim2.new(1, 0, 1, 0)
+            h.BackgroundTransparency = 1
+            h.Text = "H"
+            h.TextColor3 = THEME.Main
+            h.Font = Enum.Font.GothamBlack
+            h.TextSize = 13
+            h.ZIndex = 22
+            h.Parent = logo
+            Paint(h, "TextColor3", "Main")
+        end
     end
 
     -- v9.3: separador fino entre os blocos (o sino também usa: 11_notify)

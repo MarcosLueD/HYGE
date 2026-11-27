@@ -173,9 +173,18 @@ V8.Cell = function(f, padV)
     f.BorderSizePixel = 0
     Paint(f, "BackgroundColor3", "Card")
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 12)
+    -- v9.4: vidro — um pouco mais claro em cima, e a borda acesa em cima e
+    -- apagando para baixo (degradês neutros: valem para qualquer tema)
+    local bg = Instance.new("UIGradient", f)
+    bg.Rotation = 90
+    bg.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(214, 214, 222))
     local st = Instance.new("UIStroke", f)
-    st.Transparency = 0.25
+    st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    st.Transparency = 0.2
     Paint(st, "Color", "Line")
+    local sg = Instance.new("UIGradient", st)
+    sg.Rotation = 90
+    sg.Transparency = NumberSequence.new(0, 0.55)
     local p = Instance.new("UIPadding", f)
     p.PaddingLeft = UDim.new(0, 14)
     p.PaddingRight = UDim.new(0, 12)
@@ -212,6 +221,23 @@ local function CreateCard(parent, title, order)
         head.LayoutOrder = -1
         head.Parent = card
         Paint(head, "TextColor3", "Text")
+        -- v9.4: tracinho neon antes do título (o texto anda 10 px; o UIPadding
+        -- também empurra os filhos, então o tracinho volta com -10)
+        local hp = Instance.new("UIPadding", head)
+        hp.PaddingLeft = UDim.new(0, 10)
+        local dash = Instance.new("Frame")
+        dash.Name = "Tick"
+        dash.Position = UDim2.new(0, -10, 0.5, -6)
+        dash.Size = UDim2.new(0, 3, 0, 12)
+        dash.BorderSizePixel = 0
+        dash.Parent = head
+        Paint(dash, "BackgroundColor3", "Accent")
+        Instance.new("UICorner", dash).CornerRadius = UDim.new(1, 0)
+        local tg = Instance.new("UIStroke", dash)
+        tg.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        tg.Thickness = 2
+        tg.Transparency = 0.7
+        Paint(tg, "Color", "Accent")
     end
     return card
 end
@@ -249,19 +275,23 @@ local function CreateButton(parent, text, colorKey, height)
     Paint(b, "BackgroundColor3", "Btn")
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
 
+    -- v9.4: contorno na BORDA do botão (o modo padrão de UIStroke num botão
+    -- de texto contorna as letras, não o botão) — fino em repouso, aceso no
+    -- hover, como o neon do logo
     local stroke = Instance.new("UIStroke", b)
-    stroke.Transparency = 0.8
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Transparency = 0.72
     Paint(stroke, "Color", colorKey or "Accent")
 
     b.MouseEnter:Connect(function()
         TweenService:Create(b, TweenInfo.new(0.13), {
-            BackgroundColor3 = THEME[colorKey or "Accent"], TextColor3 = Color3.new(0, 0, 0) }):Play()
-        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.2 }):Play()
+            BackgroundColor3 = THEME[colorKey or "Accent"], TextColor3 = THEME.Main }):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.15 }):Play()
     end)
     b.MouseLeave:Connect(function()
         TweenService:Create(b, TweenInfo.new(0.13), {
             BackgroundColor3 = THEME.Btn, TextColor3 = THEME.Text }):Play()
-        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.8 }):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.72 }):Play()
     end)
     return b
 end
@@ -282,6 +312,7 @@ local function CreateInput(parent, placeholder, height)
     Paint(box, "TextColor3", "Text")
     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
     local stroke = Instance.new("UIStroke", box)
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border   -- v9.4: a borda, não as letras
     stroke.Transparency = 0.85
     Paint(stroke, "Color", "Accent")
     box.Focused:Connect(function()

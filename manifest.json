@@ -1,8 +1,8 @@
 {
-  "version": "v9.3",
-  "build": "9f9f7d168358",
+  "version": "v9.4",
+  "build": "0713e5c62391",
   "file": "main.lua",
-  "size": 790793,
-  "sha256": "9a09f99f48f70921aeaf8147f06036bb40b90dba2df6e2d6f7d0f113c3af780e",
+  "size": 819833,
+  "sha256": "7f9196643af2834f649bd3f01c9052f97c6803a993e131f930c085908edac092",
   "eol": "lf"
 }

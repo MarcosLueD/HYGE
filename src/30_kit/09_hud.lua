@@ -2,10 +2,11 @@
 -- v9.3 — ESTILO DAS BARRAS DO HUD
 -- Um visual só para as barras que ficam por cima do jogo: a ilha do topo
 -- (status), o dock (navegação), a alça de recolher o dock e a moldura atrás
--- da barra do Roblox. Pílulas de vidro azul-marinho com borda azul neon e um
+-- da barra do Roblox. Pílulas de vidro azul-marinho com borda neon e um
 -- brilho em volta.
 -- As cores são fixas (não seguem o tema do painel): as barras têm identidade
--- própria por cima de qualquer jogo. O "H" da ilha continua com a cor do tema.
+-- própria por cima de qualquer jogo. A marca da ilha segue a cor do tema.
+-- v9.4: as cores do logo — vidro índigo e neon rosa (era azul na v9.3).
 -- O Roblox não tem desfoque nem sombra de UI: o "vidro" é transparência +
 -- degradê, e o brilho são contornos neon bem transparentes (U.Halo).
 -- Tudo em V8.Hud: zero locais novos no chunk principal.
@@ -16,14 +17,14 @@ do
     local U = V8.Hud
 
     U.C = {
-        Glass    = Color3.fromRGB(8, 14, 36),      -- fundo azul-marinho
+        Glass    = Color3.fromRGB(13, 10, 40),     -- fundo índigo (o miolo do logo)
         GlassT   = 0.12,                           -- transparência do fundo
-        Neon     = Color3.fromRGB(52, 156, 255),   -- borda, brilho e seção ativa
+        Neon     = Color3.fromRGB(255, 64, 200),   -- borda, brilho e seção ativa (o rosa do logo)
         StrokeT  = 0.05,                           -- transparência da borda
         Icon     = Color3.fromRGB(255, 255, 255),  -- ícone em foco
-        IconDim  = Color3.fromRGB(208, 218, 236),  -- ícone em repouso
-        Text     = Color3.fromRGB(244, 248, 255),
-        Dim      = Color3.fromRGB(150, 168, 196),
+        IconDim  = Color3.fromRGB(214, 210, 240),  -- ícone em repouso
+        Text     = Color3.fromRGB(248, 244, 255),
+        Dim      = Color3.fromRGB(164, 158, 212),
         Sep      = Color3.fromRGB(255, 255, 255),  -- separadores (ilha e dock)
         SepT     = 0.8,
         Good     = Color3.fromRGB(92, 222, 104),   -- conexão boa: verde
@@ -72,7 +73,7 @@ do
         local g = f:FindFirstChild("HudGlass") or Instance.new("UIGradient")
         g.Name = "HudGlass"
         g.Rotation = 90
-        g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 210, 230))
+        g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(205, 200, 230))
         g.Transparency = NumberSequence.new({
             NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.06) })
         g.Parent = f

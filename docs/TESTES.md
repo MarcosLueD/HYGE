@@ -1,4 +1,4 @@
-# HYGE v9.3 — roteiro de testes antes do lançamento
+# HYGE v9.4 — roteiro de testes antes do lançamento
 
 O `npm test` cobre o que dá para conferir fora do Roblox (build, gravação
 segura, loader, troca de perfil, lógica do servidor, ponte do cliente com o
@@ -85,9 +85,9 @@ do Roblox bem estreita).
 
 | # | Teste | Como fazer | O que verificar | ✓ |
 |---|---|---|---|---|
-| 1 | Ilha | Abra qualquer jogo | Pílula azul-marinho com borda neon e brilho em volta; H, hora, FPS, ping + barrinhas e o sino, nessa ordem, com separadores; clicar abre/fecha o painel; o sino abre as notificações e o contador é uma bolinha vermelha no canto do sino | [ ] |
+| 1 | Ilha | Abra qualquer jogo | Pílula de vidro índigo com borda rosa neon e brilho em volta (v9.4); a marca do triângulo, hora, FPS, ping + barrinhas e o sino, nessa ordem, com separadores; clicar abre/fecha o painel; o sino abre as notificações e o contador é uma bolinha vermelha no canto do sino | [ ] |
 | 2 | Conexão | Observe a ilha com ping normal; depois simule lag (no Studio: *File › Studio Settings › Network › Incoming Replication Lag*) ou use uma conexão ruim | Até 150 ms: ping e barrinhas verdes; acima de 150 ms: menos barrinhas, em amarelo; acima de 280 ms: 1 barrinha, em vermelho | [ ] |
-| 3 | Dock | Abra cada seção pelo dock | Pílula com o mesmo brilho da ilha; mesmos 8 ícones na mesma ordem, só ícones, com traços finos entre eles; a seção aberta fica azul neon com um traço brilhante embaixo (entra com animação); clicar de novo fecha o painel | [ ] |
+| 3 | Dock | Abra cada seção pelo dock | Pílula com o mesmo brilho da ilha; mesmos 8 ícones na mesma ordem, só ícones, com traços finos entre eles; a seção aberta fica rosa neon (v9.4) com um traço brilhante embaixo (entra com animação); clicar de novo fecha o painel | [ ] |
 | 4 | Hover | Passe o mouse pelos ícones sem clicar | O nome aparece **acima** do ícone (também no ativo); os ícones **não** se mexem | [ ] |
 | 5 | Recolher | Clique na alça de dois traços acima do dock | O dock desce suave e some por inteiro, brilho junto (nada fica aparecendo no rodapé); a alça desce e continua visível; passar o mouse acende os traços; clicar encolhe a alça um instante | [ ] |
 | 6 | Trazer de volta | Clique na alça de novo; depois clique duas vezes bem rápido | O dock sobe para o lugar de sempre; com dois cliques rápidos ele termina **ou** aberto **ou** fechado, nunca parado no meio | [ ] |
@@ -97,6 +97,27 @@ do Roblox bem estreita).
 | 10 | Barra do Roblox | Canto superior esquerdo | Moldura de vidro atrás do botão do Roblox, menu, chat e microfone, sem cobrir nenhum deles; abrir o menu do Roblox (ele cresce) e a moldura acompanha; desligar em Configurações › Ilha no topo esconde a moldura | [ ] |
 | 11 | Animações desligadas | Configurações › Aparência › Animações desligado | Tudo troca na hora (sem tween), inclusive recolher o dock | [ ] |
 | 12 | Sidebar | Configurações › Navegação › dock desligado | Dock e alça somem; a sidebar volta; religando, o dock volta como estava (recolhido ou não) | [ ] |
+
+---
+
+## 4. Visual do logo (v9.4)
+
+O `npm test` confere a geometria do triângulo, a troca do tema e o contraste
+das cores; o desenho só dá para ver no jogo. Compare com a imagem do logo.
+
+| # | Teste | Como fazer | O que verificar | ✓ |
+|---|---|---|---|---|
+| 1 | Tema novo | Rode com uma config da v9.3 que estava no Grafite | Abre no tema HYGE (azul-marinho + rosa) e o console diz "Tema novo da v9.4"; troque para o Grafite, rode de novo: continua no Grafite | [ ] |
+| 2 | Janela | Abra o painel | Borda rosa com um brilho em volta que "respira" devagar; véu azulado no alto da janela; nada do brilho cobre o conteúdo | [ ] |
+| 3 | Cabeçalho | Topo da janela (modo dock) | Triângulo neon com H à esquerda do título da seção; "HYGE" em degradê rosa → lilás à direita, com contorno escuro e brilho | [ ] |
+| 4 | Triângulo | Olhe de perto a marca da ilha, do cabeçalho e da faixa do Início | Os três lados se encontram em cantos redondos (sem dente nem fresta); o miolo escuro não aparece em degraus fora do contorno | [ ] |
+| 5 | Faixa do Início | Início › Painel | Fundo no azul do logo; "Olá, <nome>" à esquerda; à direita o triângulo com miolo escuro, "HYGE" por cima passando das bordas, a bolinha escura e o brilho branco; o triângulo brilha devagar | [ ] |
+| 6 | Coruja | Suba só a coruja como Decal, cole em `CONFIG.MascotId`, rode | A coruja aparece sentada no canto de baixo do triângulo da faixa | [ ] |
+| 7 | Detalhes | Personagem e Configurações | Switch ligado com brilho rosa; bolinha do slider com brilho e o preenchimento acendendo para a direita; botões com contorno rosa fino que acende no hover (texto escuro no hover); tracinho rosa antes de cada título de seção; sub-aba ativa com brilho | [ ] |
+| 8 | Outros temas | Configurações › Aparência: troque por todos | Borda, brilho, marca, "HYGE", tracinhos e switches trocam de cor juntos; a faixa do Início usa a cor de botão do tema (o azul do logo só no HYGE) | [ ] |
+| 9 | Animações desligadas | Configurações › Aparência › Animações desligado | O brilho para de respirar (fica parado) | [ ] |
+| 10 | Novidades | Comando `novidades` | Cartão com borda neon e a marca ao lado do título; 5 itens da v9.4 | [ ] |
+| 11 | Sidebar | Configurações › Navegação › dock desligado | A janela larga mantém a borda neon e o véu nos cantos certos; minimizar não deixa o véu nem o brilho sobrando para fora | [ ] |
 
 ---
 

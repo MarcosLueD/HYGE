@@ -390,6 +390,17 @@ do
             return false
         end
         local d = Decode(r.text)
+        -- v9.4: quem estava no padrão antigo (Grafite) e salvou antes da v9.4
+        -- passa uma vez para o tema do logo. Só aqui (config do disco): perfil
+        -- e importação manual mantêm o tema que trouxerem.
+        if type(d) == "table" and V8.Brand and V8.Brand.ThemeFor then
+            local theme, moved = V8.Brand.ThemeFor(d.theme, d.version)
+            if moved and PALETTES[theme] then
+                d.theme = theme
+                Log("Tema novo da " .. CONFIG.Version .. ": " .. theme
+                    .. " (o Grafite continua em Configurações › Aparência)", "ok")
+            end
+        end
         local okR, rerr = pcall(C.Restore, d)
         if not okR then
             C.LoadState = "error"

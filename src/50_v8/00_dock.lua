@@ -4,8 +4,9 @@
 -- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
 --   Início · Personagem · Playtime Shop · Troll · Emotes · Jogadores ·
 --   Configurações · Chat
--- v9.3: só ícones, com separadores finos; o ativo fica azul neon com um traço
--- que brilha embaixo; o nome aparece no hover. Clicar no ativo fecha o painel.
+-- v9.3: só ícones, com separadores finos; o ativo fica neon (v9.4: rosa, a
+-- cor do logo) com um traço que brilha embaixo; o nome aparece no hover.
+-- Clicar no ativo fecha o painel.
 -- Navegação dentro da seção (as duas posicionadas pelo V8.Shell):
 --   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores,
 --     Configurações › Ajustes · Console, Chat › HYGE · Jogo)
@@ -342,7 +343,13 @@ do
         sb.Parent = seg
         Paint(sb, "BackgroundColor3", "Btn")
         Instance.new("UICorner", sb).CornerRadius = UDim.new(0, 10)
-        local u = { btn = sb, tab = nil }
+        -- v9.4: contorno (na borda) — linha do tema; na ativa, brilho neon
+        local sst = Instance.new("UIStroke", sb)
+        sst.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        sst.Thickness = 1
+        sst.Color = THEME.Line
+        sst.Transparency = 0.3
+        local u = { btn = sb, tab = nil, stroke = sst }
         segBtns[i] = u
         sb.MouseButton1Click:Connect(function()
             if u.tab then ShowTab(u.tab) end
@@ -374,6 +381,9 @@ do
                 u.btn.Size = UDim2.new(1 / n, -gap, 1, 0)
                 u.btn.BackgroundColor3 = on and THEME.Accent or THEME.Btn
                 u.btn.TextColor3 = on and THEME.Main or THEME.Text
+                u.stroke.Color = on and THEME.Accent or THEME.Line
+                u.stroke.Thickness = on and 3 or 1
+                u.stroke.Transparency = on and 0.6 or 0.3
             else
                 u.tab = nil
                 u.btn.Visible = false

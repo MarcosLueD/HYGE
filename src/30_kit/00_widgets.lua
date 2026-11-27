@@ -146,6 +146,9 @@ local function SliderRow(parent, o)
     fill.Parent = bar
     Paint(fill, "BackgroundColor3", "Accent")
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    -- v9.4: o preenchimento acende em direção à bolinha (degradê neutro)
+    local fg = Instance.new("UIGradient", fill)
+    fg.Color = ColorSequence.new(Color3.fromRGB(170, 170, 185), Color3.new(1, 1, 1))
 
     local knob = Instance.new("Frame")
     knob.Size = UDim2.new(0, 14, 0, 14)
@@ -154,6 +157,12 @@ local function SliderRow(parent, o)
     knob.BorderSizePixel = 0
     knob.Parent = bar
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    -- v9.4: brilho neon em volta da bolinha
+    local kg = Instance.new("UIStroke", knob)
+    kg.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    kg.Thickness = 3
+    kg.Transparency = 0.6
+    Paint(kg, "Color", "Accent")
 
     local current = o.def
     local function render(v)
@@ -277,9 +286,17 @@ local function CheckRow(parent, labelText, description, get, set, order)
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+    -- v9.4: ligado = o trilho ganha um brilho neon em volta
+    local glow = Instance.new("UIStroke", track)
+    glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    glow.Thickness = 2
+    glow.Transparency = 1
+
     -- v8.0: mesmo esquema do SwitchRow (bolinha escura no ligado)
     local function render()
         local on = not not get()
+        glow.Color = THEME.Accent
+        Anim(glow, 0.15, { Transparency = on and 0.55 or 1 })
         Anim(track, 0.15, { BackgroundColor3 = on and THEME.Accent or THEME.Track })
         Anim(knob, 0.15, {
             Position = on and UDim2.new(1, -18, 0.5, -7.5) or UDim2.new(0, 3, 0.5, -7.5),

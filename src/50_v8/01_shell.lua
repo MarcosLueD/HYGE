@@ -45,15 +45,23 @@ do
         if c then c.CornerRadius = UDim.new(0, 18) end
     end
 
-    -- borda da janela: linha sutil (o brilho no destaque some no tema claro)
+    -- v9.4: borda da janela em neon (a cor de destaque, como o contorno do
+    -- triângulo do logo) + brilho em volta que "respira" e o véu da cor
+    -- secundária no alto (V8.Brand). Antes (v8.0–v9.3): linha sutil.
     pcall(function()
         for _, e in ipairs(Painted) do
-            if e.inst == winStroke and e.prop == "Color" then e.key = "Line" end
+            if e.inst == winStroke and e.prop == "Color" then e.key = "Accent" end
         end
-        winStroke.Color = THEME.Line
-        winStroke.Transparency = 0.15
-        winStroke.Thickness = 1
+        winStroke.Color = THEME.Accent
+        winStroke.Transparency = 0.18
+        winStroke.Thickness = 1.5
     end)
+    if V8.Brand then
+        pcall(function()
+            H.Glow = V8.Brand.Glow(Window, 22, true)
+            H.Wash = V8.Brand.Wash(Window, 22)
+        end)
+    end
 
     -------------------------------------------------- selo azul de verificado
     -- circulo azul + serrilha (quadrado girado) + check branco
@@ -195,11 +203,24 @@ do
 
     ----------------------------------------------------------------------------
     -- 2b. CABECALHO DO MODO DOCK: titulo grande da secao + selo "HYGE"
+    -- v9.4: a marca (triangulo neon) antes do titulo e o "HYGE" do logo (em
+    -- degrade, com brilho) no lugar da pilula branca
     ----------------------------------------------------------------------------
+    local mark
+    if V8.Brand then
+        local ok, m = pcall(V8.Brand.Mark, TopBar, 28)
+        if ok and m then
+            mark = m
+            mark.AnchorPoint = Vector2.new(0, 0.5)
+            mark.Position = UDim2.new(0, 18, 0.5, 2)
+            H.Mark = mark
+        end
+    end
+
     local title = Instance.new("TextLabel")
     title.Name = "SectionTitle"
-    title.Position = UDim2.new(0, 20, 0, 4)
-    title.Size = UDim2.new(1, -120, 1, -4)
+    title.Position = UDim2.new(0, mark and 56 or 20, 0, 4)
+    title.Size = UDim2.new(1, mark and -170 or -120, 1, -4)
     title.BackgroundTransparency = 1
     title.Text = "Início"
     title.TextColor3 = THEME.Text
@@ -211,22 +232,32 @@ do
     Paint(title, "TextColor3", "Text")
     H.TitleLbl = title
 
-    local pill = Instance.new("TextLabel")
-    pill.Name = "Brand"
-    pill.AnchorPoint = Vector2.new(1, 0.5)
-    pill.Position = UDim2.new(1, -16, 0.5, 2)
-    pill.Size = UDim2.new(0, 0, 0, 24)
-    pill.AutomaticSize = Enum.AutomaticSize.X
-    pill.BackgroundColor3 = THEME.Text
-    pill.Text = "HYGE"
-    pill.TextColor3 = THEME.Main
-    pill.Font = Enum.Font.GothamBold
-    pill.TextSize = 12
-    pill.Parent = TopBar
-    Paint(pill, "BackgroundColor3", "Text")
-    Paint(pill, "TextColor3", "Main")
-    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-    do
+    local pill
+    if V8.Brand then
+        local ok, w = pcall(V8.Brand.Word, TopBar, 20)
+        if ok and w then
+            pill = w
+            pill.Name = "Brand"
+            pill.AnchorPoint = Vector2.new(1, 0.5)
+            pill.Position = UDim2.new(1, -20, 0.5, 2)
+        end
+    end
+    if not pill then   -- sem o modulo da marca: a pilula da v8
+        pill = Instance.new("TextLabel")
+        pill.Name = "Brand"
+        pill.AnchorPoint = Vector2.new(1, 0.5)
+        pill.Position = UDim2.new(1, -16, 0.5, 2)
+        pill.Size = UDim2.new(0, 0, 0, 24)
+        pill.AutomaticSize = Enum.AutomaticSize.X
+        pill.BackgroundColor3 = THEME.Text
+        pill.Text = "HYGE"
+        pill.TextColor3 = THEME.Main
+        pill.Font = Enum.Font.GothamBold
+        pill.TextSize = 12
+        pill.Parent = TopBar
+        Paint(pill, "BackgroundColor3", "Text")
+        Paint(pill, "TextColor3", "Main")
+        Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
         local p = Instance.new("UIPadding", pill)
         p.PaddingLeft = UDim.new(0, 12)
         p.PaddingRight = UDim.new(0, 12)
@@ -310,12 +341,18 @@ do
         MinBtn.Visible = not dock
         title.Visible = dock
         pill.Visible = dock
+        if H.Mark then H.Mark.Visible = dock end
 
         Sidebar.Size = UDim2.new(0, 164, 1, -H.TopH)
         Sidebar.Position = UDim2.new(0, 0, 0, H.TopH)
 
         local c = Window:FindFirstChildOfClass("UICorner")
         if c then c.CornerRadius = UDim.new(0, dock and 22 or 18) end
+        -- v9.4: o brilho e o veu acompanham o canto da janela
+        if V8.Brand then
+            V8.Brand.Radius(H.Glow, dock and 22 or 18)
+            V8.Brand.Radius({ H.Wash }, dock and 22 or 18)
+        end
         Window.Size = UDim2.new(0, H.W, 0, State.Minimized and H.TopH or H.Hgt)
 
         if H.LastMode ~= dock then
@@ -368,6 +405,9 @@ do
         if V8.Dash.Head then V8.Dash.Head.Visible = false end
         if V8.Dash.NameRow then H.Badge(V8.Dash.NameRow, 15, 2) end
     end
+    -- v9.4: no lugar do "Welcome home", a faixa com o logo refeito em UI
+    -- (saudacao + triangulo neon + "HYGE"), no topo do Inicio
+    if V8.Brand and Tabs.Home then pcall(V8.Brand.Hero, Tabs.Home, -4) end
 
     ----------------------------------------------------------------------------
     -- 6. dock como padrao (a sidebar continua a um clique nas Settings)

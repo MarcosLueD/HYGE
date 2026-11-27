@@ -1,5 +1,62 @@
 # Changelog
 
+## v9.4
+
+Atualização visual: o painel inteiro com a cara do logo (fundo azul, triângulo
+azul-marinho com contorno rosa neon, "HYGE" em rosa com brilho). Mesma
+estrutura, mesmos botões, mesmas posições e a mesma navegação.
+
+### Tema HYGE (`src/00_core/02_theme.lua`)
+- Paleta nova com as cores do logo: azul-marinho/índigo (o miolo do
+  triângulo), rosa neon como destaque e o azul do fundo do logo como cor
+  secundária. É o padrão (`CONFIG.DefaultTheme`) e o primeiro da lista.
+- **Troca única**: config da v9.3 ou anterior que estava no Grafite (o padrão
+  antigo) abre no HYGE e o console avisa. Só na config do disco; perfis e
+  importação mantêm o tema que trouxerem. Quem voltar para o Grafite fica nele
+  (a próxima gravação já sai como v9.4).
+
+### Peças da marca (`src/30_kit/10_brand.lua`, `V8.Brand`)
+- **Triângulo neon** feito com 3 Frames girados de pontas redondas (o Roblox
+  não desenha triângulo): os cantos fecham redondos, como no logo. Miolo
+  escuro opcional em faixas horizontais escondidas embaixo do contorno.
+- **"HYGE"** em degradê rosa → lilás, com contorno escuro e um brilho atrás.
+- **Marca** (triângulo + H) no cabeçalho, na ilha e nas novidades. Com
+  `CONFIG.LogoId`, a imagem continua valendo no lugar dela.
+- Tudo segue o tema (destaque e secundária): no HYGE fica igual ao logo.
+
+### Janela
+- Borda rosa neon com brilho em volta que respira devagar (só com a janela
+  aberta e "Animações" ligado; desligado, fica parado) e um véu da cor
+  secundária no alto.
+- Cabeçalho: a marca antes do título da seção e o "HYGE" do logo no lugar da
+  pílula branca.
+- **Faixa do Início** no lugar do "Welcome home": "Olá, <nome>" e o logo
+  refeito em UI (triângulo, "HYGE" passando das bordas, bolinha e brilho), no
+  azul do logo. `CONFIG.MascotId` (novo) põe a coruja sentada no triângulo.
+
+### Detalhes
+- Switch ligado e bolinha do slider com brilho; o preenchimento do slider
+  acende em direção à bolinha.
+- Botões e campos com contorno na **borda** (antes o UIStroke contornava as
+  letras, o padrão do Roblox em botão de texto); texto escuro no hover.
+- Tracinho neon antes de cada título de seção; cartões com vidro (um pouco
+  mais claros em cima) e borda acesa em cima.
+- Sub-abas em pílula com contorno; a ativa com brilho.
+- Os 3 cartões de status do Início: a borda e o hover agora aparecem (pelo
+  mesmo motivo dos botões). Aro da foto do perfil com brilho.
+
+### Barras do HUD
+- Ilha e dock trocaram o neon azul da v9.3 pelo rosa do logo, em vidro índigo
+  (`V8.Hud.C`). Continuam com cores fixas.
+
+### Testes
+- `tests/brand.test.js` (novo): geometria do triângulo (lados iguais, traços
+  ligando os vértices, tudo dentro da caixa), miolo sem fresta e escondido
+  pelo contorno, comparação de versões, a troca única do tema, as mesmas
+  chaves em todos os temas e contraste (texto 7:1, secundário e destaque
+  4.5:1) no tema HYGE, na faixa do Início e nas barras do HUD.
+- `docs/TESTES.md`: seção 4, o que conferir no jogo.
+
 ## v9.3
 
 Barras do HUD modernizadas, sem refazer a interface: mesma estrutura, mesmos

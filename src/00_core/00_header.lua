@@ -1,7 +1,17 @@
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v9.3
+    HYGE ADMIN PANEL v9.4
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v9.4 trouxe (visual do logo, mesma estrutura):
+      * Tema HYGE (padrao): azul-marinho/indigo com rosa neon, as cores do
+        logo; quem estava no Grafite passa para ele uma vez
+      * Janela com borda neon que "respira", veu azul no alto, marca do
+        triangulo e "HYGE" em degrade no cabecalho
+      * Faixa do Inicio com o logo refeito em UI (V8.Brand); coruja opcional
+        por CONFIG.MascotId
+      * Switches, sliders, botoes, titulos e sub-abas com brilho neon; ilha
+        e dock em rosa neon sobre vidro indigo
 
     O que a v9.3 trouxe (barras do HUD modernizadas, mesma estrutura):
       * Ilha do topo e dock em pilulas de vidro azul-marinho com borda e

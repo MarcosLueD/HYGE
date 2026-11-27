@@ -1,4 +1,4 @@
-# HYGE Admin Panel v9.3
+# HYGE Admin Panel v9.4
 
 Painel admin client-side para Roblox (executor ou LocalScript) + script de
 servidor para o **seu** jogo: as ações que afetam outros jogadores são pedidas
@@ -47,7 +47,8 @@ HYGE/
 │   ├── 30_kit/         widgets v7 (sliders, switches, confirmação), ícones, chips, HUD do drone,
 │   │                   rede/disco do executor (v9.1: gravação segura), tempo de jogo +
 │   │                   cosméticos (Playtime Shop), pacotes de animação; v9.1: SHA-256,
-│   │                   troca segura de perfil; v9.3: estilo das barras do HUD (V8.Hud)
+│   │                   troca segura de perfil; v9.3: estilo das barras do HUD (V8.Hud);
+│   │                   v9.4: peças do logo — triângulo neon, "HYGE", marca, faixa (V8.Brand)
 │   ├── 40_tabs/        uma aba por arquivo: home (+ mapa/perfil), dashboard, movement, visuals,
 │   │                   players, moderation, server, emotes, settings, shop, scripts, chat,
 │   │                   troll, chat HYGE
@@ -132,6 +133,7 @@ Roda `tests/*.test.js` com o test runner do Node (sem dependência extra além d
 | `profiles.test.js` | perfil inválido não muda nada; erro no meio volta ao estado anterior; Freecam/Drone nunca ligam |
 | `server.test.js` | servidor com o Roblox imitado: cargos e permissão por ação (moderador / admin / dono, proteção de cargo), `HYGE_Status`, alvo inexistente / que saiu / sem personagem / você mesmo, argumento inválido ou a mais, limite por ação e geral, registro (sem inundação, sem dados desnecessários), erro interno que não vaza, filtro, entrega do painel |
 | `hud.test.js` | barras do HUD (v9.3): qualidade da conexão pelo ping, cor do FPS, dock recolhido sempre inteiro fora da tela, alça à vista e fora do alcance da janela, estado salvo na config |
+| `brand.test.js` | visual do logo (v9.4): triângulo equilátero com os traços ligando os vértices e cabendo na caixa, miolo sem fresta escondido pelo contorno, versões comparadas por número, troca única Grafite → HYGE (só na config do disco), todos os temas com as mesmas chaves, contraste do tema HYGE, da faixa do Início e das barras do HUD |
 | `bridge.test.js` | o cliente (v9.2): sem servidor / sem cargo / sem permissão nada é enviado nem simulado e o motivo aparece; os pedidos saem no formato que o servidor aceita; liga/desliga só com a confirmação; servidor v9.1; `HYGE_Status` estranho ou que trava |
 | `diag.test.js` | contabilidade de conexões e tarefas; nenhuma conexão persistente fora do `Conn` (`tools/leaks.js`) |
 
@@ -183,10 +185,10 @@ cargo e o que está liberado (comando `server`; `server check` reconfere).
 ## Navegação (dock)
 
 O dock fica solto no rodapé da tela, sempre visível — é ele que abre o painel.
-Só ícones: o da seção aberta fica azul neon com um traço brilhante embaixo, o
+Só ícones: o da seção aberta fica rosa neon com um traço brilhante embaixo, o
 nome aparece no hover, e clicar no ativo de novo fecha o painel. A
-janela (em pé, 460×520) nasce logo acima dele, com o título da seção e o selo
-HYGE no topo.
+janela (em pé, 460×520) nasce logo acima dele, com a marca do triângulo, o
+título da seção e o "HYGE" do logo no topo.
 
 | Ícone | Seção | Dentro da seção |
 |---|---|---|
@@ -199,7 +201,7 @@ HYGE no topo.
 | engrenagem | Configurações | Ajustes (tamanho da GUI, automático, keybinds, temas...) · Console |
 | balão | Chat | HYGE (entre usuários do painel, via relay) · Jogo (chat do servidor) |
 
-No alto da tela fica a **ilha** (H, hora, FPS, ping com as barrinhas de
+No alto da tela fica a **ilha** (marca, hora, FPS, ping com as barrinhas de
 conexão, sino das notificações; clique abre/fecha o painel) — desliga em
 Configurações › Ilha no topo. O ping e as barrinhas mostram a qualidade da
 conexão (até 80 ms excelente e até 150 boa, em verde; até 280 instável, em
@@ -216,6 +218,30 @@ Moldura na barra do Roblox).
 
 Prefere a navegação antiga? **Configurações › Navegação › Usar dock de ícones**
 desligado volta para a janela larga com sidebar (e a bolinha H para abrir).
+
+### O que a v9.4 trouxe (visual do logo)
+
+- **Tema HYGE** (o padrão): azul-marinho/índigo com rosa neon, as cores do
+  logo. Quem estava no Grafite (o padrão antigo) passa para ele uma vez; os
+  outros temas continuam em Configurações › Aparência.
+- **Janela neon**: borda rosa com um brilho que respira devagar e um véu azul
+  no alto; no cabeçalho, a marca do triângulo e o "HYGE" em degradê.
+- **Faixa do Início**: "Olá, <nome>" e o logo refeito em UI (triângulo neon
+  com miolo escuro, "HYGE" por cima, a bolinha e o brilho).
+- **Detalhes que acendem**: switches ligados e sliders com brilho, botões e
+  campos com contorno neon, tracinho antes dos títulos de seção, cartões com
+  vidro, sub-aba ativa com brilho.
+- **Ilha e dock** em rosa neon sobre vidro índigo (eram azuis na v9.3).
+- Peças em `src/30_kit/10_brand.lua` (`V8.Brand`). O Roblox não desenha
+  triângulo: o contorno são 3 Frames girados de pontas redondas.
+
+**Usar a imagem do logo.** Suba em create.roblox.com › Development Items ›
+Decals e cole o ID no topo do script:
+
+- `CONFIG.LogoId = "rbxassetid://..."` — a marca (ilha, cabeçalho,
+  novidades) vira a imagem no lugar do triângulo desenhado;
+- `CONFIG.MascotId = "rbxassetid://..."` — só a coruja (PNG com fundo
+  transparente): ela aparece sentada no triângulo da faixa do Início.
 
 ### O que a v9.3 trouxe (barras do HUD)
 

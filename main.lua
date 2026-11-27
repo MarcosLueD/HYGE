@@ -1,12 +1,22 @@
 -- =============================================================================
--- HYGE v9.3 — ARQUIVO GERADO, NÃO EDITE AQUI.
+-- HYGE v9.4 — ARQUIVO GERADO, NÃO EDITE AQUI.
 -- Fonte: src/   ·   gerar de novo: npm run build  (ou: node build.js)
--- build: 9f9f7d168358
+-- build: 0713e5c62391
 -- =============================================================================
 --[[
 ================================================================================
-    HYGE ADMIN PANEL v9.3
+    HYGE ADMIN PANEL v9.4
     Evolucao direta da v7.0 — nada foi reescrito do zero.
+
+    O que a v9.4 trouxe (visual do logo, mesma estrutura):
+      * Tema HYGE (padrao): azul-marinho/indigo com rosa neon, as cores do
+        logo; quem estava no Grafite passa para ele uma vez
+      * Janela com borda neon que "respira", veu azul no alto, marca do
+        triangulo e "HYGE" em degrade no cabecalho
+      * Faixa do Inicio com o logo refeito em UI (V8.Brand); coruja opcional
+        por CONFIG.MascotId
+      * Switches, sliders, botoes, titulos e sub-abas com brilho neon; ilha
+        e dock em rosa neon sobre vidro indigo
 
     O que a v9.3 trouxe (barras do HUD modernizadas, mesma estrutura):
       * Ilha do topo e dock em pilulas de vidro azul-marinho com borda e
@@ -119,11 +129,11 @@ local Camera      = workspace.CurrentCamera
 -- CONFIGURAÇÃO
 --------------------------------------------------------------------------------
 local CONFIG = {
-    Version   = "v9.3",
+    Version   = "v9.4",
     -- quem ABRE o painel neste cliente. Quem pode agir nos outros jogadores é
     -- decidido só pelo servidor (CONFIG.AdminIds do server/HYGE_AdminServer)
     AdminIds  = { LocalPlayer.UserId },  -- << coloque os UserIds dos seus admins
-    DefaultTheme = "Grafite",            -- tema de quem nunca salvou config
+    DefaultTheme = "HYGE",               -- tema de quem nunca salvou config (v9.4: as cores do logo)
     PanelKey  = Enum.KeyCode.B,
     ConsoleKey= Enum.KeyCode.Semicolon,
     UiScale   = 1,
@@ -132,6 +142,10 @@ local CONFIG = {
     -- Logo: suba a imagem em create.roblox.com > Development Items > Decals,
     -- copie o ID e cole aqui como "rbxassetid://SEU_ID". Vazio = logo em texto.
     LogoId    = "",
+    -- v9.4: a coruja do logo. Suba só a coruja (PNG com fundo transparente)
+    -- do mesmo jeito e cole o ID aqui: ela aparece sentada no triângulo da
+    -- faixa do Início, como no logo. Vazio = sem coruja.
+    MascotId  = "",
 
     -- v8.1: convite do Discord (botão da Home e comando 'discord'). Vazio = o
     -- botão avisa que não há link configurado, em vez de copiar qualquer coisa.
@@ -216,6 +230,19 @@ local CONFIG = {
 -- TEMAS
 --------------------------------------------------------------------------------
 local PALETTES = {
+    -- v9.4: as cores do logo — fundo azul-marinho/índigo (o miolo do
+    -- triângulo), destaque rosa neon (o contorno e o "HYGE") e o azul do fundo
+    -- do logo como cor secundária. Padrão desde a v9.4.
+    HYGE = {
+        Main = Color3.fromRGB(12, 10, 36),   Sidebar = Color3.fromRGB(8, 7, 27),
+        Card = Color3.fromRGB(22, 20, 62),   Console = Color3.fromRGB(6, 5, 20),
+        Accent = Color3.fromRGB(255, 64, 200), Accent2 = Color3.fromRGB(138, 150, 255),
+        Text = Color3.fromRGB(248, 244, 255), Dim = Color3.fromRGB(162, 156, 214),
+        Danger = Color3.fromRGB(255, 84, 110), Success = Color3.fromRGB(88, 228, 170),
+        Warning = Color3.fromRGB(255, 200, 92), Btn = Color3.fromRGB(31, 28, 86),
+        BtnHover = Color3.fromRGB(44, 40, 116), Track = Color3.fromRGB(42, 38, 106),
+        Line = Color3.fromRGB(60, 54, 150),
+    },
     Roxo = {
         Main = Color3.fromRGB(14, 12, 18),   Sidebar = Color3.fromRGB(10, 8, 14),
         Card = Color3.fromRGB(22, 18, 28),   Console = Color3.fromRGB(8, 6, 12),
@@ -310,7 +337,8 @@ local PALETTES = {
     },
 }
 -- v9.0: ordem em que os temas aparecem (Ajustes › Aparência e comando 'theme')
-local THEME_ORDER = { "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho",
+-- v9.4: HYGE (as cores do logo) é o primeiro e o padrão
+local THEME_ORDER = { "HYGE", "Grafite", "Azul", "Roxo", "Ciano", "Verde", "Vermelho",
                       "Rosa", "Laranja", "Meia-noite" }
 
 -- v8.0: nasce no tema padrão (antes nascia Roxo e era repintado depois — o que
@@ -803,7 +831,7 @@ winShadow.SliceCenter = Rect.new(49, 49, 450, 450)
 winShadow.ZIndex = -1
 winShadow.Parent = Window
 
-V8.Mod("src/10_ui/01_toasts.lua", 806, 948, function() --------------------------------------------------------------------------------
+V8.Mod("src/10_ui/01_toasts.lua", 834, 976, function() --------------------------------------------------------------------------------
 -- TOASTS  (ícone, categoria, barra de duração, fechar, limite de 4)
 --------------------------------------------------------------------------------
 do
@@ -947,7 +975,7 @@ end
 end
 
 end)
-V8.Mod("src/10_ui/02_console.lua", 950, 1169, function() --------------------------------------------------------------------------------
+V8.Mod("src/10_ui/02_console.lua", 978, 1197, function() --------------------------------------------------------------------------------
 -- CONSOLE / LOG  (categorias, filtro, limpar, copiar — incremental)
 --------------------------------------------------------------------------------
 do
@@ -1489,9 +1517,18 @@ V8.Cell = function(f, padV)
     f.BorderSizePixel = 0
     Paint(f, "BackgroundColor3", "Card")
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 12)
+    -- v9.4: vidro — um pouco mais claro em cima, e a borda acesa em cima e
+    -- apagando para baixo (degradês neutros: valem para qualquer tema)
+    local bg = Instance.new("UIGradient", f)
+    bg.Rotation = 90
+    bg.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(214, 214, 222))
     local st = Instance.new("UIStroke", f)
-    st.Transparency = 0.25
+    st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    st.Transparency = 0.2
     Paint(st, "Color", "Line")
+    local sg = Instance.new("UIGradient", st)
+    sg.Rotation = 90
+    sg.Transparency = NumberSequence.new(0, 0.55)
     local p = Instance.new("UIPadding", f)
     p.PaddingLeft = UDim.new(0, 14)
     p.PaddingRight = UDim.new(0, 12)
@@ -1528,6 +1565,23 @@ local function CreateCard(parent, title, order)
         head.LayoutOrder = -1
         head.Parent = card
         Paint(head, "TextColor3", "Text")
+        -- v9.4: tracinho neon antes do título (o texto anda 10 px; o UIPadding
+        -- também empurra os filhos, então o tracinho volta com -10)
+        local hp = Instance.new("UIPadding", head)
+        hp.PaddingLeft = UDim.new(0, 10)
+        local dash = Instance.new("Frame")
+        dash.Name = "Tick"
+        dash.Position = UDim2.new(0, -10, 0.5, -6)
+        dash.Size = UDim2.new(0, 3, 0, 12)
+        dash.BorderSizePixel = 0
+        dash.Parent = head
+        Paint(dash, "BackgroundColor3", "Accent")
+        Instance.new("UICorner", dash).CornerRadius = UDim.new(1, 0)
+        local tg = Instance.new("UIStroke", dash)
+        tg.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        tg.Thickness = 2
+        tg.Transparency = 0.7
+        Paint(tg, "Color", "Accent")
     end
     return card
 end
@@ -1565,19 +1619,23 @@ local function CreateButton(parent, text, colorKey, height)
     Paint(b, "BackgroundColor3", "Btn")
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
 
+    -- v9.4: contorno na BORDA do botão (o modo padrão de UIStroke num botão
+    -- de texto contorna as letras, não o botão) — fino em repouso, aceso no
+    -- hover, como o neon do logo
     local stroke = Instance.new("UIStroke", b)
-    stroke.Transparency = 0.8
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Transparency = 0.72
     Paint(stroke, "Color", colorKey or "Accent")
 
     b.MouseEnter:Connect(function()
         TweenService:Create(b, TweenInfo.new(0.13), {
-            BackgroundColor3 = THEME[colorKey or "Accent"], TextColor3 = Color3.new(0, 0, 0) }):Play()
-        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.2 }):Play()
+            BackgroundColor3 = THEME[colorKey or "Accent"], TextColor3 = THEME.Main }):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.15 }):Play()
     end)
     b.MouseLeave:Connect(function()
         TweenService:Create(b, TweenInfo.new(0.13), {
             BackgroundColor3 = THEME.Btn, TextColor3 = THEME.Text }):Play()
-        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.8 }):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.13), { Transparency = 0.72 }):Play()
     end)
     return b
 end
@@ -1598,6 +1656,7 @@ local function CreateInput(parent, placeholder, height)
     Paint(box, "TextColor3", "Text")
     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
     local stroke = Instance.new("UIStroke", box)
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border   -- v9.4: a borda, não as letras
     stroke.Transparency = 0.85
     Paint(stroke, "Color", "Accent")
     box.Focused:Connect(function()
@@ -1797,9 +1856,17 @@ local function SwitchRow(parent, id, labelText, description)
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+    -- v9.4: ligado = o trilho ganha um brilho neon em volta
+    local glow = Instance.new("UIStroke", track)
+    glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    glow.Thickness = 2
+    glow.Transparency = 1
+
     -- v8.0: ligado = trilho no destaque + bolinha escura; desligado = trilho
     -- escuro + bolinha clara (com destaque branco, bolinha branca sumia)
     local function render(on)
+        glow.Color = THEME.Accent
+        TweenService:Create(glow, TweenInfo.new(0.16), { Transparency = on and 0.55 or 1 }):Play()
         TweenService:Create(track, TweenInfo.new(0.16), {
             BackgroundColor3 = on and THEME.Accent or THEME.Track }):Play()
         TweenService:Create(knob, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
@@ -3544,7 +3611,7 @@ local function CycleSpectate(dir)
     StartSpectate(list[idx])
 end
 
-V8.Mod("src/20_features/08_spectate_hud.lua", 3547, 3616, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/08_spectate_hud.lua", 3614, 3683, function() --------------------------------------------------------------------------------
 -- HUD DE SPECTATE (fora da janela, funciona com o painel fechado)
 --------------------------------------------------------------------------------
 do
@@ -3615,7 +3682,7 @@ do
     SpectateHud = hud
 end
 end)
-V8.Mod("src/20_features/09_body.lua", 3618, 3763, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/09_body.lua", 3685, 3830, function() --------------------------------------------------------------------------------
 -- v8.1 — ANTI-FALL e ANTI-GRAVIDADE (seção Personagem)
 --
 -- Anti-Fall, três camadas, tudo no SEU personagem:
@@ -3762,7 +3829,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/20_features/10_wallwalk.lua", 3765, 4044, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/10_wallwalk.lua", 3832, 4111, function() --------------------------------------------------------------------------------
 -- v8.1 — WALK ON WALLS (seção Troll)
 --
 -- O Humanoid só sabe andar com o "para cima" do mundo, então aqui o painel
@@ -4043,7 +4110,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/20_features/11_clicktp.lua", 4046, 4099, function() --------------------------------------------------------------------------------
+V8.Mod("src/20_features/11_clicktp.lua", 4113, 4166, function() --------------------------------------------------------------------------------
 -- v8.2 — CTRL + CLIQUE TELEPORTA (Personagem › Movimento › Teleporte)
 -- Com a função ligada, Ctrl + clique esquerdo leva o personagem até o ponto do
 -- mapa embaixo do mouse. Clique em cima de GUI (painel, chat) não conta: o
@@ -4246,6 +4313,9 @@ local function SliderRow(parent, o)
     fill.Parent = bar
     Paint(fill, "BackgroundColor3", "Accent")
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    -- v9.4: o preenchimento acende em direção à bolinha (degradê neutro)
+    local fg = Instance.new("UIGradient", fill)
+    fg.Color = ColorSequence.new(Color3.fromRGB(170, 170, 185), Color3.new(1, 1, 1))
 
     local knob = Instance.new("Frame")
     knob.Size = UDim2.new(0, 14, 0, 14)
@@ -4254,6 +4324,12 @@ local function SliderRow(parent, o)
     knob.BorderSizePixel = 0
     knob.Parent = bar
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    -- v9.4: brilho neon em volta da bolinha
+    local kg = Instance.new("UIStroke", knob)
+    kg.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    kg.Thickness = 3
+    kg.Transparency = 0.6
+    Paint(kg, "Color", "Accent")
 
     local current = o.def
     local function render(v)
@@ -4377,9 +4453,17 @@ local function CheckRow(parent, labelText, description, get, set, order)
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+    -- v9.4: ligado = o trilho ganha um brilho neon em volta
+    local glow = Instance.new("UIStroke", track)
+    glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    glow.Thickness = 2
+    glow.Transparency = 1
+
     -- v8.0: mesmo esquema do SwitchRow (bolinha escura no ligado)
     local function render()
         local on = not not get()
+        glow.Color = THEME.Accent
+        Anim(glow, 0.15, { Transparency = on and 0.55 or 1 })
         Anim(track, 0.15, { BackgroundColor3 = on and THEME.Accent or THEME.Track })
         Anim(knob, 0.15, {
             Position = on and UDim2.new(1, -18, 0.5, -7.5) or UDim2.new(0, 3, 0.5, -7.5),
@@ -4594,7 +4678,7 @@ local function TagChip(parent, text, colorKey)
     return c
 end
 
-V8.Mod("src/30_kit/01_icons.lua", 4597, 4714, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/01_icons.lua", 4681, 4798, function() --------------------------------------------------------------------------------
 -- ÍCONES VETORIAIS
 -- Sem asset: cada ícone é um punhado de Frames posicionados numa grade 24x24 e
 -- escalados. shape = { x, y, w, h, rot, corner, outline }
@@ -4713,7 +4797,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/02_topbar_chips.lua", 4716, 4795, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/02_topbar_chips.lua", 4800, 4879, function() --------------------------------------------------------------------------------
 -- CHIPS DA TOP BAR
 -- Substitui a linha de texto "FPS ... • PING ..." por chips com ícone.
 -- Reaproveita o mesmo Every(0.5) que já existia (nenhum loop novo): o scheduler
@@ -4794,7 +4878,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/03_drone_hud.lua", 4797, 5184, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/03_drone_hud.lua", 4881, 5268, function() --------------------------------------------------------------------------------
 -- DRONE HUD (overlay de câmera de drone)
 --
 -- Incremental: NÃO toca no movimento do drone. O toggle existente só chama
@@ -5183,7 +5267,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/04_net.lua", 5186, 5415, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/04_net.lua", 5270, 5499, function() --------------------------------------------------------------------------------
 -- v8.1 — REDE E DISCO (helpers do executor)
 --
 -- O Roblox não deixa LocalScript fazer HTTP. Executores expõem request()
@@ -5414,7 +5498,7 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/05_playtime.lua", 5417, 5914, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/05_playtime.lua", 5501, 5998, function() --------------------------------------------------------------------------------
 -- v8.1 — TEMPO DE JOGO + COSMÉTICOS (base da Playtime Shop)
 --
 -- Moeda da loja = tempo com o HYGE aberto: 1 ponto por minuto. O total vai em
@@ -5913,7 +5997,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/30_kit/06_animpack.lua", 5916, 6440, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/06_animpack.lua", 6000, 6524, function() --------------------------------------------------------------------------------
 -- v8.2 — PACOTES DE ANIMAÇÃO (motor; a UI fica em 40_tabs/02_movement_pack.lua)
 --
 -- Um pacote (bundle) do catálogo é uma lista de itens: Idle, Walk, Run, Jump,
@@ -6439,7 +6523,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/30_kit/07_sha256.lua", 6442, 6535, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/07_sha256.lua", 6526, 6619, function() --------------------------------------------------------------------------------
 -- v9.1 — SHA-256 (integridade da atualização)
 -- A atualização do painel (50_v8/09_update.lua) confere o main.lua baixado
 -- contra o manifest.json do repositório antes de trocar qualquer coisa.
@@ -6534,7 +6618,7 @@ end
     end
 end
 end)
-V8.Mod("src/30_kit/08_profile_tx.lua", 6537, 6698, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/08_profile_tx.lua", 6621, 6782, function() --------------------------------------------------------------------------------
 -- v9.1 — TROCA SEGURA DE PERFIL (usado por 50_v8/10_profiles.lua)
 -- Um perfil nunca deixa o painel pela metade:
 --   1. VALIDA tudo antes de mexer em qualquer coisa (tipos, números finitos,
@@ -6697,14 +6781,15 @@ do
     end
 end
 end)
-V8.Mod("src/30_kit/09_hud.lua", 6700, 6861, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/09_hud.lua", 6784, 6946, function() --------------------------------------------------------------------------------
 -- v9.3 — ESTILO DAS BARRAS DO HUD
 -- Um visual só para as barras que ficam por cima do jogo: a ilha do topo
 -- (status), o dock (navegação), a alça de recolher o dock e a moldura atrás
--- da barra do Roblox. Pílulas de vidro azul-marinho com borda azul neon e um
+-- da barra do Roblox. Pílulas de vidro azul-marinho com borda neon e um
 -- brilho em volta.
 -- As cores são fixas (não seguem o tema do painel): as barras têm identidade
--- própria por cima de qualquer jogo. O "H" da ilha continua com a cor do tema.
+-- própria por cima de qualquer jogo. A marca da ilha segue a cor do tema.
+-- v9.4: as cores do logo — vidro índigo e neon rosa (era azul na v9.3).
 -- O Roblox não tem desfoque nem sombra de UI: o "vidro" é transparência +
 -- degradê, e o brilho são contornos neon bem transparentes (U.Halo).
 -- Tudo em V8.Hud: zero locais novos no chunk principal.
@@ -6715,14 +6800,14 @@ do
     local U = V8.Hud
 
     U.C = {
-        Glass    = Color3.fromRGB(8, 14, 36),      -- fundo azul-marinho
+        Glass    = Color3.fromRGB(13, 10, 40),     -- fundo índigo (o miolo do logo)
         GlassT   = 0.12,                           -- transparência do fundo
-        Neon     = Color3.fromRGB(52, 156, 255),   -- borda, brilho e seção ativa
+        Neon     = Color3.fromRGB(255, 64, 200),   -- borda, brilho e seção ativa (o rosa do logo)
         StrokeT  = 0.05,                           -- transparência da borda
         Icon     = Color3.fromRGB(255, 255, 255),  -- ícone em foco
-        IconDim  = Color3.fromRGB(208, 218, 236),  -- ícone em repouso
-        Text     = Color3.fromRGB(244, 248, 255),
-        Dim      = Color3.fromRGB(150, 168, 196),
+        IconDim  = Color3.fromRGB(214, 210, 240),  -- ícone em repouso
+        Text     = Color3.fromRGB(248, 244, 255),
+        Dim      = Color3.fromRGB(164, 158, 212),
         Sep      = Color3.fromRGB(255, 255, 255),  -- separadores (ilha e dock)
         SepT     = 0.8,
         Good     = Color3.fromRGB(92, 222, 104),   -- conexão boa: verde
@@ -6771,7 +6856,7 @@ do
         local g = f:FindFirstChild("HudGlass") or Instance.new("UIGradient")
         g.Name = "HudGlass"
         g.Rotation = 90
-        g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 210, 230))
+        g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(205, 200, 230))
         g.Transparency = NumberSequence.new({
             NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.06) })
         g.Parent = f
@@ -6860,7 +6945,482 @@ do
     end
 end
 end)
-V8.Mod("src/40_tabs/00_home.lua", 6863, 7197, function() --------------------------------------------------------------------------------
+V8.Mod("src/30_kit/10_brand.lua", 6948, 7421, function() --------------------------------------------------------------------------------
+-- v9.4 — IDENTIDADE VISUAL (o logo dentro do painel)
+-- O logo: fundo azul, triângulo azul-marinho com contorno rosa neon, "HYGE"
+-- em rosa com brilho e a coruja. Peças reutilizáveis, todas em V8.Brand:
+--   Tri(parent, w, o)    triângulo neon (contorno + brilho + miolo opcional)
+--   Word(parent, size)   "HYGE" em degradê rosa → lilás, com contorno e brilho
+--   Mark(parent, size)   a marca pequena: triângulo + H (ou CONFIG.LogoId)
+--   Glow(frame, radius)  borda neon por fora de uma moldura (janela, cartões)
+--   Wash(frame, radius)  véu da cor secundária no alto de uma moldura
+--   Hero(parent, order)  faixa do Início: o logo refeito em UI
+-- As cores seguem o tema (Accent = contorno/palavra, Accent2 = véu): no tema
+-- HYGE ficam iguais às do logo; nos outros, na cor de cada um.
+-- O Roblox não desenha triângulo nem sombra de UI: o contorno são 3 Frames
+-- girados com pontas redondas (as pontas se encontram e viram cantos
+-- arredondados), o miolo são faixas horizontais escondidas embaixo do
+-- contorno e o brilho são UIStroke bem transparentes por fora.
+-- Tudo em V8.Brand: zero locais novos no chunk principal.
+--------------------------------------------------------------------------------
+-- [brand:begin] (tests/brand.test.js roda este bloco)
+do
+    V8.Brand = {}
+    local B = V8.Brand
+
+    -- Triângulo equilátero, ponta para cima, dentro de uma caixa de largura w,
+    -- com traço de espessura t. O traço inteiro (pontas redondas incluídas)
+    -- cabe na caixa. Devolve:
+    --   altura da caixa,
+    --   os 3 traços { centro x, centro y, comprimento, rotação em graus }
+    --     (rotação no sentido horário, como a Rotation do Roblox),
+    --   os 3 vértices { x, y } (base esq., base dir., topo) na linha do traço.
+    -- Cada traço vai de um vértice ao outro com meia espessura a mais em cada
+    -- ponta: com o canto redondo, as pontas viram círculos centrados nos
+    -- vértices e os dois traços se encontram sem dente.
+    B.TriGeom = function(w, t)
+        t = t or 2
+        local c = w - t                       -- lado do triângulo (linha do traço)
+        local h = c * math.sqrt(3) / 2 + t
+        local yb, yt = h - t / 2, t / 2
+        local xl, xr, xm = t / 2, w - t / 2, w / 2
+        return h, {
+            { xm, yb, c + t, 0 },                              -- base
+            { (xl + xm) / 2, (yb + yt) / 2, c + t, -60 },      -- esquerda
+            { (xm + xr) / 2, (yb + yt) / 2, c + t, 60 },       -- direita
+        }, { { xl, yb }, { xr, yb }, { xm, yt } }
+    end
+
+    -- Miolo em faixas horizontais de altura step (a última pode ser menor).
+    -- Cada faixa tem a largura do triângulo no meio dela; o degrau que sobra
+    -- (menos de meio traço de cada lado) fica embaixo do contorno.
+    -- Devolve { { y, altura, largura } } a partir do topo da caixa, centradas.
+    B.TriFill = function(w, t, step)
+        local _, _, v = B.TriGeom(w, t)
+        step = step or 3
+        local top, base = v[3][2], v[1][2]
+        local c = w - (t or 2)
+        local out, y = {}, top
+        while y < base - 1e-9 do
+            local hh = math.min(step, base - y)
+            local mid = y + hh / 2
+            table.insert(out, { y, hh, c * (mid - top) / (base - top) })
+            y = y + hh
+        end
+        return out
+    end
+
+    -- "v9.3" / "9.4" / "v9.4.1" -> { 9, 3, 0 } (nil se não for versão)
+    B.Ver = function(v)
+        if type(v) ~= "string" then return nil end
+        local a, b, c = v:match("^v?(%d+)%.(%d+)%.?(%d*)")
+        if not a then return nil end
+        return { tonumber(a), tonumber(b), tonumber(c) or 0 }
+    end
+
+    -- v é anterior a ref? (versão ilegível: não é)
+    B.Older = function(v, ref)
+        local x, y = B.Ver(v), B.Ver(ref)
+        if not x or not y then return false end
+        for i = 1, 3 do
+            if x[i] ~= y[i] then return x[i] < y[i] end
+        end
+        return false
+    end
+
+    -- Tema ao carregar a config do disco. Quem estava no padrão antigo
+    -- (Grafite) e salvou antes da v9.4 passa UMA vez para o tema do logo; a
+    -- próxima gravação já sai com a versão nova, então quem voltar para o
+    -- Grafite depois fica nele. Devolve (tema, mudou?).
+    B.NEW_DEFAULT, B.OLD_DEFAULT, B.SINCE = "HYGE", "Grafite", "v9.4"
+    B.ThemeFor = function(theme, version)
+        if theme == B.OLD_DEFAULT and (version == nil or B.Older(version, B.SINCE)) then
+            return B.NEW_DEFAULT, true
+        end
+        return theme, false
+    end
+end
+-- [brand:end]
+
+do
+    local B = V8.Brand
+    B.ROYAL = Color3.fromRGB(44, 40, 196)   -- o azul do fundo do logo (faixa do Início)
+    B.Pulses = {}                             -- { stroke, base, peak } que "respiram"
+
+    -- troca de tema: o que não cabe no registry Paint (degradês) se repinta aqui
+    local function OnTheme(fn)
+        V8.Renders = V8.Renders or {}
+        table.insert(V8.Renders, fn)
+        pcall(fn)
+    end
+
+    local function Stroke(parent, thick, transp, key)
+        local st = Instance.new("UIStroke")
+        st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        st.Thickness = thick
+        st.Transparency = transp
+        st.Parent = parent
+        Paint(st, "Color", key or "Accent")
+        return st
+    end
+
+    ----------------------------------------------------------------------------
+    -- triângulo neon. o = { thick, glow (true), glowSize, fill (chave do tema
+    -- ou nil), fillT, z, pulse }. Devolve a caixa e os UIStroke do brilho.
+    ----------------------------------------------------------------------------
+    B.Tri = function(parent, w, o)
+        o = o or {}
+        local t = o.thick or math.max(2, math.floor(w / 18 + 0.5))
+        local h, edges = B.TriGeom(w, t)
+        local z = o.z or 1
+        local box = Instance.new("Frame")
+        box.Name = "NeonTri"
+        box.Size = UDim2.new(0, w, 0, math.ceil(h))
+        box.BackgroundTransparency = 1
+        box.BorderSizePixel = 0
+        box.Active = false
+        box.ZIndex = z
+        box.Parent = parent
+
+        if o.fill then
+            for _, f in ipairs(B.TriFill(w, t, 3)) do
+                local band = Instance.new("Frame")
+                band.AnchorPoint = Vector2.new(0.5, 0)
+                band.Position = UDim2.new(0, w / 2, 0, f[1])
+                band.Size = UDim2.new(0, f[3], 0, f[2] + 0.5)   -- +0.5: sem fresta entre faixas
+                band.BackgroundTransparency = o.fillT or 0
+                band.BorderSizePixel = 0
+                band.ZIndex = z
+                band.Parent = box
+                Paint(band, "BackgroundColor3", o.fill)
+            end
+        end
+
+        local glows = {}
+        for _, e in ipairs(edges) do
+            local f = Instance.new("Frame")
+            f.AnchorPoint = Vector2.new(0.5, 0.5)
+            f.Position = UDim2.new(0, e[1], 0, e[2])
+            f.Size = UDim2.new(0, e[3], 0, t)
+            f.Rotation = e[4]
+            f.BorderSizePixel = 0
+            f.ZIndex = z + 1
+            f.Parent = box
+            Paint(f, "BackgroundColor3", o.color or "Accent")
+            Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
+            if o.glow ~= false then
+                local st = Stroke(f, o.glowSize or math.max(2, t * 1.4), 0.62, o.color)
+                table.insert(glows, st)
+                if o.pulse then table.insert(B.Pulses, { st, 0.62, 0.38 }) end
+            end
+        end
+        return box, glows, h, t
+    end
+
+    ----------------------------------------------------------------------------
+    -- "HYGE" do logo: letras grossas em degradê rosa → lilás, contorno escuro
+    -- fino (como o adesivo do logo) e um brilho rosa atrás (uma cópia do texto
+    -- transparente com contorno largo). Moldura com largura automática.
+    ----------------------------------------------------------------------------
+    B.Word = function(parent, size, text)
+        local box = Instance.new("Frame")
+        box.Name = "BrandWord"
+        box.AutomaticSize = Enum.AutomaticSize.X
+        box.Size = UDim2.new(0, 0, 0, size + 6)
+        box.BackgroundTransparency = 1
+        box.BorderSizePixel = 0
+        box.Active = false
+        box.Parent = parent
+
+        local function Lbl(z)
+            local l = Instance.new("TextLabel")
+            l.AutomaticSize = Enum.AutomaticSize.X
+            l.Size = UDim2.new(0, 0, 1, 0)
+            l.BackgroundTransparency = 1
+            l.Text = text or "HYGE"
+            l.Font = Enum.Font.GothamBlack
+            l.TextSize = size
+            l.ZIndex = z
+            l.Parent = box
+            return l
+        end
+
+        local glow = Lbl(box.ZIndex)
+        glow.Name = "Glow"
+        glow.TextTransparency = 0.55
+        Paint(glow, "TextColor3", "Accent")
+        local gs = Instance.new("UIStroke", glow)   -- texto: contorno das letras
+        gs.Thickness = math.max(2, size / 6)
+        gs.Transparency = 0.84
+        Paint(gs, "Color", "Accent")
+
+        local main = Lbl(box.ZIndex + 1)
+        main.Name = "Text"
+        main.TextColor3 = Color3.new(1, 1, 1)   -- quem pinta é o degradê
+        local ms = Instance.new("UIStroke", main)
+        ms.Thickness = math.max(1, size / 16)
+        ms.Transparency = 0.3
+        Paint(ms, "Color", "Main")
+        local g = Instance.new("UIGradient", main)
+        g.Rotation = 20
+        OnTheme(function()
+            g.Color = ColorSequence.new(THEME.Accent, THEME.Accent:Lerp(THEME.Accent2, 0.5))
+        end)
+        return box
+    end
+
+    -- muda o ZIndex das duas camadas da palavra juntas (brilho atrás)
+    B.ZWord = function(word, z)
+        for _, c in ipairs(word:GetChildren()) do
+            if c:IsA("TextLabel") then c.ZIndex = z + (c.Name == "Text" and 1 or 0) end
+        end
+    end
+
+    ----------------------------------------------------------------------------
+    -- marca pequena (cabeçalho, ilha, novidades): triângulo neon com miolo
+    -- escuro e um H claro dentro. Com CONFIG.LogoId, a imagem da marca.
+    ----------------------------------------------------------------------------
+    B.Mark = function(parent, size, z)
+        z = z or 1
+        local box = Instance.new("Frame")
+        box.Name = "BrandMark"
+        box.Size = UDim2.new(0, size, 0, size)
+        box.BackgroundTransparency = 1
+        box.BorderSizePixel = 0
+        box.Active = false
+        box.ZIndex = z
+        box.Parent = parent
+
+        if CONFIG.LogoId ~= "" then
+            local img = Instance.new("ImageLabel")
+            img.Size = UDim2.new(1, 0, 1, 0)
+            img.BackgroundTransparency = 1
+            img.Image = CONFIG.LogoId
+            img.ScaleType = Enum.ScaleType.Fit
+            img.ZIndex = z + 1
+            img.Parent = box
+            return box
+        end
+
+        local t = math.max(2, math.floor(size / 12 + 0.5))
+        local tri, _, h = B.Tri(box, size, { thick = t, glowSize = t, fill = "Main",
+            fillT = 0.05, z = z + 1 })
+        tri.AnchorPoint = Vector2.new(0.5, 0.5)
+        tri.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+        -- o H no centro do triângulo (2/3 da altura, a partir da ponta)
+        local cy = t / 2 + (h - t) * 2 / 3
+        local hl = Instance.new("TextLabel")
+        hl.AnchorPoint = Vector2.new(0.5, 0.5)
+        hl.Position = UDim2.new(0.5, 0, 0, cy + 0.5)
+        hl.Size = UDim2.new(0, size, 0, size)
+        hl.BackgroundTransparency = 1
+        hl.Text = "H"
+        hl.Font = Enum.Font.GothamBlack
+        hl.TextSize = math.max(8, math.floor(size * 0.36))
+        hl.ZIndex = z + 3
+        hl.Parent = tri
+        Paint(hl, "TextColor3", "Text")
+        return box
+    end
+
+    ----------------------------------------------------------------------------
+    -- borda neon por fora de uma moldura: dois anéis (largo e bem fraco,
+    -- estreito e mais forte), filhos com o mesmo tamanho e o mesmo canto. O
+    -- UIStroke desenha por FORA da borda, então nada cobre o conteúdo; ZIndex
+    -- 0 deixa tudo da moldura por cima. Devolve a lista de anéis.
+    ----------------------------------------------------------------------------
+    B.Glow = function(f, radius, pulse)
+        local rings = {}
+        for i, spec in ipairs({ { 10, 0.92, 0.84 }, { 4, 0.78, 0.66 } }) do
+            local r = Instance.new("Frame")
+            r.Name = "NeonGlow" .. i
+            r.Size = UDim2.new(1, 0, 1, 0)
+            r.BackgroundTransparency = 1
+            r.BorderSizePixel = 0
+            r.Active = false
+            r.ZIndex = 0
+            r.Parent = f
+            Instance.new("UICorner", r).CornerRadius = UDim.new(0, radius)
+            local st = Stroke(r, spec[1], spec[2], "Accent")
+            if pulse then table.insert(B.Pulses, { st, spec[2], spec[3] }) end
+            rings[i] = r
+        end
+        return rings
+    end
+
+    -- véu da cor secundária no alto (o "azul do fundo do logo" entrando pela
+    -- janela). Altura em escala: some junto quando a janela minimiza.
+    B.Wash = function(f, radius)
+        local w = Instance.new("Frame")
+        w.Name = "NeonWash"
+        w.Size = UDim2.new(1, 0, 0.34, 0)
+        w.BorderSizePixel = 0
+        w.Active = false
+        w.ZIndex = 0
+        w.Parent = f
+        Paint(w, "BackgroundColor3", "Accent2")
+        Instance.new("UICorner", w).CornerRadius = UDim.new(0, radius)
+        local g = Instance.new("UIGradient", w)
+        g.Rotation = 90
+        g.Transparency = NumberSequence.new(0.83, 1)
+        return w
+    end
+
+    -- acerta o canto dos anéis / véu (a janela muda de canto entre os modos)
+    B.Radius = function(list, radius)
+        for _, r in ipairs(list or {}) do
+            local c = r and r:FindFirstChildOfClass("UICorner")
+            if c then c.CornerRadius = UDim.new(0, radius) end
+        end
+    end
+
+    ----------------------------------------------------------------------------
+    -- FAIXA DO INÍCIO: o logo refeito em UI. À esquerda, a saudação; à
+    -- direita, o triângulo com miolo escuro, o "HYGE" por cima (passando das
+    -- bordas, como no logo), a bolinha escura e o brilho branco. Com
+    -- CONFIG.MascotId, a coruja sentada no canto do triângulo.
+    -- Fundo: no tema HYGE, o azul do logo; nos outros, a cor de botão do tema.
+    ----------------------------------------------------------------------------
+    B.Hero = function(parent, order)
+        local H = 96
+        local hero = Instance.new("Frame")
+        hero.Name = "Card"   -- entra com o mesmo deslize dos outros cartões
+        hero.Size = UDim2.new(1, 0, 0, H)
+        hero.BorderSizePixel = 0
+        hero.LayoutOrder = order or -4
+        hero.Parent = parent
+        Instance.new("UICorner", hero).CornerRadius = UDim.new(0, 14)
+        local edge = Instance.new("UIStroke", hero)
+        edge.Color = Color3.new(1, 1, 1)
+        edge.Transparency = 0.86
+        local g = Instance.new("UIGradient", hero)
+        g.Rotation = 18
+        g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(140, 140, 160))
+        OnTheme(function()
+            hero.BackgroundColor3 = (SET.Theme == B.NEW_DEFAULT) and B.ROYAL or THEME.Btn
+        end)
+
+        -- saudação
+        local hi = Instance.new("TextLabel")
+        hi.Position = UDim2.new(0, 18, 0, 22)
+        hi.Size = UDim2.new(1, -170, 0, 24)
+        hi.BackgroundTransparency = 1
+        hi.Text = "Olá, " .. (LocalPlayer.DisplayName or LocalPlayer.Name)
+        hi.Font = Enum.Font.GothamBold
+        hi.TextSize = 19
+        hi.TextXAlignment = Enum.TextXAlignment.Left
+        hi.TextTruncate = Enum.TextTruncate.AtEnd
+        hi.Parent = hero
+        Paint(hi, "TextColor3", "Text")
+
+        local sub = Instance.new("TextLabel")
+        sub.Position = UDim2.new(0, 18, 0, 50)
+        sub.Size = UDim2.new(1, -170, 0, 16)
+        sub.BackgroundTransparency = 1
+        sub.Text = "HYGE " .. CONFIG.Version .. "  ·  painel pronto"
+        sub.Font = Enum.Font.GothamMedium
+        sub.TextSize = 12
+        sub.TextTransparency = 0.25
+        sub.TextXAlignment = Enum.TextXAlignment.Left
+        sub.TextTruncate = Enum.TextTruncate.AtEnd
+        sub.Parent = hero
+        Paint(sub, "TextColor3", "Text")
+
+        -- o logo, à direita (triângulo de 96 px: ~84 de altura, cabe na faixa)
+        local TW = 96
+        local logo = Instance.new("Frame")
+        logo.Name = "Logo"
+        logo.AnchorPoint = Vector2.new(1, 0.5)
+        logo.Position = UDim2.new(1, -26, 0.5, 0)
+        logo.Size = UDim2.new(0, TW, 0, H - 8)
+        logo.BackgroundTransparency = 1
+        logo.Active = false
+        logo.Parent = hero
+
+        local tri, _, th = B.Tri(logo, TW, { thick = 3, glowSize = 5, fill = "Main",
+            fillT = 0.08, z = 2, pulse = true })
+        tri.AnchorPoint = Vector2.new(0.5, 0.5)
+        tri.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+        local word = B.Word(logo, 25)
+        word.AnchorPoint = Vector2.new(0.5, 0.5)
+        word.Position = UDim2.new(0.5, 4, 0.5, th * 0.12)
+        B.ZWord(word, 6)
+
+        -- bolinha escura (à esquerda do lado de cima) e brilho branco (à
+        -- direita), na mesma proporção do logo
+        local dot = Instance.new("Frame")
+        dot.AnchorPoint = Vector2.new(0.5, 0.5)
+        dot.Position = UDim2.new(0, 20, 0, 26)
+        dot.Size = UDim2.new(0, 11, 0, 11)
+        dot.BorderSizePixel = 0
+        dot.BackgroundTransparency = 0.1
+        dot.ZIndex = 2
+        dot.Parent = logo
+        Paint(dot, "BackgroundColor3", "Main")
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+        local spark = Instance.new("Frame")
+        spark.AnchorPoint = Vector2.new(0.5, 0.5)
+        spark.Position = UDim2.new(0, 74, 0, 16)
+        spark.Size = UDim2.new(0, 7, 0, 7)
+        spark.Rotation = 45
+        spark.BackgroundColor3 = Color3.fromRGB(240, 244, 255)
+        spark.BorderSizePixel = 0
+        spark.ZIndex = 2
+        spark.Parent = logo
+        Instance.new("UICorner", spark).CornerRadius = UDim.new(0, 2)
+        local sg = Instance.new("UIStroke", spark)
+        sg.Color = Color3.fromRGB(240, 244, 255)
+        sg.Thickness = 2
+        sg.Transparency = 0.75
+
+        -- a coruja (opcional): sentada no canto de baixo à esquerda
+        if type(CONFIG.MascotId) == "string" and CONFIG.MascotId ~= "" then
+            local owl = Instance.new("ImageLabel")
+            owl.AnchorPoint = Vector2.new(0.5, 1)
+            owl.Position = UDim2.new(0, 12, 1, 2)
+            owl.Size = UDim2.new(0, 38, 0, 38)
+            owl.BackgroundTransparency = 1
+            owl.Image = CONFIG.MascotId
+            owl.ScaleType = Enum.ScaleType.Fit
+            owl.ZIndex = 8
+            owl.Parent = logo
+        end
+
+        B.HeroFrame = hero
+        return hero
+    end
+
+    ----------------------------------------------------------------------------
+    -- o brilho "respira" devagar (borda da janela e triângulo da faixa). Sem
+    -- loop novo: um job do scheduler a cada 1,8 s. Só com a janela aberta e
+    -- "Animações" ligado; desligado, volta ao brilho parado.
+    ----------------------------------------------------------------------------
+    local up, still = false, true
+    V8.Job(1.8, function()
+        if not SET.Animations or not Window.Visible then
+            if not still then
+                still = true
+                for _, p in ipairs(B.Pulses) do
+                    if p[1].Parent then p[1].Transparency = p[2] end
+                end
+            end
+            return
+        end
+        still = false
+        up = not up
+        local info = TweenInfo.new(1.75, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        for _, p in ipairs(B.Pulses) do
+            if p[1].Parent then
+                TweenService:Create(p[1], info, { Transparency = up and p[3] or p[2] }):Play()
+            end
+        end
+    end)
+end
+end)
+V8.Mod("src/40_tabs/00_home.lua", 7423, 7757, function() --------------------------------------------------------------------------------
 -- ABA HOME (dashboard)
 --------------------------------------------------------------------------------
 do
@@ -7196,7 +7756,7 @@ do
     end)
 end
 end)
-V8.Mod("src/40_tabs/01_home_dashboard.lua", 7199, 7766, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/01_home_dashboard.lua", 7759, 8341, function() --------------------------------------------------------------------------------
 -- v8.0 — DASHBOARD DA HOME (header + relogio, tira de status, card do jogador
 -- com chat rapido e Friend Activity). Tudo pendurado em V8.Dash: zero locais
 -- novos no chunk principal. Entra DEPOIS de 40_tabs/00_home.lua no build.
@@ -7304,6 +7864,9 @@ do
         Paint(col, "BackgroundColor3", "Card")
         Instance.new("UICorner", col).CornerRadius = UDim.new(0, 12)
         local colStroke = Instance.new("UIStroke", col)
+        -- v9.4: na borda (num botão de texto o padrão contorna as letras, e
+        -- este botão não tem texto: a borda e o hover nunca apareciam)
+        colStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         colStroke.Transparency = 0.6
         Paint(colStroke, "Color", "Line")
 
@@ -7433,6 +7996,18 @@ do
         local st = Instance.new("UIStroke", ring)
         st.Thickness = 2
         Paint(st, "Color", "Accent")
+        -- v9.4: brilho neon em volta do aro (moldura irmã: um UIStroke por objeto)
+        local halo = Instance.new("Frame")
+        halo.Name = "RingGlow"
+        halo.Size = ring.Size
+        halo.Position = ring.Position
+        halo.BackgroundTransparency = 1
+        halo.Parent = me
+        Instance.new("UICorner", halo).CornerRadius = UDim.new(1, 0)
+        local hs = Instance.new("UIStroke", halo)
+        hs.Thickness = 7
+        hs.Transparency = 0.84
+        Paint(hs, "Color", "Accent")
     end
 
     local face = Instance.new("ImageLabel")
@@ -7765,7 +8340,7 @@ do
     pcall(D.Tick)
 end
 end)
-V8.Mod("src/40_tabs/01_home_server.lua", 7768, 8041, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/01_home_server.lua", 8343, 8616, function() --------------------------------------------------------------------------------
 -- v8.1 — INÍCIO: MAPA ATUAL + PERFIL
 -- Mapa: nome do jogo, Place ID, Job ID e jogadores, com os botões rápidos
 -- REJOIN (volta para este servidor), TROCAR SERVIDOR (outro servidor público
@@ -8040,7 +8615,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/02_movement.lua", 8043, 8375, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/02_movement.lua", 8618, 8950, function() --------------------------------------------------------------------------------
 -- ABA MOVEMENT
 --------------------------------------------------------------------------------
 do
@@ -8374,7 +8949,7 @@ do
     RenderWaypoints()
 end
 end)
-V8.Mod("src/40_tabs/02_movement_pack.lua", 8377, 8562, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/02_movement_pack.lua", 8952, 9137, function() --------------------------------------------------------------------------------
 -- v8.2 — CARTÃO "PACOTE DE ANIMAÇÃO" (Personagem › Movimento)
 -- Cole o ID ou o link de um pacote do catálogo; o painel lê as animações dele
 -- (V8.Pack, 30_kit/06_animpack.lua) e guarda na lista. Em cada pacote:
@@ -8561,7 +9136,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/03_visuals.lua", 8564, 8657, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/03_visuals.lua", 9139, 9232, function() --------------------------------------------------------------------------------
 -- ABA VISUALS
 --------------------------------------------------------------------------------
 do
@@ -8656,7 +9231,7 @@ do
         .. "a TeamColor tem prioridade.", 10)
 end
 end)
-V8.Mod("src/40_tabs/04_players.lua", 8659, 8903, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/04_players.lua", 9234, 9478, function() --------------------------------------------------------------------------------
 -- ABA PLAYERS
 --------------------------------------------------------------------------------
 do
@@ -8902,7 +9477,7 @@ do
     RebuildPlayerRows()
 end
 end)
-V8.Mod("src/40_tabs/05_moderation.lua", 8905, 9086, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/05_moderation.lua", 9480, 9661, function() --------------------------------------------------------------------------------
 -- ABA MODERATION
 --------------------------------------------------------------------------------
 do
@@ -9085,7 +9660,7 @@ do
     UpdateSelectedInfo()
 end
 end)
-V8.Mod("src/40_tabs/06_server.lua", 9088, 9295, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/06_server.lua", 9663, 9870, function() --------------------------------------------------------------------------------
 -- ABA SERVER
 --------------------------------------------------------------------------------
 do
@@ -9294,7 +9869,7 @@ do
     UpdateServerInfo()
 end
 end)
-V8.Mod("src/40_tabs/07_emotes.lua", 9297, 9889, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/07_emotes.lua", 9872, 10464, function() --------------------------------------------------------------------------------
 -- ABA EMOTES (catálogo pesquisável + tocar por ID + favoritos)
 --
 -- Limitação do Roblox, não do painel: o Animator só carrega animação cujo
@@ -9888,7 +10463,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/08_settings.lua", 9891, 10331, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/08_settings.lua", 10466, 10906, function() --------------------------------------------------------------------------------
 -- ABA SETTINGS
 --------------------------------------------------------------------------------
 do
@@ -10330,7 +10905,7 @@ do
     end)
 end
 end)
-V8.Mod("src/40_tabs/09_shop.lua", 10333, 10656, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/09_shop.lua", 10908, 11231, function() --------------------------------------------------------------------------------
 -- v8.1 — PLAYTIME SHOP (ícone de sacola do dock)
 -- Loja do próprio painel paga com tempo de jogo: 1 ponto por minuto com o HYGE
 -- aberto (V8.Play, 30_kit/05_playtime.lua). Categorias: All, Ranks, Icons,
@@ -10655,7 +11230,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/10_scripts.lua", 10658, 10732, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/10_scripts.lua", 11233, 11307, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA SCRIPTS (ícone de terminal do dock)
 -- O console de log sai do rodapé da janela e passa a morar aqui, ocupando a
 -- aba inteira, com uma linha de comando embaixo (Enter executa, ↑/↓ histórico).
@@ -10731,7 +11306,7 @@ do
     if V8.CompactRow then V8.CompactRow.Visible = false end
 end
 end)
-V8.Mod("src/40_tabs/11_chat.lua", 10734, 10862, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/11_chat.lua", 11309, 11437, function() --------------------------------------------------------------------------------
 -- v8.0 — ABA CHAT (balão do dock)
 -- Feed do chat DESTE servidor + enviar no chat do jogo + privado pelo Remote.
 -- Mostra só o que o seu cliente já recebe do Roblox: nenhuma mensagem é
@@ -10861,7 +11436,7 @@ do
     status.Text = "Nenhuma mensagem ainda   ·   " .. mode
 end
 end)
-V8.Mod("src/40_tabs/12_troll.lua", 10864, 11059, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/12_troll.lua", 11439, 11634, function() --------------------------------------------------------------------------------
 -- v8.1 — SEÇÃO TROLL (ícone de máscara do dock)
 -- * Walk on Walls (20_features/10_wallwalk.lua): roda no SEU personagem, então
 --   funciona em qualquer jogo — e os outros veem você andando na parede.
@@ -11058,7 +11633,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/40_tabs/13_hychat.lua", 11061, 11441, function() --------------------------------------------------------------------------------
+V8.Mod("src/40_tabs/13_hychat.lua", 11636, 12016, function() --------------------------------------------------------------------------------
 -- v8.1 — CHAT HYGE (Chat › HYGE)
 -- Conversa entre quem usa o HYGE: sala "Este servidor" (mesmo JobId) e sala
 -- "Global" (todos os servidores). Dois clientes Roblox não falam direto um
@@ -11440,14 +12015,15 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/00_dock.lua", 11443, 12144, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/00_dock.lua", 12018, 12729, function() --------------------------------------------------------------------------------
 -- v8.0 — DOCK (navegação principal)
 -- Barra solta no rodapé da TELA, visível mesmo com o painel fechado (é ela que
 -- abre o painel; a bolinha "H" só aparece no modo sidebar). v8.1: 8 seções:
 --   Início · Personagem · Playtime Shop · Troll · Emotes · Jogadores ·
 --   Configurações · Chat
--- v9.3: só ícones, com separadores finos; o ativo fica azul neon com um traço
--- que brilha embaixo; o nome aparece no hover. Clicar no ativo fecha o painel.
+-- v9.3: só ícones, com separadores finos; o ativo fica neon (v9.4: rosa, a
+-- cor do logo) com um traço que brilha embaixo; o nome aparece no hover.
+-- Clicar no ativo fecha o painel.
 -- Navegação dentro da seção (as duas posicionadas pelo V8.Shell):
 --   * sub-abas em pílula no topo da janela (Início, Personagem, Jogadores,
 --     Configurações › Ajustes · Console, Chat › HYGE · Jogo)
@@ -11784,7 +12360,13 @@ do
         sb.Parent = seg
         Paint(sb, "BackgroundColor3", "Btn")
         Instance.new("UICorner", sb).CornerRadius = UDim.new(0, 10)
-        local u = { btn = sb, tab = nil }
+        -- v9.4: contorno (na borda) — linha do tema; na ativa, brilho neon
+        local sst = Instance.new("UIStroke", sb)
+        sst.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        sst.Thickness = 1
+        sst.Color = THEME.Line
+        sst.Transparency = 0.3
+        local u = { btn = sb, tab = nil, stroke = sst }
         segBtns[i] = u
         sb.MouseButton1Click:Connect(function()
             if u.tab then ShowTab(u.tab) end
@@ -11816,6 +12398,9 @@ do
                 u.btn.Size = UDim2.new(1 / n, -gap, 1, 0)
                 u.btn.BackgroundColor3 = on and THEME.Accent or THEME.Btn
                 u.btn.TextColor3 = on and THEME.Main or THEME.Text
+                u.stroke.Color = on and THEME.Accent or THEME.Line
+                u.stroke.Thickness = on and 3 or 1
+                u.stroke.Transparency = on and 0.6 or 0.3
             else
                 u.tab = nil
                 u.btn.Visible = false
@@ -12143,7 +12728,7 @@ do
     K.Apply(SET.Dock)
 end
 end)
-V8.Mod("src/50_v8/01_shell.lua", 12146, 12535, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/01_shell.lua", 12731, 13160, function() --------------------------------------------------------------------------------
 -- v8.0 — SHELL (layout novo)
 -- NAO recria a janela: reconfigura as instancias que o engine ja criou.
 -- Dois modos, escolhidos por SET.Dock (Ajustes › Navegação):
@@ -12190,15 +12775,23 @@ do
         if c then c.CornerRadius = UDim.new(0, 18) end
     end
 
-    -- borda da janela: linha sutil (o brilho no destaque some no tema claro)
+    -- v9.4: borda da janela em neon (a cor de destaque, como o contorno do
+    -- triângulo do logo) + brilho em volta que "respira" e o véu da cor
+    -- secundária no alto (V8.Brand). Antes (v8.0–v9.3): linha sutil.
     pcall(function()
         for _, e in ipairs(Painted) do
-            if e.inst == winStroke and e.prop == "Color" then e.key = "Line" end
+            if e.inst == winStroke and e.prop == "Color" then e.key = "Accent" end
         end
-        winStroke.Color = THEME.Line
-        winStroke.Transparency = 0.15
-        winStroke.Thickness = 1
+        winStroke.Color = THEME.Accent
+        winStroke.Transparency = 0.18
+        winStroke.Thickness = 1.5
     end)
+    if V8.Brand then
+        pcall(function()
+            H.Glow = V8.Brand.Glow(Window, 22, true)
+            H.Wash = V8.Brand.Wash(Window, 22)
+        end)
+    end
 
     -------------------------------------------------- selo azul de verificado
     -- circulo azul + serrilha (quadrado girado) + check branco
@@ -12340,11 +12933,24 @@ do
 
     ----------------------------------------------------------------------------
     -- 2b. CABECALHO DO MODO DOCK: titulo grande da secao + selo "HYGE"
+    -- v9.4: a marca (triangulo neon) antes do titulo e o "HYGE" do logo (em
+    -- degrade, com brilho) no lugar da pilula branca
     ----------------------------------------------------------------------------
+    local mark
+    if V8.Brand then
+        local ok, m = pcall(V8.Brand.Mark, TopBar, 28)
+        if ok and m then
+            mark = m
+            mark.AnchorPoint = Vector2.new(0, 0.5)
+            mark.Position = UDim2.new(0, 18, 0.5, 2)
+            H.Mark = mark
+        end
+    end
+
     local title = Instance.new("TextLabel")
     title.Name = "SectionTitle"
-    title.Position = UDim2.new(0, 20, 0, 4)
-    title.Size = UDim2.new(1, -120, 1, -4)
+    title.Position = UDim2.new(0, mark and 56 or 20, 0, 4)
+    title.Size = UDim2.new(1, mark and -170 or -120, 1, -4)
     title.BackgroundTransparency = 1
     title.Text = "Início"
     title.TextColor3 = THEME.Text
@@ -12356,22 +12962,32 @@ do
     Paint(title, "TextColor3", "Text")
     H.TitleLbl = title
 
-    local pill = Instance.new("TextLabel")
-    pill.Name = "Brand"
-    pill.AnchorPoint = Vector2.new(1, 0.5)
-    pill.Position = UDim2.new(1, -16, 0.5, 2)
-    pill.Size = UDim2.new(0, 0, 0, 24)
-    pill.AutomaticSize = Enum.AutomaticSize.X
-    pill.BackgroundColor3 = THEME.Text
-    pill.Text = "HYGE"
-    pill.TextColor3 = THEME.Main
-    pill.Font = Enum.Font.GothamBold
-    pill.TextSize = 12
-    pill.Parent = TopBar
-    Paint(pill, "BackgroundColor3", "Text")
-    Paint(pill, "TextColor3", "Main")
-    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-    do
+    local pill
+    if V8.Brand then
+        local ok, w = pcall(V8.Brand.Word, TopBar, 20)
+        if ok and w then
+            pill = w
+            pill.Name = "Brand"
+            pill.AnchorPoint = Vector2.new(1, 0.5)
+            pill.Position = UDim2.new(1, -20, 0.5, 2)
+        end
+    end
+    if not pill then   -- sem o modulo da marca: a pilula da v8
+        pill = Instance.new("TextLabel")
+        pill.Name = "Brand"
+        pill.AnchorPoint = Vector2.new(1, 0.5)
+        pill.Position = UDim2.new(1, -16, 0.5, 2)
+        pill.Size = UDim2.new(0, 0, 0, 24)
+        pill.AutomaticSize = Enum.AutomaticSize.X
+        pill.BackgroundColor3 = THEME.Text
+        pill.Text = "HYGE"
+        pill.TextColor3 = THEME.Main
+        pill.Font = Enum.Font.GothamBold
+        pill.TextSize = 12
+        pill.Parent = TopBar
+        Paint(pill, "BackgroundColor3", "Text")
+        Paint(pill, "TextColor3", "Main")
+        Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
         local p = Instance.new("UIPadding", pill)
         p.PaddingLeft = UDim.new(0, 12)
         p.PaddingRight = UDim.new(0, 12)
@@ -12455,12 +13071,18 @@ do
         MinBtn.Visible = not dock
         title.Visible = dock
         pill.Visible = dock
+        if H.Mark then H.Mark.Visible = dock end
 
         Sidebar.Size = UDim2.new(0, 164, 1, -H.TopH)
         Sidebar.Position = UDim2.new(0, 0, 0, H.TopH)
 
         local c = Window:FindFirstChildOfClass("UICorner")
         if c then c.CornerRadius = UDim.new(0, dock and 22 or 18) end
+        -- v9.4: o brilho e o veu acompanham o canto da janela
+        if V8.Brand then
+            V8.Brand.Radius(H.Glow, dock and 22 or 18)
+            V8.Brand.Radius({ H.Wash }, dock and 22 or 18)
+        end
         Window.Size = UDim2.new(0, H.W, 0, State.Minimized and H.TopH or H.Hgt)
 
         if H.LastMode ~= dock then
@@ -12513,6 +13135,9 @@ do
         if V8.Dash.Head then V8.Dash.Head.Visible = false end
         if V8.Dash.NameRow then H.Badge(V8.Dash.NameRow, 15, 2) end
     end
+    -- v9.4: no lugar do "Welcome home", a faixa com o logo refeito em UI
+    -- (saudacao + triangulo neon + "HYGE"), no topo do Inicio
+    if V8.Brand and Tabs.Home then pcall(V8.Brand.Hero, Tabs.Home, -4) end
 
     ----------------------------------------------------------------------------
     -- 6. dock como padrao (a sidebar continua a um clique nas Settings)
@@ -12534,7 +13159,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/02_situations.lua", 12537, 12876, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/02_situations.lua", 13162, 13501, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — SISTEMA DE SITUAÇÕES
 -- Um clique troca o modo de operação inteiro: liga o que pertence à situação
 -- e DESLIGA o que não pertence. Cards no Dashboard + keybind por situação.
@@ -12875,7 +13500,7 @@ do
     S.Render()
 end
 end)
-V8.Mod("src/50_v8/03_persist.lua", 12878, 13475, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/03_persist.lua", 13503, 14111, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — PERSISTÊNCIA (HYGE/config.json)
 -- Salva/carrega keybinds, aparência, comportamento, velocidades, opções de ESP,
 -- waypoints, favoritos de emote, notas e a última situação.
@@ -13267,6 +13892,17 @@ do
             return false
         end
         local d = Decode(r.text)
+        -- v9.4: quem estava no padrão antigo (Grafite) e salvou antes da v9.4
+        -- passa uma vez para o tema do logo. Só aqui (config do disco): perfil
+        -- e importação manual mantêm o tema que trouxerem.
+        if type(d) == "table" and V8.Brand and V8.Brand.ThemeFor then
+            local theme, moved = V8.Brand.ThemeFor(d.theme, d.version)
+            if moved and PALETTES[theme] then
+                d.theme = theme
+                Log("Tema novo da " .. CONFIG.Version .. ": " .. theme
+                    .. " (o Grafite continua em Configurações › Aparência)", "ok")
+            end
+        end
         local okR, rerr = pcall(C.Restore, d)
         if not okR then
             C.LoadState = "error"
@@ -13474,7 +14110,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/04_search.lua", 13477, 13935, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/04_search.lua", 14113, 14571, function() --------------------------------------------------------------------------------
 -- V8.0 / FASE 1 — BUSCA GLOBAL (Ctrl+K)
 -- Overlay único que pesquisa situações, funções, jogadores, waypoints e
 -- comandos. Enter executa o item selecionado; ↑/↓ navegam; Esc fecha.
@@ -13934,7 +14570,7 @@ do
     end
 end
 end)
-V8.Mod("src/50_v8/05_island.lua", 13937, 14224, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/05_island.lua", 14573, 14871, function() --------------------------------------------------------------------------------
 -- v8.0 — ILHA NO TOPO DA TELA
 -- Pílula fixa no alto, centralizada: logo, hora, FPS e ping — à vista mesmo
 -- com o painel fechado. Clicar abre/fecha o painel.
@@ -13993,36 +14629,47 @@ do
         l.SortOrder = Enum.SortOrder.LayoutOrder
     end
 
-    -- logo: a mesma caixa "H" da marca (ou a imagem de CONFIG.LogoId)
-    local logo = Instance.new("Frame")
-    logo.Size = UDim2.new(0, 24, 0, 24)
-    logo.BackgroundColor3 = THEME.Accent
-    logo.BorderSizePixel = 0
-    logo.LayoutOrder = 1
-    logo.ZIndex = 21
-    logo.Parent = pill
-    Paint(logo, "BackgroundColor3", "Accent")
-    Instance.new("UICorner", logo).CornerRadius = UDim.new(0, 7)
-    if CONFIG.LogoId ~= "" then
-        logo.BackgroundTransparency = 1
-        local img = Instance.new("ImageLabel")
-        img.Size = UDim2.new(1, 0, 1, 0)
-        img.BackgroundTransparency = 1
-        img.Image = CONFIG.LogoId
-        img.ScaleType = Enum.ScaleType.Fit
-        img.ZIndex = 22
-        img.Parent = logo
-    else
-        local h = Instance.new("TextLabel")
-        h.Size = UDim2.new(1, 0, 1, 0)
-        h.BackgroundTransparency = 1
-        h.Text = "H"
-        h.TextColor3 = THEME.Main
-        h.Font = Enum.Font.GothamBlack
-        h.TextSize = 13
-        h.ZIndex = 22
-        h.Parent = logo
-        Paint(h, "TextColor3", "Main")
+    -- logo. v9.4: a marca do logo (triângulo neon com H, V8.Brand.Mark);
+    -- sem o módulo da marca, a caixa "H" de antes (ou a imagem de CONFIG.LogoId)
+    local logo
+    if V8.Brand then
+        local ok, m = pcall(V8.Brand.Mark, pill, 26, 21)
+        if ok and m then
+            logo = m
+            logo.LayoutOrder = 1
+        end
+    end
+    if not logo then
+        logo = Instance.new("Frame")
+        logo.Size = UDim2.new(0, 24, 0, 24)
+        logo.BackgroundColor3 = THEME.Accent
+        logo.BorderSizePixel = 0
+        logo.LayoutOrder = 1
+        logo.ZIndex = 21
+        logo.Parent = pill
+        Paint(logo, "BackgroundColor3", "Accent")
+        Instance.new("UICorner", logo).CornerRadius = UDim.new(0, 7)
+        if CONFIG.LogoId ~= "" then
+            logo.BackgroundTransparency = 1
+            local img = Instance.new("ImageLabel")
+            img.Size = UDim2.new(1, 0, 1, 0)
+            img.BackgroundTransparency = 1
+            img.Image = CONFIG.LogoId
+            img.ScaleType = Enum.ScaleType.Fit
+            img.ZIndex = 22
+            img.Parent = logo
+        else
+            local h = Instance.new("TextLabel")
+            h.Size = UDim2.new(1, 0, 1, 0)
+            h.BackgroundTransparency = 1
+            h.Text = "H"
+            h.TextColor3 = THEME.Main
+            h.Font = Enum.Font.GothamBlack
+            h.TextSize = 13
+            h.ZIndex = 22
+            h.Parent = logo
+            Paint(h, "TextColor3", "Main")
+        end
     end
 
     -- v9.3: separador fino entre os blocos (o sino também usa: 11_notify)
@@ -14223,7 +14870,7 @@ do
     pcall(I.Update, State.Fps, nil)
 end
 end)
-V8.Mod("src/50_v8/06_auto.lua", 14226, 14308, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/06_auto.lua", 14873, 14955, function() --------------------------------------------------------------------------------
 -- v8.1 — RECURSOS AUTOMÁTICOS (Configurações › Ajustes › Automático)
 -- * escolha quais funções ligam sozinhas toda vez que o painel carrega
 --   (SET.Auto, vai na config em disco). O BootStep "Automático" roda depois do
@@ -14307,7 +14954,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/07_mobile.lua", 14310, 14531, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/07_mobile.lua", 14957, 15178, function() --------------------------------------------------------------------------------
 -- v8.2 — CELULAR (botões na tela + janela que cabe)
 -- * Botões na tela (SET.TouchHud; padrão: ligado em aparelho com toque):
 --   FLY liga/desliga o voo; com ele ligado aparecem SUBIR, DESCER e 2x.
@@ -14530,7 +15177,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/08_quests.lua", 14533, 14797, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/08_quests.lua", 15180, 15444, function() --------------------------------------------------------------------------------
 -- v8.2 — MISSÕES E BÔNUS DIÁRIO (Playtime Shop › Missões de hoje)
 -- Mais um jeito de ganhar pontos além do 1/minuto:
 --   * bônus diário: na primeira vez que o painel abre no dia. Dias seguidos
@@ -14796,7 +15443,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/09_update.lua", 14799, 15058, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/09_update.lua", 15446, 15705, function() --------------------------------------------------------------------------------
 -- v8.2 — ATUALIZAÇÃO (Configurações › Ajustes › Atualização)
 -- Confere se existe um main.lua mais novo no endereço de atualização:
 --   * aberto pelo loader.lua: o loader conta qual build ele rodou
@@ -15057,7 +15704,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/10_profiles.lua", 15060, 15498, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/10_profiles.lua", 15707, 16145, function() --------------------------------------------------------------------------------
 -- v9.0 — PERFIS (Configurações › Dados › Perfis)
 -- Um perfil é o painel inteiro guardado com um nome: tema, tamanho, teclas,
 -- macros, velocidades, opções de ESP, favoritos, ajustes e as funções que
@@ -15497,7 +16144,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/11_notify.lua", 15500, 15836, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/11_notify.lua", 16147, 16483, function() --------------------------------------------------------------------------------
 -- v9.0 — CENTRAL DE NOTIFICAÇÕES
 -- Todo Toast passa a ficar guardado (os últimos 60). O sino na ilha do topo
 -- mostra quantos chegaram desde a última olhada; clicar abre a lista.
@@ -15835,7 +16482,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/12_colors.lua", 15838, 16000, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/12_colors.lua", 16485, 16647, function() --------------------------------------------------------------------------------
 -- v9.0 — COR PERSONALIZADA (Configurações › Visual)
 -- Tema "Personalizado": a base escura do Grafite levemente tingida + a cor de
 -- destaque que você escolher (matiz 0–360° e intensidade). USAR ESTA COR
@@ -15999,7 +16646,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/13_macros.lua", 16002, 16263, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/13_macros.lua", 16649, 16910, function() --------------------------------------------------------------------------------
 -- v9.0 — MACROS DE TECLADO (Configurações › Teclas › Macros de teclado)
 -- Uma tecla roda qualquer comando da barra (;) — "tp joao", "sit caça",
 -- "flyspeed 200", "theme rosa"... Vários de uma vez: separe com &&
@@ -16262,7 +16909,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/14_diag.lua", 16265, 16576, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/14_diag.lua", 16912, 17223, function() --------------------------------------------------------------------------------
 -- v9.0 — DIAGNÓSTICO (Configurações › Sistema › Diagnóstico)
 -- Num lugar só: o que este executor suporta, quanto o boot demorou, qual
 -- módulo falhou (e em que linha do src/), memória, FPS/ping e os últimos
@@ -16575,7 +17222,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/15_news.lua", 16578, 16774, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/15_news.lua", 17225, 17436, function() --------------------------------------------------------------------------------
 -- v9.0 — NOVIDADES / BOAS-VINDAS
 -- Na primeira vez que uma versão nova abre, aparece um cartão com o que
 -- mudou. Quem nunca usou o HYGE (sem config salva) vê os primeiros passos.
@@ -16594,13 +17241,14 @@ do
             if V8.Cfg and V8.Cfg.Supported() and isfile(V8.Cfg.Path) then W.HadConfig = true end
         end)
 
-        -- v9.3: barras do HUD modernizadas
+        -- v9.4: o visual do logo no painel inteiro
+        W.Subtitle = "Visual novo, com as cores do logo:"
         W.Items = {
-            { "layers",   "Barras novas", "A ilha do topo e o dock viraram pílulas de vidro azul-marinho com borda e brilho neon. Mesmos botões, mesmo lugar." },
-            { "signal",   "Qualidade da conexão", "O ping na ilha vem com barrinhas: verde quando está boa, amarelo quando instável, vermelho quando ruim." },
-            { "check",    "Seção em destaque", "O dock mostra só os ícones; a seção aberta fica azul com um traço brilhante embaixo, e o nome aparece no hover." },
-            { "power",    "Recolher o dock", "Clique na alça de dois traços acima do dock para escondê-lo; ela fica no rodapé para trazê-lo de volta. Fica salvo." },
-            { "shield",   "Barra do Roblox", "Uma moldura no mesmo vidro atrás do botão do Roblox, menu, chat e microfone. Os botões continuam os do Roblox (Ilha no topo desliga)." },
+            { "gem",      "Tema HYGE", "Azul-marinho com rosa neon, as cores do logo. É o padrão agora; quem usava o Grafite passou para ele — os outros temas continuam em Configurações › Aparência." },
+            { "layers",   "Janela neon", "Borda rosa com um brilho que respira devagar e um véu azul no alto. No cabeçalho, o triângulo do logo e o \"HYGE\" em degradê." },
+            { "home",     "Faixa do Início", "O logo refeito no topo do Início: triângulo neon, \"HYGE\" por cima, a bolinha e o brilho. A coruja aparece com CONFIG.MascotId." },
+            { "bolt",     "Detalhes que acendem", "Switches ligados e sliders brilham, botões têm contorno neon, títulos de seção ganham um tracinho e os cartões, um vidro." },
+            { "signal",   "Ilha e dock", "As barras do HUD trocaram o neon azul pelo rosa do logo, em vidro índigo. Mesmos botões, mesmo lugar." },
         }
         -- função: as teclas podem ter mudado depois que a config carregou
         W.Tips = function()
@@ -16678,9 +17326,23 @@ do
             st.Color = THEME.Line
             st.Transparency = 0.1
 
+            -- v9.4: borda neon + a marca do logo ao lado do título
+            local tx = 22
+            if V8.Brand then
+                pcall(function()
+                    st.Color = THEME.Accent
+                    st.Transparency = 0.2
+                    Paint(st, "Color", "Accent")
+                    V8.Brand.Glow(box, 18)
+                    local m = V8.Brand.Mark(box, 34)
+                    m.Position = UDim2.new(0, 20, 0, 22)
+                    tx = 64
+                end)
+            end
+
             titleLbl = Instance.new("TextLabel")
-            titleLbl.Position = UDim2.new(0, 22, 0, 18)
-            titleLbl.Size = UDim2.new(1, -44, 0, 26)
+            titleLbl.Position = UDim2.new(0, tx, 0, 18)
+            titleLbl.Size = UDim2.new(1, -(tx + 22), 0, 26)
             titleLbl.BackgroundTransparency = 1
             titleLbl.TextColor3 = THEME.Text
             titleLbl.Font = Enum.Font.GothamBold
@@ -16689,8 +17351,8 @@ do
             titleLbl.Parent = box
 
             subLbl = Instance.new("TextLabel")
-            subLbl.Position = UDim2.new(0, 22, 0, 46)
-            subLbl.Size = UDim2.new(1, -44, 0, 16)
+            subLbl.Position = UDim2.new(0, tx, 0, 46)
+            subLbl.Size = UDim2.new(1, -(tx + 22), 0, 16)
             subLbl.BackgroundTransparency = 1
             subLbl.TextColor3 = THEME.Dim
             subLbl.Font = Enum.Font.GothamMedium
@@ -16743,7 +17405,7 @@ do
                 for i, it in ipairs(W.Tips()) do Row(list, i, it) end
             else
                 titleLbl.Text = "Novidades da " .. CONFIG.Version
-                subLbl.Text = "Barras do HUD modernizadas:"
+                subLbl.Text = W.Subtitle or "O que mudou:"
                 for i, it in ipairs(W.Items) do Row(list, i, it) end
             end
             -- tela baixa (celular deitado): o cartão encolhe e a lista rola
@@ -16773,7 +17435,7 @@ do
     Build()
 end
 end)
-V8.Mod("src/50_v8/19_settings_nav.lua", 16776, 16957, function() --------------------------------------------------------------------------------
+V8.Mod("src/50_v8/19_settings_nav.lua", 17438, 17619, function() --------------------------------------------------------------------------------
 -- v9.0 — AJUSTES ORGANIZADOS (Configurações › Ajustes)
 -- A aba tinha ~20 cartões numa rolagem só. Agora, no topo:
 --   * categorias em pílula: Tudo · Geral · Teclas · Visual · Dados · Sistema
@@ -16991,7 +17653,7 @@ AddNav("Scripts", 11)
 AddNav("HyChat", 12)      -- v8.1
 AddNav("Chat", 13)
 
-V8.Mod("src/90_runtime/01_commands.lua", 16994, 17740, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/01_commands.lua", 17656, 18402, function() --------------------------------------------------------------------------------
 -- BARRA DE COMANDOS (histórico, autocomplete, aliases)
 --------------------------------------------------------------------------------
 do
@@ -17739,7 +18401,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/02_window_ctl.lua", 17742, 17958, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/02_window_ctl.lua", 18404, 18620, function() --------------------------------------------------------------------------------
 -- ORB FLUTUANTE
 --------------------------------------------------------------------------------
 do
@@ -17957,7 +18619,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/03_input.lua", 17960, 18109, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/03_input.lua", 18622, 18771, function() --------------------------------------------------------------------------------
 -- INPUT GLOBAL (teclas)
 --------------------------------------------------------------------------------
 -- v8.0: teclas que cada modo usa para se mover. Com o modo ligado, um atalho
@@ -18108,7 +18770,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/04_scheduler.lua", 18111, 18217, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/04_scheduler.lua", 18773, 18879, function() --------------------------------------------------------------------------------
 -- SCHEDULER ÚNICO (um Heartbeat para todo o painel)
 --------------------------------------------------------------------------------
 do
@@ -18216,7 +18878,7 @@ do
 end
 
 end)
-V8.Mod("src/90_runtime/05_events.lua", 18219, 18327, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/05_events.lua", 18881, 18989, function() --------------------------------------------------------------------------------
 -- RESPAWN: reaplica o que estava ligado (e avisa o que não deu)
 --------------------------------------------------------------------------------
 Conn.CharAdded = LocalPlayer.CharacterAdded:Connect(function(char)
@@ -18326,7 +18988,7 @@ end)
 --------------------------------------------------------------------------------
 
 end)
-V8.Mod("src/90_runtime/06_unload.lua", 18329, 18425, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/06_unload.lua", 18991, 19087, function() --------------------------------------------------------------------------------
 -- UNLOAD (desfaz tudo)
 --------------------------------------------------------------------------------
 Unload = function()
@@ -18424,7 +19086,7 @@ pcall(function()
 end)
 
 end)
-V8.Mod("src/90_runtime/07_boot.lua", 18427, 18513, function() --------------------------------------------------------------------------------
+V8.Mod("src/90_runtime/07_boot.lua", 19089, 19175, function() --------------------------------------------------------------------------------
 -- BOOT
 --------------------------------------------------------------------------------
 do
@@ -18512,4 +19174,4 @@ do
     end
 end
 end)
-V8.SrcMap = { { "src/00_core/00_header.lua", 6, 103 }, { "src/00_core/01_config.lua", 104, 214 }, { "src/00_core/02_theme.lua", 215, 328 }, { "src/00_core/03_bootstrap.lua", 329, 406 }, { "src/00_core/04_state.lua", 407, 714 }, { "src/00_core/05_helpers.lua", 715, 756 }, { "src/10_ui/00_window.lua", 757, 805 }, { "src/10_ui/01_toasts.lua", 806, 949 }, { "src/10_ui/02_console.lua", 950, 1170 }, { "src/10_ui/03_topbar_sidebar.lua", 1171, 1316 }, { "src/10_ui/04_factory.lua", 1317, 1621 }, { "src/10_ui/05_toggles_keybinds.lua", 1622, 1934 }, { "src/20_features/00_fly.lua", 1935, 2363 }, { "src/20_features/01_character.lua", 2364, 2495 }, { "src/20_features/02_esp.lua", 2496, 2822 }, { "src/20_features/03_world.lua", 2823, 2894 }, { "src/20_features/04_freecam.lua", 2895, 2976 }, { "src/20_features/05_drone.lua", 2977, 3093 }, { "src/20_features/06_actions.lua", 3094, 3496 }, { "src/20_features/07_spectate.lua", 3497, 3546 }, { "src/20_features/08_spectate_hud.lua", 3547, 3617 }, { "src/20_features/09_body.lua", 3618, 3764 }, { "src/20_features/10_wallwalk.lua", 3765, 4045 }, { "src/20_features/11_clicktp.lua", 4046, 4100 }, { "src/30_kit/00_widgets.lua", 4101, 4596 }, { "src/30_kit/01_icons.lua", 4597, 4715 }, { "src/30_kit/02_topbar_chips.lua", 4716, 4796 }, { "src/30_kit/03_drone_hud.lua", 4797, 5185 }, { "src/30_kit/04_net.lua", 5186, 5416 }, { "src/30_kit/05_playtime.lua", 5417, 5915 }, { "src/30_kit/06_animpack.lua", 5916, 6441 }, { "src/30_kit/07_sha256.lua", 6442, 6536 }, { "src/30_kit/08_profile_tx.lua", 6537, 6699 }, { "src/30_kit/09_hud.lua", 6700, 6862 }, { "src/40_tabs/00_home.lua", 6863, 7198 }, { "src/40_tabs/01_home_dashboard.lua", 7199, 7767 }, { "src/40_tabs/01_home_server.lua", 7768, 8042 }, { "src/40_tabs/02_movement.lua", 8043, 8376 }, { "src/40_tabs/02_movement_pack.lua", 8377, 8563 }, { "src/40_tabs/03_visuals.lua", 8564, 8658 }, { "src/40_tabs/04_players.lua", 8659, 8904 }, { "src/40_tabs/05_moderation.lua", 8905, 9087 }, { "src/40_tabs/06_server.lua", 9088, 9296 }, { "src/40_tabs/07_emotes.lua", 9297, 9890 }, { "src/40_tabs/08_settings.lua", 9891, 10332 }, { "src/40_tabs/09_shop.lua", 10333, 10657 }, { "src/40_tabs/10_scripts.lua", 10658, 10733 }, { "src/40_tabs/11_chat.lua", 10734, 10863 }, { "src/40_tabs/12_troll.lua", 10864, 11060 }, { "src/40_tabs/13_hychat.lua", 11061, 11442 }, { "src/50_v8/00_dock.lua", 11443, 12145 }, { "src/50_v8/01_shell.lua", 12146, 12536 }, { "src/50_v8/02_situations.lua", 12537, 12877 }, { "src/50_v8/03_persist.lua", 12878, 13476 }, { "src/50_v8/04_search.lua", 13477, 13936 }, { "src/50_v8/05_island.lua", 13937, 14225 }, { "src/50_v8/06_auto.lua", 14226, 14309 }, { "src/50_v8/07_mobile.lua", 14310, 14532 }, { "src/50_v8/08_quests.lua", 14533, 14798 }, { "src/50_v8/09_update.lua", 14799, 15059 }, { "src/50_v8/10_profiles.lua", 15060, 15499 }, { "src/50_v8/11_notify.lua", 15500, 15837 }, { "src/50_v8/12_colors.lua", 15838, 16001 }, { "src/50_v8/13_macros.lua", 16002, 16264 }, { "src/50_v8/14_diag.lua", 16265, 16577 }, { "src/50_v8/15_news.lua", 16578, 16775 }, { "src/50_v8/19_settings_nav.lua", 16776, 16958 }, { "src/90_runtime/00_status_nav.lua", 16959, 16993 }, { "src/90_runtime/01_commands.lua", 16994, 17741 }, { "src/90_runtime/02_window_ctl.lua", 17742, 17959 }, { "src/90_runtime/03_input.lua", 17960, 18110 }, { "src/90_runtime/04_scheduler.lua", 18111, 18218 }, { "src/90_runtime/05_events.lua", 18219, 18328 }, { "src/90_runtime/06_unload.lua", 18329, 18426 }, { "src/90_runtime/07_boot.lua", 18427, 18514 } }
+V8.SrcMap = { { "src/00_core/00_header.lua", 6, 113 }, { "src/00_core/01_config.lua", 114, 228 }, { "src/00_core/02_theme.lua", 229, 356 }, { "src/00_core/03_bootstrap.lua", 357, 434 }, { "src/00_core/04_state.lua", 435, 742 }, { "src/00_core/05_helpers.lua", 743, 784 }, { "src/10_ui/00_window.lua", 785, 833 }, { "src/10_ui/01_toasts.lua", 834, 977 }, { "src/10_ui/02_console.lua", 978, 1198 }, { "src/10_ui/03_topbar_sidebar.lua", 1199, 1344 }, { "src/10_ui/04_factory.lua", 1345, 1680 }, { "src/10_ui/05_toggles_keybinds.lua", 1681, 2001 }, { "src/20_features/00_fly.lua", 2002, 2430 }, { "src/20_features/01_character.lua", 2431, 2562 }, { "src/20_features/02_esp.lua", 2563, 2889 }, { "src/20_features/03_world.lua", 2890, 2961 }, { "src/20_features/04_freecam.lua", 2962, 3043 }, { "src/20_features/05_drone.lua", 3044, 3160 }, { "src/20_features/06_actions.lua", 3161, 3563 }, { "src/20_features/07_spectate.lua", 3564, 3613 }, { "src/20_features/08_spectate_hud.lua", 3614, 3684 }, { "src/20_features/09_body.lua", 3685, 3831 }, { "src/20_features/10_wallwalk.lua", 3832, 4112 }, { "src/20_features/11_clicktp.lua", 4113, 4167 }, { "src/30_kit/00_widgets.lua", 4168, 4680 }, { "src/30_kit/01_icons.lua", 4681, 4799 }, { "src/30_kit/02_topbar_chips.lua", 4800, 4880 }, { "src/30_kit/03_drone_hud.lua", 4881, 5269 }, { "src/30_kit/04_net.lua", 5270, 5500 }, { "src/30_kit/05_playtime.lua", 5501, 5999 }, { "src/30_kit/06_animpack.lua", 6000, 6525 }, { "src/30_kit/07_sha256.lua", 6526, 6620 }, { "src/30_kit/08_profile_tx.lua", 6621, 6783 }, { "src/30_kit/09_hud.lua", 6784, 6947 }, { "src/30_kit/10_brand.lua", 6948, 7422 }, { "src/40_tabs/00_home.lua", 7423, 7758 }, { "src/40_tabs/01_home_dashboard.lua", 7759, 8342 }, { "src/40_tabs/01_home_server.lua", 8343, 8617 }, { "src/40_tabs/02_movement.lua", 8618, 8951 }, { "src/40_tabs/02_movement_pack.lua", 8952, 9138 }, { "src/40_tabs/03_visuals.lua", 9139, 9233 }, { "src/40_tabs/04_players.lua", 9234, 9479 }, { "src/40_tabs/05_moderation.lua", 9480, 9662 }, { "src/40_tabs/06_server.lua", 9663, 9871 }, { "src/40_tabs/07_emotes.lua", 9872, 10465 }, { "src/40_tabs/08_settings.lua", 10466, 10907 }, { "src/40_tabs/09_shop.lua", 10908, 11232 }, { "src/40_tabs/10_scripts.lua", 11233, 11308 }, { "src/40_tabs/11_chat.lua", 11309, 11438 }, { "src/40_tabs/12_troll.lua", 11439, 11635 }, { "src/40_tabs/13_hychat.lua", 11636, 12017 }, { "src/50_v8/00_dock.lua", 12018, 12730 }, { "src/50_v8/01_shell.lua", 12731, 13161 }, { "src/50_v8/02_situations.lua", 13162, 13502 }, { "src/50_v8/03_persist.lua", 13503, 14112 }, { "src/50_v8/04_search.lua", 14113, 14572 }, { "src/50_v8/05_island.lua", 14573, 14872 }, { "src/50_v8/06_auto.lua", 14873, 14956 }, { "src/50_v8/07_mobile.lua", 14957, 15179 }, { "src/50_v8/08_quests.lua", 15180, 15445 }, { "src/50_v8/09_update.lua", 15446, 15706 }, { "src/50_v8/10_profiles.lua", 15707, 16146 }, { "src/50_v8/11_notify.lua", 16147, 16484 }, { "src/50_v8/12_colors.lua", 16485, 16648 }, { "src/50_v8/13_macros.lua", 16649, 16911 }, { "src/50_v8/14_diag.lua", 16912, 17224 }, { "src/50_v8/15_news.lua", 17225, 17437 }, { "src/50_v8/19_settings_nav.lua", 17438, 17620 }, { "src/90_runtime/00_status_nav.lua", 17621, 17655 }, { "src/90_runtime/01_commands.lua", 17656, 18403 }, { "src/90_runtime/02_window_ctl.lua", 18404, 18621 }, { "src/90_runtime/03_input.lua", 18622, 18772 }, { "src/90_runtime/04_scheduler.lua", 18773, 18880 }, { "src/90_runtime/05_events.lua", 18881, 18990 }, { "src/90_runtime/06_unload.lua", 18991, 19088 }, { "src/90_runtime/07_boot.lua", 19089, 19176 } }
